@@ -5,7 +5,7 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/barangay-census/',
+  base: '/barangay_census/',
   resolve: {
     // face-api.js contains an unused Node.js filesystem fallback. Point it to
     // a browser-safe stub so Vite does not externalize Node's `fs` module.
