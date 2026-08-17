@@ -26,11 +26,13 @@ export default function ResidentAuth({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [registrationReady, setRegistrationReady] = useState(false);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+    setRegistrationReady(false);
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
@@ -129,7 +131,7 @@ export default function ResidentAuth({
 
       if (result.needsEmailConfirmation) {
         setSuccess(
-          "Account created. Check your email to confirm your account, then sign in.",
+          "Successfully registered! Check your email to confirm your account, then sign in.",
         );
         setIsLogin(true);
         setPassword("");
@@ -137,8 +139,11 @@ export default function ResidentAuth({
         return;
       }
 
-      setSuccess("Account created successfully. Continue with ID verification.");
-      onRegisterClick();
+      setSuccess("Successfully registered! You may now continue with ID verification.");
+      setRegistrationReady(true);
+      setPassword("");
+      setConfirmPassword("");
+      return;
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -193,8 +198,6 @@ export default function ResidentAuth({
         ">
 
 
-          {/* Header */}
-
           <div className="text-center mb-8">
 
 
@@ -248,8 +251,6 @@ export default function ResidentAuth({
 
 
 
-          {/* Messages */}
-
           {error && (
 
             <div className="
@@ -281,6 +282,16 @@ export default function ResidentAuth({
             ">
 
               {success}
+
+              {registrationReady && (
+                <button
+                  type="button"
+                  onClick={onRegisterClick}
+                  className="mt-3 w-full rounded-lg bg-green-700 px-4 py-2 font-semibold text-white transition hover:bg-green-800"
+                >
+                  Continue to ID Verification
+                </button>
+              )}
 
             </div>
 
@@ -491,6 +502,7 @@ export default function ResidentAuth({
                 setIsForgotPassword(true);
                 setError("");
                 setSuccess("");
+                setRegistrationReady(false);
                 setPassword("");
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-800"
@@ -507,6 +519,7 @@ export default function ResidentAuth({
                 setIsForgotPassword(false);
                 setError("");
                 setSuccess("");
+                setRegistrationReady(false);
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
             >
@@ -539,6 +552,7 @@ export default function ResidentAuth({
                   setIsForgotPassword(false);
                   setError("");
                   setSuccess("");
+                  setRegistrationReady(false);
 
                 }}
 
