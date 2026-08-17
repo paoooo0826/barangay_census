@@ -8,6 +8,7 @@ import ResidentAuth from './pages/ResidentAuth';
 import ResidentRegistration from './pages/ResidentRegistration';
 import CensusForm from './pages/CensusForm';
 import ResidentDashboard from './pages/ResidentDashboard';
+import ResetPassword from './pages/ResetPassword';
 import AdminAuth from './pages/AdminAuth';
 import AdminSetup from './pages/AdminSetup';
 import AdminDashboard from './pages/AdminDashboard';
@@ -43,10 +44,20 @@ export default function App() {
 
   const path = routePath(route);
   const reviewMatch = path.match(/^\/admin\/review\/([^/]+)$/);
+  const isPasswordReset = new URLSearchParams(window.location.search).get('password-reset') === '1';
 
   let page: ReactNode;
 
-  if (path === '/') {
+  if (isPasswordReset) {
+    page = (
+      <ResetPassword
+        onComplete={() => {
+          window.history.replaceState({}, '', `${import.meta.env.BASE_URL}#/resident`);
+          setRoute('/resident');
+        }}
+      />
+    );
+  } else if (path === '/') {
     page = (
       <UserTypeSelection
         onResident={() => navigate('/resident')}
