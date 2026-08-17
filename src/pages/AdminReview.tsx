@@ -185,6 +185,18 @@ const formatLabel = (value?: string | null) => {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
+const formatCurrency = (value?: number | null) => {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return 'Not provided';
+  }
+
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value));
+};
+
 export default function AdminReview({
   residentId,
   onBack,
@@ -1037,11 +1049,11 @@ export default function AdminReview({
                 icon={Home}
               />
 
-<InfoItem
-  label="Monthly Rent"
-  value="Not available"
-  icon={Home}
-/>
+              <InfoItem
+                label="Monthly Rent"
+                value={formatCurrency(resident.monthly_rent)}
+                icon={Home}
+              />
             </div>
           </article>
         </section>
