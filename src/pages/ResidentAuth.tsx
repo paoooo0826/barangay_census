@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Mail, Lock, User, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, Lock, User, Loader2, KeyRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -17,6 +17,7 @@ export default function ResidentAuth({
 
   const { signIn, signUp } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +26,42 @@ export default function ResidentAuth({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("Enter the email address connected to your resident account.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}?password-reset=1`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        { redirectTo },
+      );
+
+      if (resetError) throw resetError;
+
+      setSuccess(
+        "If an account uses that email, a password-reset link has been sent. Check your inbox and spam folder.",
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to send the reset email. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -186,7 +223,9 @@ export default function ResidentAuth({
               text-gray-900
             ">
 
-              {isLogin 
+              {isForgotPassword
+              ? "Reset Password"
+              : isLogin 
               ? "Resident Login"
               : "Create Account"}
 
@@ -195,7 +234,9 @@ export default function ResidentAuth({
 
             <p className="text-gray-500 mt-2">
 
-              {isLogin
+              {isForgotPassword
+              ? "Enter your account email and we'll send you a secure reset link"
+              : isLogin
               ? "Sign in to track your census application"
               : "Create an account to start registration"}
 
@@ -251,7 +292,7 @@ export default function ResidentAuth({
 
 
           <form 
-            onSubmit={handleSubmit}
+            onSubmit={isForgotPassword ? handleForgotPassword : handleSubmit}
             className="space-y-5"
           >
 
@@ -312,7 +353,7 @@ export default function ResidentAuth({
 
 
 
-            <div>
+            {!isForgotPassword && <div>
 
               <label className="block mb-1 text-sm font-medium">
                 Password
@@ -364,12 +405,12 @@ export default function ResidentAuth({
               </div>
 
 
-            </div>
+            </div>}
 
 
 
 
-            {!isLogin && (
+            {!isForgotPassword && !isLogin && (
 
               <input
 
@@ -429,7 +470,9 @@ export default function ResidentAuth({
 
               ) : (
 
-                isLogin 
+                isForgotPassword
+                ? "Send Reset Link"
+                : isLogin 
                 ? "Sign In"
                 : "Create Account"
 
@@ -441,12 +484,43 @@ export default function ResidentAuth({
 
           </form>
 
+          {isLogin && !isForgotPassword && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(true);
+                setError("");
+                setSuccess("");
+                setPassword("");
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-800"
+            >
+              <KeyRound size={16} />
+              Forgot password?
+            </button>
+          )}
+
+          {isForgotPassword && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(false);
+                setError("");
+                setSuccess("");
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
+            >
+              <ArrowLeft size={16} />
+              Back to resident login
+            </button>
+          )}
 
 
 
 
 
-          <div className="mt-6 text-center">
+
+          {!isForgotPassword && <div className="mt-6 text-center">
 
 
             <p className="text-gray-500">
@@ -462,6 +536,7 @@ export default function ResidentAuth({
                 onClick={()=>{
 
                   setIsLogin(!isLogin);
+                  setIsForgotPassword(false);
                   setError("");
                   setSuccess("");
 
@@ -485,7 +560,7 @@ export default function ResidentAuth({
             </p>
 
 
-          </div>
+          </div>}
 
 
 
