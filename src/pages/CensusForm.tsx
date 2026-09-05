@@ -14,7 +14,7 @@ import {
 
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import type { CategoryRow } from '../types/database';
+import type { CategoryRow, EducationLevel, EducationStatus } from '../types/database';
 import FaceIdentityVerification, { type FaceVerificationResult } from '../components/FaceIdentityVerification';
 
 
@@ -26,17 +26,6 @@ type CivilStatus =
   | 'Widowed'
   | 'Divorced'
   | 'Separated';
-
-type EducationLevel =
-  | 'Elementary'
-  | 'High School'
-  | 'College'
-  | 'Vocational'
-  | 'Post Graduate';
-
-type EducationStatus =
-  | 'Graduate'
-  | 'Undergraduate';
 
 type TenurialStatus =
   | 'House Owner'
@@ -170,17 +159,26 @@ const CIVIL_STATUS_OPTIONS: CivilStatus[] = [
 
 
 const EDUCATION_OPTIONS: EducationLevel[] = [
+  'No Formal Education',
+  'Pre-School',
+  'Kindergarten',
   'Elementary',
   'High School',
-  'College',
+  'Junior High School',
+  'Senior High School',
   'Vocational',
+  'College',
   'Post Graduate',
+  "Master's Degree",
+  'Doctorate',
 ];
 
 
 const EDUCATION_STATUS_OPTIONS: EducationStatus[] = [
-  'Graduate',
-  'Undergraduate',
+  'Currently Studying',
+  'Completed',
+  'Not Currently Studying',
+  'No Formal Education',
 ];
 
 
@@ -535,6 +533,32 @@ const [categories, setCategories] =
 
   };
 
+  const updateEducationLevel = (value: EducationLevel | '') => {
+    setFormData((previous) => ({
+      ...previous,
+      highest_education: value,
+      education_status:
+        value === 'No Formal Education'
+          ? 'No Formal Education'
+          : previous.education_status === 'No Formal Education'
+            ? ''
+            : previous.education_status,
+    }));
+  };
+
+  const updateEducationStatus = (value: EducationStatus | '') => {
+    setFormData((previous) => ({
+      ...previous,
+      education_status: value,
+      highest_education:
+        value === 'No Formal Education'
+          ? 'No Formal Education'
+          : previous.highest_education === 'No Formal Education'
+            ? ''
+            : previous.highest_education,
+    }));
+  };
+
 
 
   const toggleCategory = (
@@ -699,6 +723,8 @@ const [categories, setCategories] =
       'sex',
       'civil_status',
       'residential_address',
+      'highest_education',
+      'education_status',
       'tenurial_status',
 
     ];
@@ -719,6 +745,14 @@ const [categories, setCategories] =
 
       }
 
+    }
+
+    if (
+      (formData.highest_education === 'No Formal Education') !==
+      (formData.education_status === 'No Formal Education')
+    ) {
+      setError('Education level and education status are inconsistent. Please review both fields.');
+      return false;
     }
 
 
@@ -872,42 +906,26 @@ const [categories, setCategories] =
     setLoading(true);
 
     try {
-      const normalizedPhilSys = formData.philsys_number.trim();
+      const { data: duplicateResult, error: duplicateError } = await supabase.rpc(
+        'check_resident_duplicate',
+        {
+          candidate_philsys: formData.philsys_number.trim(),
+          candidate_first_name: formData.first_name.trim(),
+          candidate_middle_name: formData.middle_name.trim(),
+          candidate_last_name: formData.last_name.trim(),
+          candidate_birth_date: formData.birth_date,
+        },
+      );
 
-      if (normalizedPhilSys) {
-        let philsysQuery = supabase
-          .from('residents')
-          .select('id')
-          .eq('philsys_number', normalizedPhilSys)
-          .limit(1);
+      if (duplicateError) throw duplicateError;
 
-        if (residentId) philsysQuery = philsysQuery.neq('id', residentId);
+      const duplicateCheck = duplicateResult as {
+        duplicate?: boolean;
+        reason?: 'philsys' | 'identity' | null;
+      } | null;
 
-        const { data: duplicatePhilSys, error: duplicatePhilSysError } = await philsysQuery;
-        if (duplicatePhilSysError) throw duplicatePhilSysError;
-        if (duplicatePhilSys && duplicatePhilSys.length > 0) {
-          setError('This PhilSys number is already registered to another resident.');
-          return;
-        }
-      }
-
-      let duplicateResidentQuery = supabase
-        .from('residents')
-        .select('id, tracking_number')
-        .ilike('first_name', formData.first_name.trim())
-        .ilike('last_name', formData.last_name.trim())
-        .eq('birth_date', formData.birth_date)
-        .limit(1);
-
-      if (residentId) duplicateResidentQuery = duplicateResidentQuery.neq('id', residentId);
-
-      const { data: duplicateResident, error: duplicateResidentError } = await duplicateResidentQuery;
-      if (duplicateResidentError) throw duplicateResidentError;
-      if (duplicateResident && duplicateResident.length > 0) {
-        const tracking = duplicateResident[0].tracking_number
-          ? ` Tracking number: ${duplicateResident[0].tracking_number}.`
-          : '';
-        setError(`A resident with the same name and birth date already exists.${tracking}`);
+      if (duplicateCheck?.duplicate) {
+        setError('User is already registered.');
         return;
       }
     } catch (validationError) {
@@ -1215,7 +1233,7 @@ const [categories, setCategories] =
       } else if (/bucket|storage/i.test(rawMessage) && /not found|does not exist/i.test(rawMessage)) {
         friendlyMessage = 'A required Supabase Storage bucket is missing. Run the included storage setup SQL files in the Supabase SQL Editor.';
       } else if (/duplicate key/i.test(rawMessage) && /philsys/i.test(rawMessage)) {
-        friendlyMessage = 'This PhilSys number is already registered to another resident.';
+        friendlyMessage = 'User is already registered.';
       }
 
       setError(friendlyMessage);
@@ -1616,7 +1634,7 @@ e.target.value
 <div className="space-y-2">
 
 <label className="label">
-Highest Education
+Highest Education <span className="text-red-500">*</span>
 </label>
 
 
@@ -1628,16 +1646,13 @@ value={formData.highest_education}
 
 onChange={
 e=>
-updateField(
-'highest_education',
-e.target.value as EducationLevel
-)
+updateEducationLevel(e.target.value as EducationLevel | '')
 }
 
 >
 
 <option value="">
-Select
+Select highest education
 </option>
 
 
@@ -1662,7 +1677,7 @@ EDUCATION_OPTIONS.map(x=>(
 <div className="space-y-2">
 
 <label className="label">
-Education Status
+Education Status <span className="text-red-500">*</span>
 </label>
 
 
@@ -1674,16 +1689,13 @@ value={formData.education_status}
 
 onChange={
 e=>
-updateField(
-'education_status',
-e.target.value as EducationStatus
-)
+updateEducationStatus(e.target.value as EducationStatus | '')
 }
 
 >
 
 <option value="">
-Select
+Select education status
 </option>
 
 
