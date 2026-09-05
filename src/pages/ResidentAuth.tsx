@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Mail, Lock, User, Loader2, KeyRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Mail, Lock, User, Loader2, KeyRound, RefreshCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -7,6 +7,33 @@ interface ResidentAuthProps {
   onBack: () => void;
   onLoginSuccess: (destination: 'dashboard' | 'census') => void;
   onRegisterClick: () => void;
+}
+
+type EmailCheckStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "registered"
+  | "rate_limited"
+  | "unavailable";
+
+interface EmailCheckResult {
+  valid?: boolean;
+  registered?: boolean;
+  rate_limited?: boolean;
+  retry_after_seconds?: number;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function friendlyEmailError(message: string) {
+  if (/rate limit|too many|429/i.test(message)) {
+    return "Too many email requests were made. Wait at least one minute, then try again.";
+  }
+  if (/already registered|already exists/i.test(message)) {
+    return "User is already registered.";
+  }
+  return message;
 }
 
 export default function ResidentAuth({
@@ -27,6 +54,109 @@ export default function ResidentAuth({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [registrationReady, setRegistrationReady] = useState(false);
+  const [emailCheckStatus, setEmailCheckStatus] = useState<EmailCheckStatus>("idle");
+  const [emailCheckMessage, setEmailCheckMessage] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendingEmail, setResendingEmail] = useState(false);
+
+  const checkRegistrationEmail = async (normalizedEmail: string) => {
+    const { data, error: checkError } = await supabase.rpc(
+      "check_registration_email",
+      { candidate_email: normalizedEmail },
+    );
+
+    if (checkError) throw checkError;
+    return data as EmailCheckResult | null;
+  };
+
+  useEffect(() => {
+    if (isLogin || isForgotPassword) {
+      setEmailCheckStatus("idle");
+      setEmailCheckMessage("");
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !EMAIL_PATTERN.test(normalizedEmail)) {
+      setEmailCheckStatus("idle");
+      setEmailCheckMessage("");
+      return;
+    }
+
+    let cancelled = false;
+    setEmailCheckStatus("checking");
+    setEmailCheckMessage("Checking email availability...");
+
+    const timer = window.setTimeout(() => {
+      void checkRegistrationEmail(normalizedEmail)
+        .then((result) => {
+          if (cancelled) return;
+
+          if (result?.rate_limited) {
+            const seconds = result.retry_after_seconds ?? 60;
+            setEmailCheckStatus("rate_limited");
+            setEmailCheckMessage(`Too many checks. Try again in ${seconds} seconds.`);
+            return;
+          }
+
+          if (result?.registered) {
+            setEmailCheckStatus("registered");
+            setEmailCheckMessage("User is already registered.");
+            return;
+          }
+
+          setEmailCheckStatus("available");
+          setEmailCheckMessage("Email is available.");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setEmailCheckStatus("unavailable");
+          setEmailCheckMessage("Email checking is temporarily unavailable.");
+        });
+    }, 650);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [email, isForgotPassword, isLogin]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
+  const handleResendConfirmation = async () => {
+    if (!confirmationEmail || resendCooldown > 0 || resendingEmail) return;
+
+    setError("");
+    setResendingEmail(true);
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: confirmationEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/resident`,
+        },
+      });
+
+      if (resendError) throw resendError;
+      setSuccess("Verification email sent again. Check your inbox and spam folder.");
+      setResendCooldown(60);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error
+        ? caughtError.message
+        : "Unable to resend the verification email.";
+      setError(friendlyEmailError(message));
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,11 +200,17 @@ export default function ResidentAuth({
     e.preventDefault();
     setError("");
     setSuccess("");
+    setRegistrationReady(false);
 
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail || !password) {
       setError("Email and password are required");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -122,14 +258,41 @@ export default function ResidentAuth({
         return;
       }
 
+      const emailAvailability = await checkRegistrationEmail(normalizedEmail);
+
+      if (emailAvailability?.rate_limited) {
+        const seconds = emailAvailability.retry_after_seconds ?? 60;
+        setError(`Too many email checks. Try again in ${seconds} seconds.`);
+        return;
+      }
+
+      if (emailAvailability?.valid === false) {
+        setError("Enter a valid email address.");
+        return;
+      }
+
+      if (emailAvailability?.registered) {
+        setEmailCheckStatus("registered");
+        setEmailCheckMessage("User is already registered.");
+        setError("User is already registered.");
+        return;
+      }
+
       const result = await signUp(normalizedEmail, password);
 
       if (result.error) {
-        setError(result.error.message);
+        setError(friendlyEmailError(result.error.message));
+        return;
+      }
+
+      if (result.isExistingUser) {
+        setError("User is already registered.");
         return;
       }
 
       if (result.needsEmailConfirmation) {
+        setConfirmationEmail(normalizedEmail);
+        setResendCooldown(60);
         setSuccess(
           "Successfully registered! Check your email to confirm your account, then sign in.",
         );
@@ -293,6 +456,20 @@ export default function ResidentAuth({
                 </button>
               )}
 
+              {confirmationEmail && !registrationReady && (
+                <button
+                  type="button"
+                  onClick={() => void handleResendConfirmation()}
+                  disabled={resendCooldown > 0 || resendingEmail}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-green-300 bg-white px-4 py-2 font-semibold text-green-800 transition hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resendingEmail ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                  {resendCooldown > 0
+                    ? `Resend available in ${resendCooldown}s`
+                    : "Resend verification email"}
+                </button>
+              )}
+
             </div>
 
           )}
@@ -357,6 +534,23 @@ export default function ResidentAuth({
 
 
               </div>
+
+              {!isLogin && !isForgotPassword && emailCheckMessage && (
+                <p
+                  className={`mt-2 text-xs font-semibold ${
+                    emailCheckStatus === "available"
+                      ? "text-green-600"
+                      : emailCheckStatus === "checking"
+                        ? "text-blue-600"
+                        : "text-red-600"
+                  }`}
+                >
+                  {emailCheckStatus === "checking" && (
+                    <Loader2 className="mr-1 inline-block animate-spin" size={13} />
+                  )}
+                  {emailCheckMessage}
+                </p>
+              )}
 
             </div>
 
@@ -456,7 +650,7 @@ export default function ResidentAuth({
 
             <button
 
-              disabled={loading}
+              disabled={loading || (!isLogin && !isForgotPassword && emailCheckStatus === "checking")}
 
               className="
               w-full
@@ -503,6 +697,8 @@ export default function ResidentAuth({
                 setError("");
                 setSuccess("");
                 setRegistrationReady(false);
+                setConfirmationEmail("");
+                setResendCooldown(0);
                 setPassword("");
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-800"
@@ -520,6 +716,8 @@ export default function ResidentAuth({
                 setError("");
                 setSuccess("");
                 setRegistrationReady(false);
+                setConfirmationEmail("");
+                setResendCooldown(0);
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
             >
@@ -553,6 +751,8 @@ export default function ResidentAuth({
                   setError("");
                   setSuccess("");
                   setRegistrationReady(false);
+                  setConfirmationEmail("");
+                  setResendCooldown(0);
 
                 }}
 
