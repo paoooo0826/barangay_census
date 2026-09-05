@@ -111,6 +111,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   const blinkCountRef = useRef(0);
   const baselineAreaRef = useRef<number | null>(null);
   const fullscreenRequestedRef = useRef(false);
+  const monitorSessionRef = useRef(0);
 
   const [modelsReady, setModelsReady] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -142,6 +143,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   }, [idFrontFile, idFrontPreview]);
 
   function stopCamera() {
+    monitorSessionRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraReady(false);
@@ -231,7 +233,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
       setStatus(faces.length === 1
         ? 'ID accepted. Starting live camera liveness check...'
         : 'No face photo was found on the ID. Liveness will continue and the application will require manual administrator review.');
-      await startCamera(selected[0]);
+      await startCamera(selected);
     } catch (caught) {
       exitBrowserFullscreen();
       const message = cameraErrorMessage(caught);
@@ -262,9 +264,10 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
     return caught instanceof Error ? caught.message : 'The camera could not be opened.';
   }
 
-  async function startCamera(firstAction?: LivenessAction) {
+  async function startCamera(selectedActions: LivenessAction[]) {
     if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('Camera unsupported', 'NotFoundError');
     stopCamera();
+    const sessionId = monitorSessionRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: 'user',
@@ -289,62 +292,134 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
 
     video.srcObject = stream;
     await video.play();
-    setStatus(`Perform this action: ${ACTION_LABELS[firstAction ?? 'blink_twice']}`);
+    setStatus(`Automatic detection active: ${ACTION_LABELS[selectedActions[0]]}`);
+    void monitorLiveness(selectedActions, sessionId);
   }
 
-  async function checkCurrentAction() {
-    if (!videoRef.current || !cameraReady || !currentAction) return;
-    setBusy(true);
-    setError('');
+  async function monitorLiveness(selectedActions: LivenessAction[], sessionId: number) {
+    let index = 0;
+    let consecutiveMatches = 0;
+    let lastDescriptor: Float32Array | null = null;
+
+    const wait = (milliseconds: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+
     try {
-      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.55 });
-      const detections = await faceapi.detectAllFaces(videoRef.current, options).withFaceLandmarks().withFaceExpressions().withFaceDescriptors();
-      if (detections.length !== 1) throw new Error(detections.length === 0 ? 'No live face detected. Face the camera.' : 'Multiple faces detected. Only the applicant should be visible.');
-      const detection = detections[0];
-      const landmarks = detection.landmarks;
-      const box = detection.detection.box;
-      const frameArea = videoRef.current.videoWidth * videoRef.current.videoHeight;
-      const areaRatio = (box.width * box.height) / Math.max(1, frameArea);
-      if (baselineAreaRef.current === null) baselineAreaRef.current = areaRatio;
-      const nose = landmarks.getNose()[3];
-      const leftEye = landmarks.getLeftEye();
-      const rightEye = landmarks.getRightEye();
-      const eyeCenterX = [...leftEye, ...rightEye].reduce((sum, p) => sum + p.x, 0) / 12;
-      const eyeDistance = Math.abs(rightEye[3].x - leftEye[0].x);
-      const yaw = (nose.x - eyeCenterX) / Math.max(1, eyeDistance);
-      let actionPassed = false;
-      if (currentAction === 'smile') actionPassed = (detection.expressions.happy ?? 0) >= 0.7;
-      if (currentAction === 'turn_left') actionPassed = yaw <= -0.12;
-      if (currentAction === 'turn_right') actionPassed = yaw >= 0.12;
-      if (currentAction === 'move_closer') actionPassed = areaRatio >= Math.max(0.18, (baselineAreaRef.current ?? areaRatio) * 1.35);
-      if (currentAction === 'blink_twice') {
-        const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
-        if (ear < 0.19) blinkClosedRef.current = true;
-        if (ear > 0.23 && blinkClosedRef.current) {
-          blinkCountRef.current += 1;
-          blinkClosedRef.current = false;
+      while (
+        index < selectedActions.length &&
+        sessionId === monitorSessionRef.current &&
+        streamRef.current
+      ) {
+        const requestedAction = selectedActions[index];
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) {
+          await wait(250);
+          continue;
         }
-        actionPassed = blinkCountRef.current >= 2;
+
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.55 });
+        const detections = await faceapi
+          .detectAllFaces(video, options)
+          .withFaceLandmarks()
+          .withFaceExpressions()
+          .withFaceDescriptors();
+
+        if (detections.length !== 1) {
+          consecutiveMatches = 0;
+          setError(
+            detections.length === 0
+              ? 'No live face detected. Face the camera.'
+              : 'Multiple faces detected. Only the applicant should be visible.',
+          );
+          await wait(350);
+          continue;
+        }
+
+        setError('');
+        const detection = detections[0];
+        lastDescriptor = detection.descriptor;
+        const landmarks = detection.landmarks;
+        const box = detection.detection.box;
+        const frameArea = video.videoWidth * video.videoHeight;
+        const areaRatio = (box.width * box.height) / Math.max(1, frameArea);
+        if (baselineAreaRef.current === null) baselineAreaRef.current = areaRatio;
+        const nose = landmarks.getNose()[3];
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+        const eyeCenterX = [...leftEye, ...rightEye].reduce((sum, point) => sum + point.x, 0) / 12;
+        const eyeDistance = Math.abs(rightEye[3].x - leftEye[0].x);
+        const yaw = (nose.x - eyeCenterX) / Math.max(1, eyeDistance);
+        let actionDetected = false;
+
+        if (requestedAction === 'smile') {
+          actionDetected = (detection.expressions.happy ?? 0) >= 0.7;
+        }
+        if (requestedAction === 'turn_left') actionDetected = yaw <= -0.12;
+        if (requestedAction === 'turn_right') actionDetected = yaw >= 0.12;
+        if (requestedAction === 'move_closer') {
+          actionDetected = areaRatio >= Math.max(
+            0.18,
+            (baselineAreaRef.current ?? areaRatio) * 1.35,
+          );
+        }
+        if (requestedAction === 'blink_twice') {
+          const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
+          if (ear < 0.19) blinkClosedRef.current = true;
+          if (ear > 0.23 && blinkClosedRef.current) {
+            blinkCountRef.current += 1;
+            blinkClosedRef.current = false;
+          }
+          actionDetected = blinkCountRef.current >= 2;
+        }
+
+        if (requestedAction === 'blink_twice') {
+          consecutiveMatches = actionDetected ? 2 : 0;
+        } else {
+          consecutiveMatches = actionDetected ? consecutiveMatches + 1 : 0;
+        }
+
+        if (consecutiveMatches >= 2) {
+          index += 1;
+          consecutiveMatches = 0;
+          setPassed(selectedActions.slice(0, index));
+          setActionIndex(index);
+          blinkCountRef.current = 0;
+          blinkClosedRef.current = false;
+
+          if (index < selectedActions.length) {
+            setStatus(`Movement detected. Next: ${ACTION_LABELS[selectedActions[index]]}`);
+            await wait(900);
+          }
+        } else {
+          setStatus(`Automatic detection active: ${ACTION_LABELS[requestedAction]}`);
+          await wait(300);
+        }
       }
-      if (!actionPassed) throw new Error(`Action not detected yet: ${ACTION_LABELS[currentAction]}. Try again slowly.`);
-      const nextPassed = [...passed, currentAction];
-      setPassed(nextPassed);
-      if (actionIndex < actions.length - 1) {
-        setActionIndex((value) => value + 1);
-        blinkCountRef.current = 0;
-        blinkClosedRef.current = false;
-        setStatus(`Passed. Next: ${ACTION_LABELS[actions[actionIndex + 1]]}`);
-      } else {
-        await captureAndCompare(detection.descriptor);
+
+      if (
+        index === selectedActions.length &&
+        lastDescriptor &&
+        sessionId === monitorSessionRef.current
+      ) {
+        setPassed(selectedActions);
+        setStatus('All movements detected. Completing face comparison...');
+        await wait(500);
+        if (sessionId === monitorSessionRef.current) {
+          await captureAndCompare(lastDescriptor, selectedActions);
+        }
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to verify the requested action.');
-    } finally {
-      setBusy(false);
+      if (sessionId === monitorSessionRef.current) {
+        setError(caught instanceof Error ? caught.message : 'Automatic liveness detection stopped unexpectedly.');
+        setStatus('Automatic detection paused. Restart verification to try again.');
+      }
     }
   }
 
-  async function captureAndCompare(liveDescriptor: Float32Array) {
+  async function captureAndCompare(
+    liveDescriptor: Float32Array,
+    completedActions: LivenessAction[] = actions,
+  ) {
     if (!videoRef.current || !canvasRef.current || !idQualityRef.current) throw new Error('Verification data is incomplete. Restart verification.');
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -363,7 +438,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
         matchDistance: 0,
         similarityScore: 0,
         livenessPassed: true,
-        livenessActions: actions,
+        livenessActions: completedActions,
         recommendation: 'manual_review',
         idQuality: idQualityRef.current,
         verificationStatus: 'passed',
@@ -385,7 +460,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
       setStatus('Face comparison did not pass. Retake the ID or repeat the live verification.');
       throw new Error('The live face is not sufficiently similar to the face on the ID. Please retry with better lighting and a front-facing position.');
     }
-    onVerified({ file, matched, matchDistance: distance, similarityScore, livenessPassed: true, livenessActions: actions, recommendation, idQuality: idQualityRef.current, verificationStatus: 'passed', deviceType: deviceType() });
+    onVerified({ file, matched, matchDistance: distance, similarityScore, livenessPassed: true, livenessActions: completedActions, recommendation, idQuality: idQualityRef.current, verificationStatus: 'passed', deviceType: deviceType() });
     setComplete(true);
     setStatus(recommendation === 'match' ? 'Strong face match. Awaiting administrator review.' : 'Possible match. Administrator review is required.');
     stopCamera();
@@ -486,8 +561,16 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
           </div>
           <canvas ref={canvasRef} className="hidden" />
           {!complete && !cameraReady && <p className="mt-3 text-xs text-slate-500">The preview is mirrored for natural movement. Use <span className="font-semibold">Flip preview</span> if your device shows the opposite orientation. The saved verification photo remains in its correct camera orientation.</p>}
-          {actionSummary && <p className={cameraReady && !complete ? 'mt-3 text-center text-xs text-slate-300' : 'mt-3 text-xs text-slate-500'}>Random challenge: {actionSummary}</p>}
-          {!complete && <button type="button" disabled={busy} onClick={() => void checkCurrentAction()} className={cameraReady ? 'mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 sm:mx-auto sm:w-auto sm:min-w-64' : 'mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50'}>{busy ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}Check current action</button>}
+          {actionSummary && (
+            <div className={cameraReady && !complete ? 'mt-3 text-center text-xs text-slate-300' : 'mt-3 text-xs text-slate-500'}>
+              <p>Random challenge: {actionSummary}</p>
+              {cameraReady && !complete && (
+                <p className="mt-1 font-semibold text-emerald-300">
+                  Automatic monitoring · {passed.length} of {actions.length} movements detected
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
