@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Mail, Lock, User, Loader2, KeyRound, RefreshCw } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Mail, Lock, User, Loader2, KeyRound, RefreshCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -51,6 +51,8 @@ export default function ResidentAuth({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -628,7 +630,7 @@ export default function ResidentAuth({
 
                 <input
 
-                  type="password"
+                  type={showPassword ? "text" : "password"}
 
                   value={password}
 
@@ -641,11 +643,20 @@ export default function ResidentAuth({
                   placeholder="Password"
 
 
-                  className={inputClass("password", true)}
+                  className={`${inputClass("password", true)} pr-12`}
                   aria-invalid={Boolean(fieldErrors.password)}
                   aria-describedby={fieldErrors.password ? "resident-password-error" : undefined}
 
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                </button>
 
 
               </div>
@@ -668,18 +679,28 @@ export default function ResidentAuth({
                 <label className="mb-1 block text-sm font-medium">
                   Confirm Password <span className="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value);
-                    clearFieldError("confirmPassword");
-                  }}
-                  placeholder="Confirm Password"
-                  className={inputClass("confirmPassword")}
-                  aria-invalid={Boolean(fieldErrors.confirmPassword)}
-                  aria-describedby={fieldErrors.confirmPassword ? "resident-confirm-password-error" : undefined}
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      clearFieldError("confirmPassword");
+                    }}
+                    placeholder="Confirm Password"
+                    className={`${inputClass("confirmPassword")} pr-12`}
+                    aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                    aria-describedby={fieldErrors.confirmPassword ? "resident-confirm-password-error" : undefined}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    aria-label={showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"}
+                  >
+                    {showConfirmPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
                 {fieldErrors.confirmPassword && (
                   <p id="resident-confirm-password-error" className="mt-1.5 text-xs font-semibold text-red-600">
                     {fieldErrors.confirmPassword}
