@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import type { Resident } from '../types/database';
 import AdminAnalytics from '../components/AdminAnalytics';
 import AdminAnnouncements from '../components/AdminAnnouncements';
+import AdminAppointments from '../components/AdminAppointments';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -119,14 +120,17 @@ export default function AdminDashboard({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
+  const [appointmentRefreshKey, setAppointmentRefreshKey] = useState(0);
 
   useEffect(() => {
     void fetchData();
   }, []);
 
-  const calculateAge = (birthDate: string): number => {
+  const calculateAge = (birthDate: string): number | null => {
     const today = new Date();
     const birth = new Date(birthDate);
+
+    if (Number.isNaN(birth.getTime()) || birth > today) return null;
 
     let age = today.getFullYear() - birth.getFullYear();
 
@@ -139,7 +143,7 @@ export default function AdminDashboard({
       age -= 1;
     }
 
-    return age;
+    return age >= 0 && age <= 130 ? age : null;
   };
 
   const formatDate = (dateString: string) => {
@@ -150,8 +154,8 @@ export default function AdminDashboard({
     });
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showFullLoader = true) => {
+    if (showFullLoader) setLoading(true);
     setError(null);
 
     try {
@@ -204,6 +208,8 @@ export default function AdminDashboard({
       residentsData.forEach((resident) => {
         const age = calculateAge(resident.birth_date);
 
+        if (age === null) return;
+
         if (age < 18) {
           ageGroups[0].count += 1;
         } else if (age <= 30) {
@@ -222,7 +228,7 @@ export default function AdminDashboard({
       const sexCounts: Record<string, number> = {};
 
       residentsData.forEach((resident) => {
-        const sex = resident.sex || 'Not specified';
+        const sex = resident.sex?.trim().toLowerCase() || 'not specified';
         sexCounts[sex] = (sexCounts[sex] || 0) + 1;
       });
 
@@ -236,7 +242,7 @@ export default function AdminDashboard({
       const civilCounts: Record<string, number> = {};
 
       residentsData.forEach((resident) => {
-        const status = resident.civil_status || 'Not specified';
+        const status = resident.civil_status?.trim().toLowerCase() || 'not specified';
         civilCounts[status] = (civilCounts[status] || 0) + 1;
       });
 
@@ -253,13 +259,14 @@ export default function AdminDashboard({
         'Unable to load the administrator dashboard. Please try refreshing the page.',
       );
     } finally {
-      setLoading(false);
+      if (showFullLoader) setLoading(false);
     }
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchData();
+    await fetchData(false);
+    setAppointmentRefreshKey((current) => current + 1);
     setRefreshing(false);
   };
 
@@ -293,20 +300,9 @@ export default function AdminDashboard({
     });
   }, [residents, searchQuery, statusFilter]);
 
-  const maxAgeCount = Math.max(
-    ...ageDistribution.map((item) => item.count),
-    1,
-  );
-
-  const maxSexCount = Math.max(
-    ...sexDistribution.map((item) => item.count),
-    1,
-  );
-
-  const maxCivilCount = Math.max(
-    ...civilDistribution.map((item) => item.count),
-    1,
-  );
+  const ageTotal = ageDistribution.reduce((sum, item) => sum + item.count, 0);
+  const sexTotal = sexDistribution.reduce((sum, item) => sum + item.count, 0);
+  const civilTotal = civilDistribution.reduce((sum, item) => sum + item.count, 0);
 
   const statCards = [
     {
@@ -504,6 +500,8 @@ export default function AdminDashboard({
           </div>
         </section>
 
+        <AdminAppointments refreshKey={appointmentRefreshKey} />
+
         <section className="mb-8 grid gap-6 lg:grid-cols-3">
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-start justify-between">
@@ -522,9 +520,9 @@ export default function AdminDashboard({
               </div>
             </div>
 
-            <div className="space-y-5">
+            {ageTotal > 0 ? <div className="space-y-5">
               {ageDistribution.map((group) => {
-                const width = (group.count / maxAgeCount) * 100;
+                const width = (group.count / ageTotal) * 100;
 
                 return (
                   <div key={group.range}>
@@ -534,7 +532,7 @@ export default function AdminDashboard({
                       </span>
 
                       <span className="font-bold text-slate-900">
-                        {group.count}
+                        {group.count} ({Math.round(width)}%)
                       </span>
                     </div>
 
@@ -547,7 +545,11 @@ export default function AdminDashboard({
                   </div>
                 );
               })}
-            </div>
+            </div> : (
+              <p className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                No valid age data available.
+              </p>
+            )}
           </article>
 
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -570,7 +572,7 @@ export default function AdminDashboard({
             {sexDistribution.length > 0 ? (
               <div className="space-y-5">
                 {sexDistribution.map((item) => {
-                  const width = (item.count / maxSexCount) * 100;
+                  const width = (item.count / sexTotal) * 100;
 
                   return (
                     <div key={item.sex}>
@@ -580,7 +582,7 @@ export default function AdminDashboard({
                         </span>
 
                         <span className="font-bold text-slate-900">
-                          {item.count}
+                          {item.count} ({Math.round(width)}%)
                         </span>
                       </div>
 
@@ -621,7 +623,7 @@ export default function AdminDashboard({
             {civilDistribution.length > 0 ? (
               <div className="space-y-5">
                 {civilDistribution.map((item) => {
-                  const width = (item.count / maxCivilCount) * 100;
+                  const width = (item.count / civilTotal) * 100;
 
                   return (
                     <div key={item.status}>
@@ -631,7 +633,7 @@ export default function AdminDashboard({
                         </span>
 
                         <span className="font-bold text-slate-900">
-                          {item.count}
+                          {item.count} ({Math.round(width)}%)
                         </span>
                       </div>
 
