@@ -32,6 +32,8 @@ interface StoredVerification {
   matchDistance: number;
 }
 
+type RegistrationField = 'idType' | 'frontImage' | 'backImage';
+
 const STORAGE_BUCKET = 'resident-verification';
 const MODEL_URL =
   'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
@@ -63,6 +65,18 @@ export default function ResidentRegistration({
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<RegistrationField, string>>
+  >({});
+
+  const clearFieldError = (field: RegistrationField) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -200,10 +214,12 @@ export default function ResidentRegistration({
       setVerificationPassed(false);
       setCapturedFace(null);
       setMatchDistance(null);
+      clearFieldError('frontImage');
     } else {
       if (backPreview) URL.revokeObjectURL(backPreview);
       setBackImage(file);
       setBackPreview(preview);
+      clearFieldError('backImage');
     }
   };
 
@@ -410,14 +426,17 @@ export default function ResidentRegistration({
     setError('');
 
     if (step === 1) {
-      if (!idType) {
-        setError('Please select your government ID type.');
+      const missingFields: Partial<Record<RegistrationField, string>> = {};
+      if (!idType) missingFields.idType = 'Government ID type is required.';
+      if (!frontImage) missingFields.frontImage = 'Upload the front of your government ID.';
+      if (!backImage) missingFields.backImage = 'Upload the back of your government ID.';
+
+      if (Object.keys(missingFields).length > 0) {
+        setFieldErrors(missingFields);
+        setError('Please complete the required fields highlighted below.');
         return;
       }
-      if (!frontImage || !backImage) {
-        setError('Please upload both the front and back of your government ID.');
-        return;
-      }
+      setFieldErrors({});
       void enterBrowserFullscreen();
       setStep(2);
       return;
@@ -503,12 +522,20 @@ export default function ResidentRegistration({
 
                 <div className="mt-6">
                   <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Government ID type
+                    Government ID type <span className="text-red-600" aria-hidden="true">*</span>
                   </label>
                   <select
                     value={idType}
-                    onChange={(event) => setIdType(event.target.value)}
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    onChange={(event) => {
+                      setIdType(event.target.value);
+                      clearFieldError('idType');
+                    }}
+                    className={`h-12 w-full rounded-xl border bg-white px-4 text-slate-900 outline-none transition ${
+                      fieldErrors.idType
+                        ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
+                        : 'border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
+                    }`}
+                    aria-invalid={Boolean(fieldErrors.idType)}
                   >
                     <option value="">Select ID type</option>
                     <option value="PhilSys ID">PhilSys ID</option>
@@ -518,6 +545,9 @@ export default function ResidentRegistration({
                     <option value="Postal ID">Postal ID</option>
                     <option value="Voter's ID">Voter's ID</option>
                   </select>
+                  {fieldErrors.idType && (
+                    <p className="mt-1.5 text-xs font-semibold text-red-600">{fieldErrors.idType}</p>
+                  )}
                 </div>
 
                 <div className="mt-6 grid gap-5 md:grid-cols-2">
@@ -527,7 +557,11 @@ export default function ResidentRegistration({
                     return (
                       <label
                         key={side}
-                        className="group relative flex min-h-64 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center transition hover:border-blue-400 hover:bg-blue-50"
+                        className={`group relative flex min-h-64 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed p-5 text-center transition ${
+                          fieldErrors[side === 'front' ? 'frontImage' : 'backImage']
+                            ? 'border-red-500 bg-red-50 hover:border-red-600'
+                            : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50'
+                        }`}
                       >
                         {preview ? (
                           <>
@@ -546,7 +580,7 @@ export default function ResidentRegistration({
                               <FileImage size={34} />
                             </div>
                             <p className="mt-4 font-semibold text-slate-800">
-                              Upload ID {side}
+                              Upload ID {side} <span className="text-red-600" aria-hidden="true">*</span>
                             </p>
                             <p className="mt-1 text-xs text-slate-500">JPG, PNG or WEBP · max 8 MB</p>
                           </>
@@ -559,6 +593,11 @@ export default function ResidentRegistration({
                           }
                           className="hidden"
                         />
+                        {fieldErrors[side === 'front' ? 'frontImage' : 'backImage'] && !preview && (
+                          <p className="mt-3 text-xs font-semibold text-red-600">
+                            {fieldErrors[side === 'front' ? 'frontImage' : 'backImage']}
+                          </p>
+                        )}
                       </label>
                     );
                   })}
