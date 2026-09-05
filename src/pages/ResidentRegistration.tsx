@@ -16,6 +16,7 @@ import * as faceapi from 'face-api.js';
 
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import IdCameraCapture from '../components/IdCameraCapture';
 
 interface RegistrationProps {
   email: string;
@@ -555,50 +556,60 @@ export default function ResidentRegistration({
                     const preview = side === 'front' ? frontPreview : backPreview;
                     const file = side === 'front' ? frontImage : backImage;
                     return (
-                      <label
+                      <div
                         key={side}
-                        className={`group relative flex min-h-64 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed p-5 text-center transition ${
+                        className={`overflow-hidden rounded-2xl border-2 border-dashed p-4 text-center transition ${
                           fieldErrors[side === 'front' ? 'frontImage' : 'backImage']
-                            ? 'border-red-500 bg-red-50 hover:border-red-600'
-                            : 'border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50'
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-slate-300 bg-slate-50'
                         }`}
                       >
                         {preview ? (
-                          <>
-                            <img
-                              src={preview}
-                              alt={`${side} of government ID`}
-                              className="absolute inset-0 h-full w-full object-contain p-3"
-                            />
-                            <div className="absolute inset-x-3 bottom-3 rounded-xl bg-slate-950/75 px-3 py-2 text-xs font-medium text-white backdrop-blur">
-                              {file?.name}
-                            </div>
-                          </>
+                          <img
+                            src={preview}
+                            alt={`${side} of government ID`}
+                            className="h-48 w-full rounded-xl bg-white object-contain"
+                          />
                         ) : (
-                          <>
+                          <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-white">
                             <div className="rounded-2xl bg-white p-4 text-blue-600 shadow-sm">
                               <FileImage size={34} />
                             </div>
                             <p className="mt-4 font-semibold text-slate-800">
-                              Upload ID {side} <span className="text-red-600" aria-hidden="true">*</span>
+                              ID {side} <span className="text-red-600" aria-hidden="true">*</span>
                             </p>
-                            <p className="mt-1 text-xs text-slate-500">JPG, PNG or WEBP · max 8 MB</p>
-                          </>
+                            <p className="mt-1 text-xs text-slate-500">Upload a file or take a live photo</p>
+                          </div>
                         )}
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={(event) =>
-                            updateImageFile(event.target.files?.[0], side)
-                          }
-                          className="hidden"
-                        />
+
+                        {file && (
+                          <p className="mt-2 truncate text-xs font-medium text-slate-600">{file.name}</p>
+                        )}
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+                            <Upload size={18} />
+                            {preview ? 'Replace file' : 'Upload file'}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={(event) => updateImageFile(event.target.files?.[0], side)}
+                              className="hidden"
+                            />
+                          </label>
+                          <IdCameraCapture
+                            side={side}
+                            disabled={loading}
+                            onCapture={(capturedFile) => updateImageFile(capturedFile, side)}
+                          />
+                        </div>
+
                         {fieldErrors[side === 'front' ? 'frontImage' : 'backImage'] && !preview && (
                           <p className="mt-3 text-xs font-semibold text-red-600">
                             {fieldErrors[side === 'front' ? 'frontImage' : 'backImage']}
                           </p>
                         )}
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
