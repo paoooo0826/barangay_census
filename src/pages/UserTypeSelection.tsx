@@ -35,14 +35,14 @@ export default function UserTypeSelection({
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-12">
         <header className="flex items-center justify-between border-b border-white/10 pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center self-center rounded-full">
+            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full">
               <img
                 src={barangaySeal}
                 alt="Barangay Happy Homes–Old Lucban seal"
-                className="block h-12 w-12 object-contain object-center shadow-lg shadow-black/30 sm:h-14 sm:w-14"
+                className="block h-full w-full object-contain object-center"
               />
             </div>
-            <div className="flex min-h-14 flex-col justify-center">
+            <div className="flex h-14 flex-col justify-center">
               <p className="font-bold tracking-tight">Barangay Old Lucban</p>
               <p className="text-xs text-slate-400">Resident Information & Service Portal</p>
             </div>
