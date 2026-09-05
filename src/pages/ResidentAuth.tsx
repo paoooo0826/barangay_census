@@ -24,6 +24,8 @@ interface EmailCheckResult {
   retry_after_seconds?: number;
 }
 
+type AuthField = "email" | "password" | "confirmPassword";
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function friendlyEmailError(message: string) {
@@ -59,6 +61,25 @@ export default function ResidentAuth({
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendingEmail, setResendingEmail] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
+
+  const clearFieldError = (field: AuthField) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const inputClass = (field: AuthField, withIcon = false) =>
+    `w-full rounded-xl border bg-white py-3 px-4 outline-none transition ${
+      withIcon ? "pl-10" : ""
+    } ${
+      fieldErrors[field]
+        ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100"
+        : "border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    }`;
 
   const checkRegistrationEmail = async (normalizedEmail: string) => {
     const { data, error: checkError } = await supabase.rpc(
@@ -103,11 +124,16 @@ export default function ResidentAuth({
           if (result?.registered) {
             setEmailCheckStatus("registered");
             setEmailCheckMessage("User is already registered.");
+            setFieldErrors((current) => ({
+              ...current,
+              email: "User is already registered.",
+            }));
             return;
           }
 
           setEmailCheckStatus("available");
           setEmailCheckMessage("Email is available.");
+          clearFieldError("email");
         })
         .catch(() => {
           if (cancelled) return;
@@ -166,9 +192,18 @@ export default function ResidentAuth({
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
+      setFieldErrors({ email: "Email address is required." });
       setError("Enter the email address connected to your resident account.");
       return;
     }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setFieldErrors({ email: "Enter a valid email address." });
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    setFieldErrors({});
 
     setLoading(true);
 
@@ -204,25 +239,38 @@ export default function ResidentAuth({
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail || !password) {
-      setError("Email and password are required");
+    const missingFields: Partial<Record<AuthField, string>> = {};
+    if (!normalizedEmail) missingFields.email = "Email address is required.";
+    if (!password) missingFields.password = "Password is required.";
+    if (!isLogin && !confirmPassword) {
+      missingFields.confirmPassword = "Please confirm your password.";
+    }
+
+    if (Object.keys(missingFields).length > 0) {
+      setFieldErrors(missingFields);
+      setError("Please complete the required fields highlighted below.");
       return;
     }
 
     if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setFieldErrors({ email: "Enter a valid email address." });
       setError("Enter a valid email address.");
       return;
     }
 
     if (!isLogin && password !== confirmPassword) {
+      setFieldErrors({ confirmPassword: "Passwords do not match." });
       setError("Passwords do not match");
       return;
     }
 
     if (!isLogin && password.length < 6) {
+      setFieldErrors({ password: "Use at least 6 characters." });
       setError("Password must be at least 6 characters");
       return;
     }
+
+    setFieldErrors({});
 
     setLoading(true);
 
@@ -274,6 +322,7 @@ export default function ResidentAuth({
       if (emailAvailability?.registered) {
         setEmailCheckStatus("registered");
         setEmailCheckMessage("User is already registered.");
+        setFieldErrors({ email: "User is already registered." });
         setError("User is already registered.");
         return;
       }
@@ -488,7 +537,7 @@ export default function ResidentAuth({
             <div>
 
               <label className="block mb-1 text-sm font-medium">
-                Email Address
+                Email Address <span className="text-red-600" aria-hidden="true">*</span>
               </label>
 
 
@@ -512,28 +561,27 @@ export default function ResidentAuth({
 
                   value={email}
 
-                  onChange={(e)=>
-                    setEmail(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFieldError("email");
+                  }}
 
                   placeholder="your@email.com"
 
-                  className="
-                  w-full
-                  border
-                  rounded-xl
-                  py-3
-                  pl-10
-                  px-4
-                  focus:ring-2
-                  focus:ring-blue-500
-                  outline-none
-                  "
+                  className={inputClass("email", true)}
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? "resident-email-error" : undefined}
 
                 />
 
 
               </div>
+
+              {fieldErrors.email && emailCheckStatus !== "registered" && (
+                <p id="resident-email-error" className="mt-1.5 text-xs font-semibold text-red-600">
+                  {fieldErrors.email}
+                </p>
+              )}
 
               {!isLogin && !isForgotPassword && emailCheckMessage && (
                 <p
@@ -561,7 +609,7 @@ export default function ResidentAuth({
             {!isForgotPassword && <div>
 
               <label className="block mb-1 text-sm font-medium">
-                Password
+                Password <span className="text-red-600" aria-hidden="true">*</span>
               </label>
 
 
@@ -584,30 +632,29 @@ export default function ResidentAuth({
 
                   value={password}
 
-                  onChange={(e)=>
-                    setPassword(e.target.value)
-                  }
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError("password");
+                  }}
 
 
                   placeholder="Password"
 
 
-                  className="
-                  w-full
-                  border
-                  rounded-xl
-                  py-3
-                  pl-10
-                  px-4
-                  focus:ring-2
-                  focus:ring-blue-500
-                  outline-none
-                  "
+                  className={inputClass("password", true)}
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? "resident-password-error" : undefined}
 
                 />
 
 
               </div>
+
+              {fieldErrors.password && (
+                <p id="resident-password-error" className="mt-1.5 text-xs font-semibold text-red-600">
+                  {fieldErrors.password}
+                </p>
+              )}
 
 
             </div>}
@@ -617,29 +664,28 @@ export default function ResidentAuth({
 
             {!isForgotPassword && !isLogin && (
 
-              <input
-
-                type="password"
-
-                value={confirmPassword}
-
-                onChange={(e)=>
-                  setConfirmPassword(e.target.value)
-                }
-
-
-                placeholder="Confirm Password"
-
-
-                className="
-                w-full
-                border
-                rounded-xl
-                py-3
-                px-4
-                "
-
-              />
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Confirm Password <span className="text-red-600" aria-hidden="true">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    clearFieldError("confirmPassword");
+                  }}
+                  placeholder="Confirm Password"
+                  className={inputClass("confirmPassword")}
+                  aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                  aria-describedby={fieldErrors.confirmPassword ? "resident-confirm-password-error" : undefined}
+                />
+                {fieldErrors.confirmPassword && (
+                  <p id="resident-confirm-password-error" className="mt-1.5 text-xs font-semibold text-red-600">
+                    {fieldErrors.confirmPassword}
+                  </p>
+                )}
+              </div>
 
             )}
 
@@ -700,6 +746,7 @@ export default function ResidentAuth({
                 setConfirmationEmail("");
                 setResendCooldown(0);
                 setPassword("");
+                setFieldErrors({});
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-800"
             >
@@ -718,6 +765,7 @@ export default function ResidentAuth({
                 setRegistrationReady(false);
                 setConfirmationEmail("");
                 setResendCooldown(0);
+                setFieldErrors({});
               }}
               className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
             >
@@ -753,6 +801,7 @@ export default function ResidentAuth({
                   setRegistrationReady(false);
                   setConfirmationEmail("");
                   setResendCooldown(0);
+                  setFieldErrors({});
 
                 }}
 
