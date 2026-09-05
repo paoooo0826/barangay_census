@@ -201,6 +201,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/resident`,
+      },
     });
 
     const isExistingUser = Boolean(
