@@ -110,6 +110,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   const blinkClosedRef = useRef(false);
   const blinkCountRef = useRef(0);
   const baselineAreaRef = useRef<number | null>(null);
+  const fullscreenRequestedRef = useRef(false);
 
   const [modelsReady, setModelsReady] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -146,8 +147,27 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
     setCameraReady(false);
   }
 
+  async function enterBrowserFullscreen() {
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      fullscreenRequestedRef.current = true;
+    } catch {
+      fullscreenRequestedRef.current = false;
+    }
+  }
+
+  function exitBrowserFullscreen() {
+    if (!fullscreenRequestedRef.current) return;
+    fullscreenRequestedRef.current = false;
+    if (document.fullscreenElement && document.exitFullscreen) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+  }
+
   function resetVerification() {
     stopCamera();
+    exitBrowserFullscreen();
     idDescriptorRef.current = null;
     idQualityRef.current = null;
     idFaceAvailableRef.current = false;
@@ -178,6 +198,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   }
 
   async function validateIdAndStart() {
+    await enterBrowserFullscreen();
     setBusy(true);
     setError('');
     try {
@@ -212,6 +233,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
         : 'No face photo was found on the ID. Liveness will continue and the application will require manual administrator review.');
       await startCamera(selected[0]);
     } catch (caught) {
+      exitBrowserFullscreen();
       const message = cameraErrorMessage(caught);
       const isCameraProblem = /camera|webcam|permission|browser|apps using/i.test(message);
       setError(message);
@@ -351,6 +373,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
       setComplete(true);
       setStatus('Liveness passed. The ID has no usable face photo, so manual administrator verification is required.');
       stopCamera();
+      exitBrowserFullscreen();
       return;
     }
 
@@ -366,6 +389,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
     setComplete(true);
     setStatus(recommendation === 'match' ? 'Strong face match. Awaiting administrator review.' : 'Possible match. Administrator review is required.');
     stopCamera();
+    exitBrowserFullscreen();
   }
 
 
@@ -385,6 +409,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
       deviceType: deviceType(),
     });
     stopCamera();
+    exitBrowserFullscreen();
     setComplete(true);
     setStatus('Live verification skipped. Manual administrator identity verification is required.');
     setError('');
