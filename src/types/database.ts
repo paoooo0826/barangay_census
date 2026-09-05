@@ -32,9 +32,9 @@ export type EducationLevel =
 
 export type EducationStatus =
   | 'Currently Studying'
-  | 'Graduate'
-  | 'Undergraduate'
-  | 'Out of School';
+  | 'Completed'
+  | 'Not Currently Studying'
+  | 'No Formal Education';
 
 export type TenurialStatus =
   | 'House Owner'
@@ -191,7 +191,22 @@ export interface Database {
       announcements: AnyTable;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      check_registration_email: {
+        Args: { candidate_email: string };
+        Returns: Json;
+      };
+      check_resident_duplicate: {
+        Args: {
+          candidate_philsys: string;
+          candidate_first_name: string;
+          candidate_middle_name: string;
+          candidate_last_name: string;
+          candidate_birth_date: string;
+        };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
