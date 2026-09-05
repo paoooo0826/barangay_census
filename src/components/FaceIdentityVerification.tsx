@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Camera, CheckCircle2, FlipHorizontal2, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, FlipHorizontal2, Loader2, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 
 export type LivenessAction = 'blink_twice' | 'turn_left' | 'turn_right' | 'smile' | 'move_closer';
@@ -128,6 +128,14 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   const actionSummary = useMemo(() => actions.map((item) => ACTION_LABELS[item]).join(' → '), [actions]);
 
   useEffect(() => () => stopCamera(), []);
+  useEffect(() => {
+    if (!cameraReady) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [cameraReady]);
   useEffect(() => {
     resetVerification();
   }, [idFrontFile, idFrontPreview]);
@@ -410,13 +418,31 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
       )}
 
       {(cameraReady || complete) && (
-        <div className="mt-4">
-          <div className="relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl">
+        <div className={cameraReady && !complete ? 'fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5' : 'mt-4'}>
+          {cameraReady && !complete && (
+            <div className="mb-3 flex items-start justify-between gap-3 text-white">
+              <div>
+                <p className="text-sm font-bold sm:text-base">Full-screen identity verification</p>
+                <p className="mt-1 text-xs text-slate-300 sm:text-sm">{status}</p>
+                {error && <p className="mt-1 text-xs font-semibold text-red-300 sm:text-sm">{error}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={resetVerification}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                aria-label="Exit full-screen camera"
+              >
+                <X size={18} />
+                <span className="hidden sm:inline">Exit camera</span>
+              </button>
+            </div>
+          )}
+          <div className={cameraReady && !complete ? 'relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl' : 'relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl'}>
             <video
               ref={videoRef}
               muted
               playsInline
-              className="aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
+              className={cameraReady && !complete ? 'h-full w-full object-contain' : 'aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]'}
               style={{ transform: mirrorPreview ? 'scaleX(-1)' : 'none' }}
             />
             {!complete && (
@@ -434,9 +460,9 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
             {!complete && currentAction && <div className="absolute inset-x-3 bottom-3 rounded-xl bg-black/70 p-3 text-center text-sm font-bold text-white">{ACTION_LABELS[currentAction]}</div>}
           </div>
           <canvas ref={canvasRef} className="hidden" />
-          {!complete && <p className="mt-3 text-xs text-slate-500">The preview is mirrored for natural movement. Use <span className="font-semibold">Flip preview</span> if your device shows the opposite orientation. The saved verification photo remains in its correct camera orientation.</p>}
-          {actionSummary && <p className="mt-3 text-xs text-slate-500">Random challenge: {actionSummary}</p>}
-          {!complete && <button type="button" disabled={busy} onClick={() => void checkCurrentAction()} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}Check current action</button>}
+          {!complete && !cameraReady && <p className="mt-3 text-xs text-slate-500">The preview is mirrored for natural movement. Use <span className="font-semibold">Flip preview</span> if your device shows the opposite orientation. The saved verification photo remains in its correct camera orientation.</p>}
+          {actionSummary && <p className={cameraReady && !complete ? 'mt-3 text-center text-xs text-slate-300' : 'mt-3 text-xs text-slate-500'}>Random challenge: {actionSummary}</p>}
+          {!complete && <button type="button" disabled={busy} onClick={() => void checkCurrentAction()} className={cameraReady ? 'mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 sm:mx-auto sm:w-auto sm:min-w-64' : 'mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50'}>{busy ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}Check current action</button>}
         </div>
       )}
 
