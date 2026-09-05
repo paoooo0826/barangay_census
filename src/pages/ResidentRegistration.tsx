@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Upload,
+  X,
 } from 'lucide-react';
 import * as faceapi from 'face-api.js';
 
@@ -44,6 +45,7 @@ export default function ResidentRegistration({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fullscreenRequestedRef = useRef(false);
 
   const [step, setStep] = useState(1);
   const [idType, setIdType] = useState('');
@@ -65,6 +67,7 @@ export default function ResidentRegistration({
   useEffect(() => {
     return () => {
       stopCamera();
+      exitBrowserFullscreen();
       if (frontPreview) URL.revokeObjectURL(frontPreview);
       if (backPreview) URL.revokeObjectURL(backPreview);
       if (facePreview) URL.revokeObjectURL(facePreview);
@@ -80,10 +83,37 @@ export default function ResidentRegistration({
     void prepareFaceVerification();
   }, [step]);
 
+  useEffect(() => {
+    if (!cameraReady) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [cameraReady]);
+
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraReady(false);
+  };
+
+  const enterBrowserFullscreen = async () => {
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      fullscreenRequestedRef.current = true;
+    } catch {
+      fullscreenRequestedRef.current = false;
+    }
+  };
+
+  const exitBrowserFullscreen = () => {
+    if (!fullscreenRequestedRef.current) return;
+    fullscreenRequestedRef.current = false;
+    if (document.fullscreenElement && document.exitFullscreen) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
   };
 
   const loadModels = async () => {
@@ -132,6 +162,7 @@ export default function ResidentRegistration({
       await loadModels();
       await startCamera();
     } catch (caughtError) {
+      exitBrowserFullscreen();
       console.error(caughtError);
       setError(
         caughtError instanceof Error
@@ -266,6 +297,7 @@ export default function ResidentRegistration({
 
       setStatusText('Face verification passed.');
       stopCamera();
+      exitBrowserFullscreen();
     } catch (caughtError) {
       console.error(caughtError);
       setVerificationPassed(false);
@@ -386,6 +418,7 @@ export default function ResidentRegistration({
         setError('Please upload both the front and back of your government ID.');
         return;
       }
+      void enterBrowserFullscreen();
       setStep(2);
       return;
     }
@@ -401,6 +434,7 @@ export default function ResidentRegistration({
 
   const goBack = () => {
     setError('');
+    if (step === 2) exitBrowserFullscreen();
     if (step === 1) onBack();
     else setStep((current) => current - 1);
   };
@@ -540,13 +574,34 @@ export default function ResidentRegistration({
                 </p>
 
                 <div className="mt-6 grid gap-5 md:grid-cols-2">
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
-                    <div className="relative aspect-square">
+                  <div className={cameraReady ? 'fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5' : 'overflow-hidden rounded-2xl border border-slate-200 bg-slate-950'}>
+                    {cameraReady && (
+                      <div className="mb-3 flex items-start justify-between gap-3 text-white">
+                        <div>
+                          <p className="text-sm font-bold sm:text-base">Full-screen face verification</p>
+                          <p className="mt-1 text-xs text-slate-300 sm:text-sm">{statusText}</p>
+                          {error && <p className="mt-1 text-xs font-semibold text-red-300 sm:text-sm">{error}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            stopCamera();
+                            exitBrowserFullscreen();
+                          }}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                          aria-label="Exit full-screen camera"
+                        >
+                          <X size={18} />
+                          <span className="hidden sm:inline">Exit camera</span>
+                        </button>
+                      </div>
+                    )}
+                    <div className={cameraReady ? 'relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black' : 'relative aspect-square'}>
                       <video
                         ref={videoRef}
                         muted
                         playsInline
-                        className="h-full w-full scale-x-[-1] object-cover"
+                        className={cameraReady ? 'h-full w-full scale-x-[-1] object-contain' : 'h-full w-full scale-x-[-1] object-cover'}
                       />
                       {!cameraReady && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300">
@@ -560,6 +615,17 @@ export default function ResidentRegistration({
                       )}
                       <div className="pointer-events-none absolute inset-[12%] rounded-[45%] border-2 border-dashed border-white/70" />
                     </div>
+                    {cameraReady && (
+                      <button
+                        type="button"
+                        onClick={() => void captureAndVerifyFace()}
+                        disabled={loading}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:mx-auto sm:w-auto sm:min-w-64"
+                      >
+                        {loading ? <Loader2 className="animate-spin" size={19} /> : <Camera size={19} />}
+                        Capture and verify
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex min-h-64 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -597,15 +663,6 @@ export default function ResidentRegistration({
                 <canvas ref={canvasRef} className="hidden" />
 
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void captureAndVerifyFace()}
-                    disabled={loading || !cameraReady}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loading ? <Loader2 className="animate-spin" size={19} /> : <Camera size={19} />}
-                    Capture and verify
-                  </button>
                   {!cameraReady && !loading && (
                     <button
                       type="button"
