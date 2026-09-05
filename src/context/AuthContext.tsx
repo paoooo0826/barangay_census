@@ -17,6 +17,7 @@ interface AuthResult {
 interface SignUpResult extends AuthResult {
   data: { user: User | null };
   user: User | null;
+  isExistingUser: boolean;
   needsEmailConfirmation: boolean;
 }
 
@@ -202,11 +203,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
 
+    const isExistingUser = Boolean(
+      data.user &&
+      Array.isArray(data.user.identities) &&
+      data.user.identities.length === 0,
+    );
+
     return {
       data: { user: data.user },
       user: data.user,
       error,
-      needsEmailConfirmation: Boolean(data.user && !data.session),
+      isExistingUser,
+      needsEmailConfirmation: Boolean(
+        data.user && !data.session && !isExistingUser,
+      ),
     };
   };
 
