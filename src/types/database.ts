@@ -65,6 +65,19 @@ export type ResidentStatus =
   | 'returned'
   | 'rejected';
 
+export type AppointmentService =
+  | 'barangay_clearance'
+  | 'certificate_of_indigency'
+  | 'certificate_of_residency'
+  | 'complaint';
+
+export type AppointmentStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected';
+
 export interface CategoryRow {
   id: number;
   name: Category | string;
@@ -160,6 +173,22 @@ export interface Announcement {
   updated_at: string;
 }
 
+export interface Appointment {
+  id: string;
+  resident_id: string;
+  user_id: string;
+  service_type: AppointmentService;
+  fee: number;
+  appointment_date: string;
+  appointment_time: string;
+  purpose: string;
+  status: AppointmentStatus;
+  admin_notes?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminProfile {
   id?: string;
   user_id: string;
@@ -189,6 +218,7 @@ export interface Database {
       audit_logs: AnyTable;
       admin_profiles: AnyTable;
       announcements: AnyTable;
+      appointments: AnyTable;
     };
     Views: Record<string, never>;
     Functions: {
@@ -204,6 +234,10 @@ export interface Database {
           candidate_last_name: string;
           candidate_birth_date: string;
         };
+        Returns: Json;
+      };
+      cancel_resident_appointment: {
+        Args: { appointment_id: string };
         Returns: Json;
       };
     };
