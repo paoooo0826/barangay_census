@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  CalendarDays,
+  CalendarPlus,
   CheckCircle2,
   Clock,
   Edit3,
@@ -21,9 +23,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import ResidentQrCard from '../components/ResidentQrCard';
+import ResidentAppointments from '../components/ResidentAppointments';
 import type {
   Announcement,
   AnnouncementPriority,
+  AppointmentService,
   FaceVerification,
   GovernmentId,
   Remark,
@@ -42,6 +46,8 @@ interface PreviewImage {
   title: string;
   url: string;
 }
+
+type ResidentDashboardTab = 'home' | 'appointments' | 'book';
 
 const VERIFICATION_BUCKET = 'resident-verification';
 const HOUSEHOLD_IMAGES_BUCKET = 'household-images';
@@ -173,6 +179,14 @@ export default function ResidentDashboard({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ResidentDashboardTab>('home');
+  const [selectedAppointmentService, setSelectedAppointmentService] =
+    useState<AppointmentService | null>(null);
+
+  const openBooking = (service?: AppointmentService) => {
+    setSelectedAppointmentService(service ?? null);
+    setActiveTab('book');
+  };
 
   const loadResident = useCallback(async (showRefresh = false) => {
     if (!user) {
@@ -391,6 +405,34 @@ export default function ResidentDashboard({
             </button>
           </div>
         </div>
+
+        <nav className="mx-auto flex max-w-6xl gap-2 overflow-x-auto border-t border-slate-100 px-4 py-3 sm:px-6" aria-label="Resident dashboard navigation">
+          {[
+            { value: 'home' as const, label: 'Home', icon: Home },
+            { value: 'appointments' as const, label: 'Appointments', icon: CalendarDays },
+            { value: 'book' as const, label: 'Book Appointment', icon: CalendarPlus },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.value;
+            return (
+              <button
+                type="button"
+                key={item.value}
+                onClick={() => {
+                  if (item.value === 'book') setSelectedAppointmentService(null);
+                  setActiveTab(item.value);
+                }}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${
+                  active
+                    ? 'bg-blue-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                }`}
+              >
+                <Icon size={17} /> {item.label}
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
@@ -422,6 +464,8 @@ export default function ResidentDashboard({
           </div>
         )}
 
+        {activeTab === 'home' && (
+          <>
         {announcements.length > 0 && (
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5 sm:px-8">
@@ -466,6 +510,13 @@ export default function ResidentDashboard({
             </div>
           </section>
         )}
+
+        <ResidentAppointments
+          resident={resident}
+          view="services"
+          onBook={openBooking}
+          onBooked={() => setActiveTab('appointments')}
+        />
 
         {!resident ? (
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -675,6 +726,27 @@ export default function ResidentDashboard({
               </section>
             </div>
           </>
+        )}
+          </>
+        )}
+
+        {activeTab === 'appointments' && (
+          <ResidentAppointments
+            resident={resident}
+            view="appointments"
+            onBook={openBooking}
+            onBooked={() => setActiveTab('appointments')}
+          />
+        )}
+
+        {activeTab === 'book' && (
+          <ResidentAppointments
+            resident={resident}
+            view="book"
+            initialService={selectedAppointmentService}
+            onBook={openBooking}
+            onBooked={() => setActiveTab('appointments')}
+          />
         )}
       </main>
 
