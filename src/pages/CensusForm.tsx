@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { CategoryRow, EducationLevel, EducationStatus } from '../types/database';
 import FaceIdentityVerification, { type FaceVerificationResult } from '../components/FaceIdentityVerification';
+import IdCameraCapture from '../components/IdCameraCapture';
 
 
 type Sex = 'Male' | 'Female';
@@ -1369,7 +1370,8 @@ readOnly
 {[
 ["Last Name","last_name"],
 ["First Name","first_name"],
-["Middle Name","middle_name"],
+["Middle Name (Optional)","middle_name"],
+["Suffix (Optional)","suffix"],
 ["Birth Place","birth_place"],
 ["Religion","religion"],
 ["Profession / Occupation","profession_occupation"],
@@ -1410,6 +1412,7 @@ maxLength={
   key === 'email_address' ? 254 :
   key === 'contact_number' ? 13 :
   key === 'last_name' || key === 'first_name' || key === 'middle_name' ? 100 :
+  key === 'suffix' ? 20 :
   undefined
 }
 inputMode={key === 'contact_number' ? 'numeric' : undefined}
@@ -1971,16 +1974,23 @@ onChange={
                 No image selected
               </div>
             )}
-            <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
-              <Upload size={18} />
-              {item.preview ? 'Replace image' : 'Upload image'}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(event) => updateVerificationImage(event.target.files?.[0], item.key as 'front' | 'back')}
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+                <Upload size={18} />
+                {item.preview ? 'Replace file' : 'Upload file'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => updateVerificationImage(event.target.files?.[0], item.key as 'front' | 'back')}
+                />
+              </label>
+              <IdCameraCapture
+                side={item.key as 'front' | 'back'}
+                disabled={loading}
+                onCapture={(file) => updateVerificationImage(file, item.key as 'front' | 'back')}
               />
-            </label>
+            </div>
             {fieldErrors[validationField] && (
               <p className="mt-2 text-xs font-semibold text-red-600">{fieldErrors[validationField]}</p>
             )}
