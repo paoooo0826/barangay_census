@@ -98,6 +98,17 @@ interface CensusFormData {
   other_description: string;
 }
 
+type CensusValidationField =
+  | keyof CensusFormData
+  | 'governmentIdType'
+  | 'otherGovernmentIdType'
+  | 'governmentIdFront'
+  | 'governmentIdBack'
+  | 'liveVerification'
+  | 'householdPhoto';
+
+type CensusFieldErrors = Partial<Record<CensusValidationField, string>>;
+
 
 
 const initialFormData: CensusFormData = {
@@ -140,6 +151,19 @@ civil_status: '',
   indigenous_group: '',
   other_description: '',
 };
+
+const REQUIRED_CENSUS_FIELDS: (keyof CensusFormData)[] = [
+  'last_name',
+  'first_name',
+  'birth_date',
+  'birth_place',
+  'sex',
+  'civil_status',
+  'residential_address',
+  'highest_education',
+  'education_status',
+  'tenurial_status',
+];
 
 
 
@@ -242,6 +266,8 @@ const [categories, setCategories] =
 
   const [error, setError] =
     useState<string | null>(null);
+
+  const [fieldErrors, setFieldErrors] = useState<CensusFieldErrors>({});
 
 
   const [trackingNumber, setTrackingNumber] =
@@ -531,7 +557,30 @@ const [categories, setCategories] =
 
     }));
 
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+
   };
+
+  const clearFieldError = (field: CensusValidationField) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const fieldInputClass = (field: CensusValidationField, extra = '') =>
+    `input ${extra} ${
+      fieldErrors[field]
+        ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-100'
+        : ''
+    }`;
 
   const updateEducationLevel = (value: EducationLevel | '') => {
     setFormData((previous) => ({
@@ -544,6 +593,8 @@ const [categories, setCategories] =
             ? ''
             : previous.education_status,
     }));
+    clearFieldError('highest_education');
+    if (value === 'No Formal Education') clearFieldError('education_status');
   };
 
   const updateEducationStatus = (value: EducationStatus | '') => {
@@ -557,6 +608,8 @@ const [categories, setCategories] =
             ? ''
             : previous.highest_education,
     }));
+    clearFieldError('education_status');
+    if (value === 'No Formal Education') clearFieldError('highest_education');
   };
 
 
@@ -612,6 +665,9 @@ const [categories, setCategories] =
 
     });
 
+    if (categoryName === 'Indigenous People (IP)') clearFieldError('indigenous_group');
+    if (categoryName === 'Others') clearFieldError('other_description');
+
   };
 
 
@@ -661,10 +717,13 @@ const [categories, setCategories] =
       if (governmentIdFrontPreview.startsWith('blob:')) URL.revokeObjectURL(governmentIdFrontPreview);
       setGovernmentIdFront(file);
       setGovernmentIdFrontPreview(preview);
+      clearFieldError('governmentIdFront');
+      clearFieldError('liveVerification');
     } else if (kind === 'back') {
       if (governmentIdBackPreview.startsWith('blob:')) URL.revokeObjectURL(governmentIdBackPreview);
       setGovernmentIdBack(file);
       setGovernmentIdBackPreview(preview);
+      clearFieldError('governmentIdBack');
     } else {
       if (capturedFacePreview.startsWith('blob:')) URL.revokeObjectURL(capturedFacePreview);
       setCapturedFaceFile(file);
@@ -692,6 +751,7 @@ const [categories, setCategories] =
     setError(null);
     setHouseholdPhoto(file);
     setHouseholdPhotoPreview(URL.createObjectURL(file));
+    clearFieldError('householdPhoto');
   };
 
   const removeHouseholdPhoto = () => {
@@ -710,185 +770,109 @@ const [categories, setCategories] =
   const isValidName = (value: string) =>
     /^[A-Za-zÀ-ÖØ-öø-ÿÑñ .'-]{2,}$/.test(value.trim());
 
-  const validateForm = ()=>{
+  const validateForm = () => {
+    const nextErrors: CensusFieldErrors = {};
 
-
-    const required:
-      (keyof CensusFormData)[] = [
-
-      'last_name',
-      'first_name',
-      'birth_date',
-      'birth_place',
-      'sex',
-      'civil_status',
-      'residential_address',
-      'highest_education',
-      'education_status',
-      'tenurial_status',
-
-    ];
-
-
-
-    for(
-      const field of required
-    ){
-
-      if(!formData[field]){
-
-        setError(
-          'Please complete all required fields.'
-        );
-
-        return false;
-
-      }
-
-    }
+    REQUIRED_CENSUS_FIELDS.forEach((field) => {
+      if (!formData[field]) nextErrors[field] = 'This field is required.';
+    });
 
     if (
+      formData.highest_education &&
+      formData.education_status &&
       (formData.highest_education === 'No Formal Education') !==
-      (formData.education_status === 'No Formal Education')
+        (formData.education_status === 'No Formal Education')
     ) {
-      setError('Education level and education status are inconsistent. Please review both fields.');
-      return false;
+      nextErrors.highest_education = 'Education level and status do not match.';
+      nextErrors.education_status = 'Education level and status do not match.';
     }
 
-
-
-    if (!governmentIdType) {
-      setError('Please select the government ID type.');
-      return false;
-    }
-
+    if (!governmentIdType) nextErrors.governmentIdType = 'Government ID type is required.';
     if (governmentIdType === 'Other' && !otherGovernmentIdType.trim()) {
-      setError('Please specify the other government ID type.');
-      return false;
+      nextErrors.otherGovernmentIdType = 'Specify the government ID type.';
     }
-
     if (!governmentIdFront && !existingVerification?.frontImagePath) {
-      setError('Please upload the front image of your government ID.');
-      return false;
+      nextErrors.governmentIdFront = 'Government ID front is required.';
     }
-
     if (!governmentIdBack && !existingVerification?.backImagePath) {
-      setError('Please upload the back image of your government ID.');
-      return false;
+      nextErrors.governmentIdBack = 'Government ID back is required.';
     }
 
-    const requiresFreshLiveVerification = !existingVerification?.verificationStatus || Boolean(governmentIdFront);
-    if (requiresFreshLiveVerification && !liveVerificationResult) {
-      setError('Please complete the live camera identity verification after validating the ID front.');
-      return false;
-    }
-
-    const verificationStatus = liveVerificationResult?.verificationStatus ?? existingVerification?.verificationStatus;
-    if (!capturedFaceFile && !existingVerification?.capturedFacePath && verificationStatus !== 'skipped') {
-      setError('Please complete the live camera identity verification or use the no-webcam exception.');
-      return false;
+    const requiresFreshLiveVerification =
+      !existingVerification?.verificationStatus || Boolean(governmentIdFront);
+    const verificationStatus =
+      liveVerificationResult?.verificationStatus ?? existingVerification?.verificationStatus;
+    if (
+      (requiresFreshLiveVerification && !liveVerificationResult) ||
+      (!capturedFaceFile &&
+        !existingVerification?.capturedFacePath &&
+        verificationStatus !== 'skipped')
+    ) {
+      nextErrors.liveVerification = 'Complete the live camera identity verification.';
     }
 
     if (!isEditMode && !householdPhoto && !existingHouseholdPhotoPath) {
-      setError('Please upload a picture of your house or household.');
-      return false;
+      nextErrors.householdPhoto = 'House or household photo is required.';
+    }
+    if (formData.tenurial_status === 'Renter' && !formData.monthly_rent) {
+      nextErrors.monthly_rent = 'Monthly rent is required for renters.';
+    }
+    if (isCategorySelected('Indigenous People (IP)') && !formData.indigenous_group.trim()) {
+      nextErrors.indigenous_group = 'Indigenous group is required.';
+    }
+    if (isCategorySelected('Others') && !formData.other_description.trim()) {
+      nextErrors.other_description = 'Describe the other category.';
     }
 
-    if(
-      formData.tenurial_status === 'Renter'
-      &&
-      !formData.monthly_rent
-    ){
-
-      setError(
-        'Please enter monthly rent.'
-      );
-
-      return false;
-
+    if (formData.first_name && !isValidName(formData.first_name)) {
+      nextErrors.first_name = 'Enter at least 2 valid letters.';
     }
-
-
-
-    if(
-      isCategorySelected(
-        'Indigenous People (IP)'
-      )
-      &&
-      !formData.indigenous_group
-    ){
-
-      setError(
-        'Please specify indigenous group.'
-      );
-
-      return false;
-
+    if (formData.last_name && !isValidName(formData.last_name)) {
+      nextErrors.last_name = 'Enter at least 2 valid letters.';
     }
-
-
-
-    if(
-      isCategorySelected('Others')
-      &&
-      !formData.other_description
-    ){
-
-      setError(
-        'Please specify category.'
-      );
-
-      return false;
-
-    }
-
-    if (!isValidName(formData.first_name)) {
-      setError('First name must contain at least 2 valid letters.');
-      return false;
-    }
-
-    if (!isValidName(formData.last_name)) {
-      setError('Last name must contain at least 2 valid letters.');
-      return false;
-    }
-
     if (formData.middle_name.trim() && !isValidName(formData.middle_name)) {
-      setError('Middle name must contain at least 2 valid letters.');
-      return false;
+      nextErrors.middle_name = 'Enter at least 2 valid letters.';
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selectedBirthDate = new Date(`${formData.birth_date}T00:00:00`);
-    if (Number.isNaN(selectedBirthDate.getTime()) || selectedBirthDate > today) {
-      setError('Birth date cannot be in the future.');
-      return false;
+    if (formData.birth_date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedBirthDate = new Date(`${formData.birth_date}T00:00:00`);
+      if (Number.isNaN(selectedBirthDate.getTime()) || selectedBirthDate > today) {
+        nextErrors.birth_date = 'Birth date cannot be in the future.';
+      }
     }
 
     const phone = formData.contact_number.trim();
     if (phone && !/^\d{10,13}$/.test(phone)) {
-      setError('Contact number must contain 10 to 13 digits only.');
-      return false;
+      nextErrors.contact_number = 'Enter 10 to 13 digits.';
     }
-
     const email = formData.email_address.trim();
     if (email && !isValidEmail(email)) {
-      setError('Please enter a valid email address.');
-      return false;
+      nextErrors.email_address = 'Enter a valid email address.';
     }
-
     if (formData.residential_address.trim().length > 200) {
-      setError('Residential address must not exceed 200 characters.');
-      return false;
+      nextErrors.residential_address = 'Use no more than 200 characters.';
+    }
+    if (formData.philsys_number.trim().length > 50) {
+      nextErrors.philsys_number = 'PhilSys number is too long.';
     }
 
-    if (formData.philsys_number.trim().length > 50) {
-      setError('PhilSys number is too long.');
+    setFieldErrors(nextErrors);
+    const invalidFields = Object.keys(nextErrors) as CensusValidationField[];
+    if (invalidFields.length > 0) {
+      setError('Please correct the fields highlighted in red before submitting.');
+      window.setTimeout(() => {
+        const firstInvalid = document.querySelector<HTMLElement>(
+          `[data-field="${invalidFields[0]}"]`,
+        );
+        firstInvalid?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstInvalid?.focus({ preventScroll: true });
+      }, 0);
       return false;
     }
 
     return true;
-
   };
 
 
@@ -1336,15 +1320,26 @@ const [categories, setCategories] =
 
 <label className="label">
 {label}
+{REQUIRED_CENSUS_FIELDS.includes(key as keyof CensusFormData) && (
+  <span className="text-red-600" aria-hidden="true"> *</span>
+)}
 </label>
 
 <input
-className="input"
+data-field={key}
+className={fieldInputClass(key as keyof CensusFormData)}
+aria-invalid={Boolean(fieldErrors[key as keyof CensusFormData])}
 value={
 formData[key as keyof CensusFormData] as string
 }
 readOnly
 />
+
+{fieldErrors[key as keyof CensusFormData] && (
+  <p className="text-xs font-semibold text-red-600">
+    {fieldErrors[key as keyof CensusFormData]}
+  </p>
+)}
 
 </div>
 
@@ -1388,12 +1383,17 @@ readOnly
 
 <label className="label">
 {label}
+{REQUIRED_CENSUS_FIELDS.includes(key as keyof CensusFormData) && (
+  <span className="text-red-600" aria-hidden="true"> *</span>
+)}
 </label>
 
 
 <input
 
-className="input"
+data-field={key}
+className={fieldInputClass(key as keyof CensusFormData)}
+aria-invalid={Boolean(fieldErrors[key as keyof CensusFormData])}
 
 value={
 formData[key as keyof CensusFormData] as string
@@ -1417,6 +1417,12 @@ type={key === 'email_address' ? 'email' : 'text'}
 
 />
 
+{fieldErrors[key as keyof CensusFormData] && (
+  <p className="text-xs font-semibold text-red-600">
+    {fieldErrors[key as keyof CensusFormData]}
+  </p>
+)}
+
 
 </div>
 
@@ -1428,7 +1434,7 @@ type={key === 'email_address' ? 'email' : 'text'}
 <div className="space-y-2">
 
 <label className="label">
-Birth Date *
+Birth Date <span className="text-red-600" aria-hidden="true">*</span>
 </label>
 
 
@@ -1438,7 +1444,9 @@ type="date"
 
 max={new Date().toISOString().split('T')[0]}
 
-className="input"
+data-field="birth_date"
+className={fieldInputClass('birth_date')}
+aria-invalid={Boolean(fieldErrors.birth_date)}
 
 value={formData.birth_date}
 
@@ -1451,6 +1459,10 @@ e.target.value
 }
 
 />
+
+{fieldErrors.birth_date && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.birth_date}</p>
+)}
 
 </div>
 
@@ -1487,13 +1499,15 @@ age
 <div className="space-y-2">
 
 <label className="label">
-Sex *
+Sex <span className="text-red-600" aria-hidden="true">*</span>
 </label>
 
 
 <select
 
-className="input"
+data-field="sex"
+className={fieldInputClass('sex')}
+aria-invalid={Boolean(fieldErrors.sex)}
 
 value={formData.sex}
 
@@ -1526,6 +1540,10 @@ SEX_OPTIONS.map(x=>(
 
 </select>
 
+{fieldErrors.sex && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.sex}</p>
+)}
+
 </div>
 
 
@@ -1534,13 +1552,15 @@ SEX_OPTIONS.map(x=>(
 <div className="space-y-2">
 
 <label className="label">
-Civil Status *
+Civil Status <span className="text-red-600" aria-hidden="true">*</span>
 </label>
 
 
 <select
 
-className="input"
+data-field="civil_status"
+className={fieldInputClass('civil_status')}
+aria-invalid={Boolean(fieldErrors.civil_status)}
 
 value={formData.civil_status}
 
@@ -1573,6 +1593,10 @@ CIVIL_STATUS_OPTIONS.map(x=>(
 
 </select>
 
+{fieldErrors.civil_status && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.civil_status}</p>
+)}
+
 
 </div>
 
@@ -1583,13 +1607,15 @@ CIVIL_STATUS_OPTIONS.map(x=>(
 <div className="space-y-2 md:col-span-2">
 
 <label className="label">
-Residential Address *
+Residential Address <span className="text-red-600" aria-hidden="true">*</span>
 </label>
 
 
 <textarea
 
-className="input"
+data-field="residential_address"
+className={fieldInputClass('residential_address')}
+aria-invalid={Boolean(fieldErrors.residential_address)}
 
 value={
 formData.residential_address
@@ -1604,6 +1630,10 @@ e.target.value
 }
 
 />
+
+{fieldErrors.residential_address && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.residential_address}</p>
+)}
 
 
 </div>
@@ -1640,7 +1670,9 @@ Highest Education <span className="text-red-500">*</span>
 
 <select
 
-className="input"
+data-field="highest_education"
+className={fieldInputClass('highest_education')}
+aria-invalid={Boolean(fieldErrors.highest_education)}
 
 value={formData.highest_education}
 
@@ -1669,6 +1701,10 @@ EDUCATION_OPTIONS.map(x=>(
 
 </select>
 
+{fieldErrors.highest_education && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.highest_education}</p>
+)}
+
 
 </div>
 
@@ -1683,7 +1719,9 @@ Education Status <span className="text-red-500">*</span>
 
 <select
 
-className="input"
+data-field="education_status"
+className={fieldInputClass('education_status')}
+aria-invalid={Boolean(fieldErrors.education_status)}
 
 value={formData.education_status}
 
@@ -1712,6 +1750,10 @@ EDUCATION_STATUS_OPTIONS.map(x=>(
 
 </select>
 
+{fieldErrors.education_status && (
+  <p className="text-xs font-semibold text-red-600">{fieldErrors.education_status}</p>
+)}
+
 
 </div>
 
@@ -1732,11 +1774,16 @@ EDUCATION_STATUS_OPTIONS.map(x=>(
 
 
 <h2 className="mb-6 text-xl font-bold text-slate-900">
-4. Tenurial Status
+4. Tenurial Status <span className="text-red-600" aria-hidden="true">*</span>
 </h2>
 
 
-<div className="grid gap-4 md:grid-cols-2">
+<div
+  data-field="tenurial_status"
+  className={`grid gap-4 rounded-2xl md:grid-cols-2 ${
+    fieldErrors.tenurial_status ? 'border border-red-500 bg-red-50 p-3' : ''
+  }`}
+>
 
 
 {
@@ -1744,7 +1791,9 @@ TENURIAL_STATUS_OPTIONS.map(status=>(
 
 <label
 key={status}
-className="flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50/60"
+className={`flex cursor-pointer items-center rounded-xl border bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50/60 ${
+  fieldErrors.tenurial_status ? 'border-red-300' : 'border-slate-200'
+}`}
 >
 
 
@@ -1759,11 +1808,15 @@ formData.tenurial_status===status
 }
 
 onChange={
-()=>setFormData((current) => ({
-  ...current,
-  tenurial_status: status,
-  monthly_rent: status === 'Renter' ? current.monthly_rent : '',
-}))
+()=>{
+  setFormData((current) => ({
+    ...current,
+    tenurial_status: status,
+    monthly_rent: status === 'Renter' ? current.monthly_rent : '',
+  }));
+  clearFieldError('tenurial_status');
+  if (status !== 'Renter') clearFieldError('monthly_rent');
+}
 }
 
 />
@@ -1783,10 +1836,14 @@ onChange={
 
 </div>
 
+{fieldErrors.tenurial_status && (
+  <p className="mt-2 text-xs font-semibold text-red-600">{fieldErrors.tenurial_status}</p>
+)}
+
 {formData.tenurial_status === 'Renter' && (
   <div className="mt-6 max-w-md rounded-2xl border border-blue-200 bg-blue-50/70 p-5">
     <label htmlFor="monthly-rent" className="label">
-      Monthly Rent (PHP) *
+      Monthly Rent (PHP) <span className="text-red-600" aria-hidden="true">*</span>
     </label>
     <div className="relative mt-2">
       <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-semibold text-slate-500">
@@ -1800,11 +1857,16 @@ onChange={
         inputMode="decimal"
         value={formData.monthly_rent}
         onChange={(event) => updateField('monthly_rent', event.target.value)}
-        className="input pl-9"
+        data-field="monthly_rent"
+        className={fieldInputClass('monthly_rent', 'pl-9')}
+        aria-invalid={Boolean(fieldErrors.monthly_rent)}
         placeholder="Example: 5000"
         required
       />
     </div>
+    {fieldErrors.monthly_rent && (
+      <p className="mt-2 text-xs font-semibold text-red-600">{fieldErrors.monthly_rent}</p>
+    )}
     <p className="mt-2 text-xs text-slate-500">
       Enter the household's current monthly rental payment.
     </p>
@@ -1832,13 +1894,18 @@ onChange={
   </div>
 
   <div className="mb-6 max-w-md space-y-2">
-    <label className="label">Government ID Type *</label>
+    <label className="label">
+      Government ID Type <span className="text-red-600" aria-hidden="true">*</span>
+    </label>
     <select
-      className="input"
+      data-field="governmentIdType"
+      className={fieldInputClass('governmentIdType')}
+      aria-invalid={Boolean(fieldErrors.governmentIdType)}
       value={governmentIdType}
       onChange={(event) => {
         const value = event.target.value;
         setGovernmentIdType(value);
+        clearFieldError('governmentIdType');
         if (value !== 'Other') setOtherGovernmentIdType('');
       }}
     >
@@ -1848,18 +1915,31 @@ onChange={
       ))}
       <option value="Other">Other</option>
     </select>
+    {fieldErrors.governmentIdType && (
+      <p className="text-xs font-semibold text-red-600">{fieldErrors.governmentIdType}</p>
+    )}
 
     {governmentIdType === 'Other' && (
       <div className="pt-2">
-        <label className="label">Specify Other ID *</label>
+        <label className="label">
+          Specify Other ID <span className="text-red-600" aria-hidden="true">*</span>
+        </label>
         <input
           type="text"
-          className="input"
+          data-field="otherGovernmentIdType"
+          className={fieldInputClass('otherGovernmentIdType')}
+          aria-invalid={Boolean(fieldErrors.otherGovernmentIdType)}
           value={otherGovernmentIdType}
           maxLength={100}
           placeholder="Enter the name of the ID"
-          onChange={(event) => setOtherGovernmentIdType(event.target.value)}
+          onChange={(event) => {
+            setOtherGovernmentIdType(event.target.value);
+            clearFieldError('otherGovernmentIdType');
+          }}
         />
+        {fieldErrors.otherGovernmentIdType && (
+          <p className="mt-1.5 text-xs font-semibold text-red-600">{fieldErrors.otherGovernmentIdType}</p>
+        )}
       </div>
     )}
   </div>
@@ -1870,11 +1950,18 @@ onChange={
       { key: 'back', title: 'Government ID Back', preview: governmentIdBackPreview, icon: CreditCard },
     ].map((item) => {
       const Icon = item.icon;
+      const validationField = item.key === 'front' ? 'governmentIdFront' : 'governmentIdBack';
       return (
-        <div key={item.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div
+          key={item.key}
+          data-field={validationField}
+          className={`overflow-hidden rounded-2xl border bg-white ${
+            fieldErrors[validationField] ? 'border-red-500 bg-red-50' : 'border-slate-200'
+          }`}
+        >
           <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 font-semibold text-slate-800">
             <Icon size={18} className="text-blue-600" />
-            {item.title} *
+            {item.title} <span className="text-red-600" aria-hidden="true">*</span>
           </div>
           <div className="p-4">
             {item.preview ? (
@@ -1894,13 +1981,21 @@ onChange={
                 onChange={(event) => updateVerificationImage(event.target.files?.[0], item.key as 'front' | 'back')}
               />
             </label>
+            {fieldErrors[validationField] && (
+              <p className="mt-2 text-xs font-semibold text-red-600">{fieldErrors[validationField]}</p>
+            )}
           </div>
         </div>
       );
     })}
   </div>
 
-  <div className="mt-5">
+  <div
+    data-field="liveVerification"
+    className={`mt-5 rounded-2xl ${
+      fieldErrors.liveVerification ? 'border border-red-500 bg-red-50 p-3' : ''
+    }`}
+  >
     <FaceIdentityVerification
       idFrontFile={governmentIdFront}
       idFrontPreview={governmentIdFrontPreview}
@@ -1910,12 +2005,14 @@ onChange={
         setCapturedFaceFile(null);
         if (capturedFacePreview.startsWith('blob:')) URL.revokeObjectURL(capturedFacePreview);
         setCapturedFacePreview('');
+        clearFieldError('liveVerification');
       }}
       onVerified={(result) => {
         setLiveVerificationResult(result);
         setCapturedFaceFile(result.file);
         if (capturedFacePreview.startsWith('blob:')) URL.revokeObjectURL(capturedFacePreview);
         setCapturedFacePreview(result.file ? URL.createObjectURL(result.file) : '');
+        clearFieldError('liveVerification');
         setExistingVerification((current) => current ? {
           ...current,
           isMatched: result.matched,
@@ -1931,6 +2028,9 @@ onChange={
         } : current);
       }}
     />
+    {fieldErrors.liveVerification && (
+      <p className="mt-2 text-xs font-semibold text-red-600">{fieldErrors.liveVerification}</p>
+    )}
   </div>
 
   {liveVerificationResult?.verificationStatus === 'skipped' && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p className="font-bold">Manual identity verification required</p><p className="mt-1">{liveVerificationResult.verificationReason}</p></div>}
@@ -1941,7 +2041,9 @@ onChange={
 {/* HOUSEHOLD PHOTO */}
 <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
   <div className="mb-5">
-<h2 className="text-xl font-bold text-slate-900">6. House / Household Photo</h2>
+<h2 className="text-xl font-bold text-slate-900">
+  6. House / Household Photo <span className="text-red-600" aria-hidden="true">*</span>
+</h2>
     <p className="mt-1 text-sm text-slate-500">
       Upload a clear picture of the resident's house or household. Maximum file size: 8 MB.
     </p>
@@ -1964,11 +2066,20 @@ onChange={
       </button>
     </div>
   ) : (
-    <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white px-6 py-12 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+    <label
+      data-field="householdPhoto"
+      className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition ${
+        fieldErrors.householdPhoto
+          ? 'border-red-500 bg-red-50 hover:border-red-600'
+          : 'border-slate-300 bg-white hover:border-blue-400 hover:bg-blue-50/40'
+      }`}
+    >
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
         <ImageIcon className="h-7 w-7" />
       </div>
-      <p className="mt-4 font-semibold text-slate-800">Upload house or household picture</p>
+      <p className="mt-4 font-semibold text-slate-800">
+        Upload house or household picture <span className="text-red-600" aria-hidden="true">*</span>
+      </p>
       <p className="mt-1 text-sm text-slate-500">PNG, JPG, JPEG, or WEBP</p>
       <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">
         <Upload className="h-4 w-4" />
@@ -1980,6 +2091,9 @@ onChange={
         className="hidden"
         onChange={(event) => handleHouseholdPhotoChange(event.target.files?.[0])}
       />
+      {fieldErrors.householdPhoto && (
+        <p className="mt-3 text-xs font-semibold text-red-600">{fieldErrors.householdPhoto}</p>
+      )}
     </label>
   )}
 </section>
@@ -2041,6 +2155,52 @@ onChange={
 
 
 </div>
+
+{(isCategorySelected('Indigenous People (IP)') || isCategorySelected('Others')) && (
+  <div className="mt-6 grid gap-5 md:grid-cols-2">
+    {isCategorySelected('Indigenous People (IP)') && (
+      <div className="space-y-2">
+        <label className="label">
+          Indigenous Group <span className="text-red-600" aria-hidden="true">*</span>
+        </label>
+        <input
+          type="text"
+          data-field="indigenous_group"
+          className={fieldInputClass('indigenous_group')}
+          aria-invalid={Boolean(fieldErrors.indigenous_group)}
+          value={formData.indigenous_group}
+          maxLength={100}
+          placeholder="Enter indigenous group"
+          onChange={(event) => updateField('indigenous_group', event.target.value)}
+        />
+        {fieldErrors.indigenous_group && (
+          <p className="text-xs font-semibold text-red-600">{fieldErrors.indigenous_group}</p>
+        )}
+      </div>
+    )}
+
+    {isCategorySelected('Others') && (
+      <div className="space-y-2">
+        <label className="label">
+          Other Category Description <span className="text-red-600" aria-hidden="true">*</span>
+        </label>
+        <input
+          type="text"
+          data-field="other_description"
+          className={fieldInputClass('other_description')}
+          aria-invalid={Boolean(fieldErrors.other_description)}
+          value={formData.other_description}
+          maxLength={150}
+          placeholder="Describe the category"
+          onChange={(event) => updateField('other_description', event.target.value)}
+        />
+        {fieldErrors.other_description && (
+          <p className="text-xs font-semibold text-red-600">{fieldErrors.other_description}</p>
+        )}
+      </div>
+    )}
+  </div>
+)}
 
 
 
