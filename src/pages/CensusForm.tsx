@@ -1044,7 +1044,6 @@ const [categories, setCategories] =
         tenurial_status: formData.tenurial_status as TenurialStatus,
         monthly_rent: formData.monthly_rent ? Number(formData.monthly_rent) : null,
         household_photo_url: householdPhotoPath,
-        status: 'pending_review',
       };
 
       // Always check by Auth user ID before saving. This prevents duplicate rows
@@ -1083,7 +1082,7 @@ const [categories, setCategories] =
       } else {
         const { data, error: insertError } = await supabase
           .from('residents')
-          .insert(residentValues)
+          .insert({ ...residentValues, status: 'verified' })
           .select()
           .single();
 

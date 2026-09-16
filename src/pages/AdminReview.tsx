@@ -47,7 +47,7 @@ interface ResidentData {
   remarks: Remark[];
 }
 
-type ReviewAction = 'approve' | 'return' | 'reject';
+type ReviewAction = 'approve' | 'reject';
 
 type ResidentStatus =
   | 'pending_review'
@@ -78,7 +78,7 @@ const STATUS_CONFIG: Record<ResidentStatus, StatusConfig> = {
     panelClass: 'border-amber-200 bg-amber-50',
   },
   verified: {
-    label: 'Verified',
+    label: 'Approved',
     badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     dotClass: 'bg-emerald-500',
     panelClass: 'border-emerald-200 bg-emerald-50',
@@ -114,14 +114,6 @@ const ACTION_CONFIG: Record<
     confirmLabel: 'Approve Record',
     confirmClass: 'bg-emerald-600 hover:bg-emerald-700',
     icon: CheckCircle2,
-  },
-  return: {
-    title: 'Return for correction',
-    description:
-      'The resident will be asked to update and resubmit their census information.',
-    confirmLabel: 'Return Record',
-    confirmClass: 'bg-amber-500 hover:bg-amber-600',
-    icon: AlertCircle,
   },
   reject: {
     title: 'Reject census record',
@@ -202,7 +194,7 @@ export default function AdminReview({
   onBack,
   onDecisionComplete,
 }: AdminReviewProps) {
-  const { user, adminProfile } = useAuth();
+  const { adminProfile } = useAuth();
 
   const [data, setData] = useState<ResidentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -372,83 +364,13 @@ export default function AdminReview({
     setError(null);
 
     try {
-      const newStatus: ResidentStatus =
-        selectedAction === 'approve'
-          ? 'verified'
-          : selectedAction === 'return'
-            ? 'returned'
-            : 'rejected';
+      const { error: reviewError } = await supabase.rpc('review_resident', {
+        p_resident_id: residentId,
+        p_action: selectedAction,
+        p_remark: remarkText.trim(),
+      });
 
-      const { error: residentUpdateError } = await supabase
-        .from('residents')
-        .update({
-          status: newStatus,
-          verified_at:
-            selectedAction === 'approve' ? new Date().toISOString() : null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', residentId);
-
-      if (residentUpdateError) {
-        throw residentUpdateError;
-      }
-
-      if (remarkText.trim()) {
-        const { error: remarkError } = await supabase.from('remarks').insert({
-          resident_id: residentId,
-          admin_id: adminProfile.id,
-          remark_text: remarkText.trim(),
-          status_change: newStatus,
-        });
-
-        if (remarkError) {
-          throw remarkError;
-        }
-      }
-
-      const notificationTitle =
-        selectedAction === 'approve'
-          ? 'Census Approved'
-          : selectedAction === 'return'
-            ? 'Census Returned for Correction'
-            : 'Census Rejected';
-
-      const notificationMessage =
-        remarkText.trim() ||
-        (selectedAction === 'approve'
-          ? 'Your census submission has been verified and approved.'
-          : selectedAction === 'return'
-            ? 'Your census submission has been returned for correction.'
-            : 'Your census submission has been rejected.');
-
-      const { error: notificationError } = await supabase
-        .from('notifications')
-        .insert({
-          resident_id: residentId,
-          title: notificationTitle,
-          message: notificationMessage,
-        });
-
-      if (notificationError) {
-        throw notificationError;
-      }
-
-      const { error: auditError } = await supabase
-        .from('audit_logs')
-        .insert({
-          user_id: user?.id ?? null,
-          action: selectedAction,
-          entity_type: 'resident',
-          entity_id: residentId,
-          details: {
-            status: newStatus,
-            remark: remarkText.trim(),
-          },
-        });
-
-      if (auditError) {
-        throw auditError;
-      }
+      if (reviewError) throw reviewError;
 
       setShowRemarksModal(false);
       setRemarkText('');
@@ -1105,75 +1027,33 @@ export default function AdminReview({
           </section>
         )}
 
-        {resident.status === 'pending_review' ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-blue-700">
-                  Administrator decision
-                </p>
-
-                <h2 className="mt-1 text-xl font-bold text-slate-900">
-                  Complete the census review
-                </h2>
-
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  Approve the record when the submitted information is valid,
-                  return it when corrections are needed, or reject it when the
-                  submission cannot be accepted.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[510px]">
-                <button
-                  type="button"
-                  onClick={() => openActionModal('approve')}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                >
-                  <CheckCircle2 className="h-5 w-5" />
-                  Approve
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openActionModal('return')}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600"
-                >
-                  <AlertCircle className="h-5 w-5" />
-                  Return
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openActionModal('reject')}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
-                >
-                  <XCircle className="h-5 w-5" />
-                  Reject
-                </button>
-              </div>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-blue-700">Administrator checking</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">Check census record</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                New submissions are automatically approved. Check the information above and
+                reject invalid submissions with a reason. Existing pending or rejected records
+                can be approved after checking.
+              </p>
             </div>
-          </section>
-        ) : (
-          <section
-            className={`rounded-3xl border p-6 shadow-sm sm:p-8 ${status.panelClass}`}
-          >
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/70">
-                <ShieldCheck className="h-6 w-6" />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-bold">Review already completed</h2>
-
-                <p className="mt-2 text-sm leading-6 opacity-80">
-                  This record is currently marked as {status.label}. No further
-                  review actions are available.
-                </p>
-              </div>
+            <div className="flex flex-wrap gap-3">
+              {resident.status !== 'verified' && (
+                <button type="button" onClick={() => openActionModal('approve')}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700">
+                  <CheckCircle2 className="h-5 w-5" /> Approve Record
+                </button>
+              )}
+              {resident.status !== 'rejected' && (
+                <button type="button" onClick={() => openActionModal('reject')}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700">
+                  <XCircle className="h-5 w-5" /> Reject Record
+                </button>
+              )}
             </div>
-          </section>
-        )}
+          </div>
+        </section>
       </main>
 
       {showRemarksModal && selectedActionConfig && selectedAction && (
@@ -1193,9 +1073,7 @@ export default function AdminReview({
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
                       selectedAction === 'approve'
                         ? 'bg-emerald-100 text-emerald-700'
-                        : selectedAction === 'return'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-red-100 text-red-700'
+                        : 'bg-red-100 text-red-700'
                     }`}
                   >
                     <selectedActionConfig.icon className="h-5 w-5" />
@@ -1244,7 +1122,7 @@ export default function AdminReview({
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 {selectedAction === 'approve'
                   ? 'Remarks are optional for approved records.'
-                  : 'Explain what the resident needs to correct or why the submission is rejected.'}
+                  : 'Explain why this submission is rejected.'}
               </p>
 
               <textarea

@@ -19,6 +19,9 @@ import type {
   AppointmentStatus,
 } from '../types/database';
 import { APPOINTMENT_SERVICES } from './ResidentAppointments';
+import SortControls from './SortControls';
+import { readAllRows } from '../lib/pagination';
+import { compareValues, type SortDirection } from '../lib/sorting';
 
 interface AdminAppointmentsProps {
   refreshKey: number;
@@ -104,6 +107,8 @@ export default function AdminAppointments({ refreshKey }: AdminAppointmentsProps
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AppointmentStatus>('all');
   const [dateFilter, setDateFilter] = useState('');
+  const [sortField, setSortField] = useState('appointment_date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -111,31 +116,33 @@ export default function AdminAppointments({ refreshKey }: AdminAppointmentsProps
     setLoading(true);
     setError(null);
 
-    const { data, error: appointmentError } = await supabase
-      .from('appointments')
-      .select(`
-        *,
-        residents (
-          first_name,
-          middle_name,
-          last_name,
-          suffix,
-          tracking_number,
-          contact_number,
-          email_address
-        )
-      `)
-      .order('appointment_date', { ascending: true })
-      .order('appointment_time', { ascending: true });
+    try {
+      const data = await readAllRows<AdminAppointment>((from, to) => supabase
+        .from('appointments')
+        .select(`
+          *,
+          residents (
+            first_name,
+            middle_name,
+            last_name,
+            suffix,
+            tracking_number,
+            contact_number,
+            email_address
+          )
+        `)
+        .order('appointment_date', { ascending: true })
+        .order('appointment_time', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to));
 
-    if (appointmentError) {
-      setError(appointmentError.message);
+      setAppointments(data);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load appointments. Please try refreshing.');
       setAppointments([]);
-    } else {
-      setAppointments((data ?? []) as AdminAppointment[]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -174,8 +181,19 @@ export default function AdminAppointments({ refreshKey }: AdminAppointmentsProps
       return (!search || searchable.includes(search))
         && (statusFilter === 'all' || appointment.status === statusFilter)
         && (!dateFilter || appointment.appointment_date === dateFilter);
+    }).sort((left, right) => {
+      const value = (appointment: AdminAppointment) => {
+        const resident = residentFrom(appointment);
+        if (sortField === 'resident') return resident ? `${resident.last_name} ${resident.first_name} ${resident.middle_name ?? ''}` : null;
+        if (sortField === 'service') return serviceLabel(appointment.service_type);
+        if (sortField === 'fee') return Number(appointment.fee);
+        if (sortField === 'status') return appointment.status;
+        if (sortField === 'completed_at') return appointment.completed_at;
+        return `${appointment.appointment_date}T${appointment.appointment_time}`;
+      };
+      return compareValues(value(left), value(right), sortDirection) || compareValues(left.id, right.id);
     });
-  }, [appointments, dateFilter, searchQuery, statusFilter]);
+  }, [appointments, dateFilter, searchQuery, statusFilter, sortField, sortDirection]);
 
   const updateStatus = async (
     appointment: AdminAppointment,
@@ -304,6 +322,17 @@ export default function AdminAppointments({ refreshKey }: AdminAppointmentsProps
             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             aria-label="Filter appointment date"
           />
+        </div>
+
+        <div className="mb-5">
+          <SortControls id="appointments" field={sortField} direction={sortDirection} options={[
+            { value: 'appointment_date', label: 'Appointment date and time' },
+            { value: 'resident', label: 'Resident last name' },
+            { value: 'service', label: 'Service' },
+            { value: 'fee', label: 'Fee' },
+            { value: 'status', label: 'Status' },
+            { value: 'completed_at', label: 'Completion date' },
+          ]} onFieldChange={setSortField} onDirectionChange={setSortDirection} />
         </div>
 
         {loading ? (

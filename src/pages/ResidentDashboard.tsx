@@ -97,8 +97,8 @@ const STATUS_CONFIG: Record<
     badgeClass: 'bg-amber-100 text-amber-700',
   },
   verified: {
-    label: 'Verified',
-    description: 'Your census information has been approved.',
+    label: 'Approved',
+    description: 'Your census registration is approved. Barangay administrators may check your submitted information.',
     icon: CheckCircle2,
     iconClass: 'text-emerald-600',
     backgroundClass: 'bg-emerald-100',

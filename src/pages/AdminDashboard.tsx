@@ -22,8 +22,12 @@ import type { Resident } from '../types/database';
 import AdminAnalytics from '../components/AdminAnalytics';
 import AdminAnnouncements from '../components/AdminAnnouncements';
 import AdminAppointments from '../components/AdminAppointments';
+import SortControls from '../components/SortControls';
+import { compareValues, type SortDirection } from '../lib/sorting';
+import { readAllRows } from '../lib/pagination';
 
 interface AdminDashboardProps {
+  tab?: string | null;
   onLogout: () => void;
   onReview: (residentId: string) => void;
 }
@@ -72,7 +76,7 @@ const STATUS_CONFIG: Record<
     dotClass: 'bg-amber-500',
   },
   verified: {
-    label: 'Verified',
+    label: 'Approved',
     badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     dotClass: 'bg-emerald-500',
   },
@@ -93,11 +97,38 @@ const formatLabel = (value: string) =>
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const DASHBOARD_TABS = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'census', label: 'Census Updates' },
+  { value: 'appointments', label: 'Appointments' },
+  { value: 'announcements', label: 'Announcements' },
+];
+
+const RESIDENT_SORT_FIELDS = [
+  { value: 'updated_at', label: 'Last updated' },
+  { value: 'last_name', label: 'Last name' },
+  { value: 'first_name', label: 'First name' },
+  { value: 'tracking_number', label: 'Tracking number' },
+  { value: 'residential_address', label: 'Address' },
+  { value: 'submitted_at', label: 'Submission date' },
+  { value: 'birth_date', label: 'Birth date' },
+  { value: 'sex', label: 'Sex' },
+  { value: 'civil_status', label: 'Civil status' },
+  { value: 'highest_education', label: 'Education level' },
+  { value: 'education_status', label: 'Education status' },
+  { value: 'profession_occupation', label: 'Occupation' },
+  { value: 'tenurial_status', label: 'Housing status' },
+  { value: 'monthly_rent', label: 'Monthly rent' },
+  { value: 'status', label: 'Record status' },
+];
+
 export default function AdminDashboard({
+  tab,
   onLogout,
   onReview,
 }: AdminDashboardProps) {
   const { adminProfile } = useAuth();
+  const activeTab = DASHBOARD_TABS.some((item) => item.value === tab) ? tab : 'overview';
 
   const [stats, setStats] = useState<DashboardStats>({
     totalResidents: 0,
@@ -119,6 +150,8 @@ export default function AdminDashboard({
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortField, setSortField] = useState('updated_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [error, setError] = useState<string | null>(null);
   const [appointmentRefreshKey, setAppointmentRefreshKey] = useState(0);
 
@@ -147,10 +180,15 @@ export default function AdminDashboard({
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'Not recorded';
+    return date.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
     });
   };
 
@@ -159,18 +197,14 @@ export default function AdminDashboard({
     setError(null);
 
     try {
-      const { data, error: residentsError } = await supabase
+      const residentsData = await readAllRows<Resident>((from, to) => supabase
         .from('residents')
         .select('*')
         .order('submitted_at', {
           ascending: false,
-        });
-
-      if (residentsError) {
-        throw residentsError;
-      }
-
-      const residentsData = (data ?? []) as Resident[];
+        })
+        .order('id', { ascending: true })
+        .range(from, to));
 
       setResidents(residentsData);
 
@@ -297,8 +331,16 @@ export default function AdminDashboard({
         statusFilter === 'all' || resident.status === statusFilter;
 
       return matchesSearch && matchesStatus;
+    }).sort((left, right) => {
+      const value = (resident: Resident) => {
+        if (sortField === 'updated_at') return resident.updated_at ?? resident.submitted_at;
+        if (sortField === 'last_name') return `${resident.last_name} ${resident.first_name} ${resident.middle_name ?? ''}`;
+        if (sortField === 'monthly_rent') return resident.monthly_rent == null ? null : Number(resident.monthly_rent);
+        return resident[sortField as keyof Resident];
+      };
+      return compareValues(value(left), value(right), sortDirection) || compareValues(left.id, right.id);
     });
-  }, [residents, searchQuery, statusFilter]);
+  }, [residents, searchQuery, statusFilter, sortField, sortDirection]);
 
   const ageTotal = ageDistribution.reduce((sum, item) => sum + item.count, 0);
   const sexTotal = sexDistribution.reduce((sum, item) => sum + item.count, 0);
@@ -322,7 +364,7 @@ export default function AdminDashboard({
       borderClass: 'border-amber-100',
     },
     {
-      title: 'Verified',
+      title: 'Approved',
       value: stats.verifiedRecords,
       description: 'Approved census records',
       icon: CheckCircle2,
@@ -428,6 +470,21 @@ export default function AdminDashboard({
         </div>
       </header>
 
+      <nav aria-label="Administrator sections" className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap gap-2 px-4 py-3 sm:px-6 lg:px-8">
+          {DASHBOARD_TABS.map((item) => (
+            <a
+              key={item.value}
+              href={`#/admin/dashboard?tab=${item.value}`}
+              aria-current={activeTab === item.value ? 'page' : undefined}
+              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${activeTab === item.value ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {error && (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm">
@@ -448,6 +505,7 @@ export default function AdminDashboard({
           </div>
         )}
 
+        {activeTab === 'overview' && <>
         <section className="mb-8">
           <div className="mb-5">
             <p className="text-sm font-semibold text-blue-700">
@@ -499,8 +557,6 @@ export default function AdminDashboard({
             })}
           </div>
         </section>
-
-        <AdminAppointments refreshKey={appointmentRefreshKey} />
 
         <section className="mb-8 grid gap-6 lg:grid-cols-3">
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -656,9 +712,12 @@ export default function AdminDashboard({
         </section>
 
         <AdminAnalytics residents={residents} />
+        </>}
 
-        <AdminAnnouncements adminProfileId={adminProfile?.id} />
+        {activeTab === 'appointments' && <AdminAppointments refreshKey={appointmentRefreshKey} />}
+        {activeTab === 'announcements' && <AdminAnnouncements adminProfileId={adminProfile?.id} refreshKey={appointmentRefreshKey} />}
 
+        {activeTab === 'census' && (
         <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-5 sm:p-6">
             <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
@@ -668,12 +727,12 @@ export default function AdminDashboard({
                 </p>
 
                 <h2 className="mt-1 text-xl font-bold text-slate-900">
-                  Resident Records
+                  Census Updates
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Review census submissions and update their verification
-                  status.
+                  All resident census records, with their latest update time (Philippine time).
+                  New submissions are automatically approved and remain available for administrator checking.
                 </p>
               </div>
 
@@ -682,6 +741,7 @@ export default function AdminDashboard({
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                   <input
+                    aria-label="Search census records"
                     type="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
@@ -691,17 +751,21 @@ export default function AdminDashboard({
                 </div>
 
                 <select
+                  aria-label="Filter census status"
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
                   className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 >
                   <option value="all">All statuses</option>
                   <option value="pending_review">Pending Review</option>
-                  <option value="verified">Verified</option>
+                  <option value="verified">Approved</option>
                   <option value="returned">Returned</option>
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
+            </div>
+            <div className="mt-4">
+              <SortControls id="census" field={sortField} direction={sortDirection} options={RESIDENT_SORT_FIELDS} onFieldChange={setSortField} onDirectionChange={setSortDirection} />
             </div>
           </div>
 
@@ -762,7 +826,7 @@ export default function AdminDashboard({
                       </th>
 
                       <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Submitted
+                        Last Updated
                       </th>
 
                       <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -822,7 +886,8 @@ export default function AdminDashboard({
                           </td>
 
                           <td className="px-6 py-5 text-sm text-slate-600">
-                            {formatDate(resident.submitted_at)}
+                            {formatDate(resident.updated_at ?? resident.submitted_at)}
+                            <p className="mt-1 text-xs text-slate-400">Submitted {formatDate(resident.submitted_at)}</p>
                           </td>
 
                           <td className="px-6 py-5">
@@ -844,7 +909,7 @@ export default function AdminDashboard({
                               className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
                             >
                               <Eye className="h-4 w-4" />
-                              Review
+                              Check Record
                               <ChevronRight className="h-4 w-4" />
                             </button>
                           </td>
@@ -909,11 +974,11 @@ export default function AdminDashboard({
 
                         <div className="mt-3 flex items-center justify-between gap-3">
                           <span className="text-xs font-medium text-slate-500">
-                            Submitted
+                            Last updated
                           </span>
 
                           <span className="text-sm font-semibold text-slate-700">
-                            {formatDate(resident.submitted_at)}
+                            {formatDate(resident.updated_at ?? resident.submitted_at)}
                           </span>
                         </div>
                       </div>
@@ -924,7 +989,7 @@ export default function AdminDashboard({
                         className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-semibold text-white transition hover:bg-blue-800"
                       >
                         <Eye className="h-4 w-4" />
-                        Review Resident
+                        Check Record
                         <ChevronRight className="h-4 w-4" />
                       </button>
                     </article>
@@ -934,6 +999,7 @@ export default function AdminDashboard({
             </>
           )}
         </section>
+        )}
       </main>
     </div>
   );

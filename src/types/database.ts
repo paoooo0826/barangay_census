@@ -114,6 +114,9 @@ export interface Resident {
   household_photo_url?: string | null;
   status: ResidentStatus;
   submitted_at: string;
+  updated_at?: string | null;
+  created_at?: string | null;
+  verified_at?: string | null;
 }
 
 export interface GovernmentId {
@@ -222,6 +225,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      review_resident: {
+        Args: { p_resident_id: string; p_action: 'approve' | 'reject'; p_remark: string };
+        Returns: Json;
+      };
       check_registration_email: {
         Args: { candidate_email: string };
         Returns: Json;

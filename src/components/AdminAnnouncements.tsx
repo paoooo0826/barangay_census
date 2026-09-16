@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BellRing,
   CheckCircle2,
   Loader2,
   Megaphone,
+  Plus,
   Send,
   Trash2,
 } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
+import SortControls from './SortControls';
+import { readAllRows } from '../lib/pagination';
+import { compareValues, type SortDirection } from '../lib/sorting';
 import type {
   Announcement,
   AnnouncementAudience,
@@ -18,6 +22,7 @@ import type {
 
 interface AdminAnnouncementsProps {
   adminProfileId?: string;
+  refreshKey?: number;
 }
 
 const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
@@ -55,6 +60,7 @@ function formatDateTime(value: string) {
 
 export default function AdminAnnouncements({
   adminProfileId,
+  refreshKey,
 }: AdminAnnouncementsProps) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [title, setTitle] = useState('');
@@ -64,6 +70,9 @@ export default function AdminAnnouncements({
   const [expiresAt, setExpiresAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [renderTime] = useState(() => Date.now());
@@ -71,29 +80,36 @@ export default function AdminAnnouncements({
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
 
-    const { data, error: loadError } = await supabase
-      .from('announcements')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (loadError) {
-      console.error('Unable to load announcements:', loadError);
-      setError(
-        loadError.code === '42P01'
-          ? 'Run new-features-migration.sql in Supabase before using announcements.'
-          : 'Unable to load announcements. Check the database policy and try again.',
-      );
-    } else {
-      setAnnouncements((data ?? []) as Announcement[]);
+    try {
+      const data = await readAllRows<Announcement>((from, to) => supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to));
+      setAnnouncements(data);
       setError(null);
+    } catch (loadError) {
+      console.error('Unable to load announcements:', loadError);
+      setError('Unable to load announcements. Please try refreshing.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
     void loadAnnouncements();
-  }, [loadAnnouncements]);
+  }, [loadAnnouncements, refreshKey]);
+
+  const sortedAnnouncements = useMemo(() => [...announcements].sort((left, right) => {
+    const value = (announcement: Announcement) => {
+      if (sortField === 'title') return announcement.title;
+      if (sortField === 'priority') return PRIORITY_LABELS[announcement.priority];
+      if (sortField === 'audience') return AUDIENCE_LABELS[announcement.audience];
+      return announcement.created_at;
+    };
+    return compareValues(value(left), value(right), sortDirection) || compareValues(left.id, right.id);
+  }), [announcements, sortField, sortDirection]);
 
   async function handlePublish(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -137,6 +153,7 @@ export default function AdminAnnouncements({
       setPriority('info');
       setAudience('all');
       setExpiresAt('');
+      setShowForm(false);
       setSuccess('Announcement published to the selected residents.');
     }
 
@@ -206,26 +223,35 @@ export default function AdminAnnouncements({
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          aria-expanded={showForm}
+          aria-controls="announcement-form"
+          disabled={saving}
+          onClick={() => setShowForm((current) => !current)}
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-blue-800 transition hover:bg-blue-50 disabled:opacity-60"
+        >
+          <Plus className="h-4 w-4" /> {showForm ? 'Close form' : 'Add Announcement'}
+        </button>
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[0.9fr_1.1fr]">
-        <form onSubmit={handlePublish} className="border-b border-slate-200 p-6 xl:border-b-0 xl:border-r">
+      {error && (
+        <div role="alert" className="m-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {success && (
+        <div role="status" className="m-6 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      <div className={`grid gap-0 ${showForm ? 'xl:grid-cols-[0.9fr_1.1fr]' : ''}`}>
+        {showForm && <form id="announcement-form" onSubmit={handlePublish} className="border-b border-slate-200 p-6 xl:border-b-0 xl:border-r">
           <h3 className="font-bold text-slate-900">Create announcement</h3>
-
-          {error && (
-            <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{success}</span>
-            </div>
-          )}
-
           <div className="mt-5 space-y-4">
             <div>
               <label htmlFor="announcement-title" className="mb-2 block text-sm font-semibold text-slate-700">
@@ -315,7 +341,7 @@ export default function AdminAnnouncements({
             {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
             {saving ? 'Publishing...' : 'Publish announcement'}
           </button>
-        </form>
+        </form>}
 
         <div className="p-6">
           <div className="flex items-center justify-between gap-3">
@@ -324,6 +350,14 @@ export default function AdminAnnouncements({
               <p className="mt-1 text-sm text-slate-500">Published, hidden, and expired notices</p>
             </div>
             <BellRing className="h-5 w-5 text-blue-700" />
+          </div>
+          <div className="mt-4">
+            <SortControls id="announcements" field={sortField} direction={sortDirection} options={[
+              { value: 'created_at', label: 'Created date' },
+              { value: 'title', label: 'Title' },
+              { value: 'priority', label: 'Priority' },
+              { value: 'audience', label: 'Audience' },
+            ]} onFieldChange={setSortField} onDirectionChange={setSortDirection} />
           </div>
 
           {loading ? (
@@ -336,7 +370,7 @@ export default function AdminAnnouncements({
             </div>
           ) : (
             <div className="mt-5 max-h-[620px] space-y-4 overflow-y-auto pr-1">
-              {announcements.map((announcement) => {
+              {sortedAnnouncements.map((announcement) => {
                 const expired = Boolean(
                   announcement.expires_at && new Date(announcement.expires_at).getTime() <= renderTime,
                 );

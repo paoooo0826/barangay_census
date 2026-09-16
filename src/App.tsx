@@ -112,6 +112,7 @@ export default function App() {
   } else if (path === '/admin/dashboard') {
     page = (
       <AdminDashboard
+        tab={new URLSearchParams(route.split('?')[1] ?? '').get('tab')}
         onLogout={() => navigate('/')}
         onReview={(id) => navigate(`/admin/review/${id}`)}
       />
@@ -120,8 +121,8 @@ export default function App() {
     page = (
       <AdminReview
         residentId={decodeURIComponent(reviewMatch[1])}
-        onBack={() => navigate('/admin/dashboard')}
-        onDecisionComplete={() => navigate('/admin/dashboard')}
+        onBack={() => navigate('/admin/dashboard?tab=census')}
+        onDecisionComplete={() => navigate('/admin/dashboard?tab=census')}
       />
     );
   } else {
