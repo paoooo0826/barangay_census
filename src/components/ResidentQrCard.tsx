@@ -5,6 +5,7 @@ interface ResidentQrCardProps {
   compact?: boolean;
 }
 
-export default function ResidentQrCard(_props: ResidentQrCardProps) {
+export default function ResidentQrCard(props: ResidentQrCardProps) {
+  void props;
   return null;
 }
