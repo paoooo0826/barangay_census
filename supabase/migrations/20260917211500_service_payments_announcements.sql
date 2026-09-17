@@ -7,6 +7,12 @@ alter table public.announcements
   add column if not exists image_path text;
 
 alter table public.appointments
+  alter column fee drop expression;
+
+alter table public.appointments
+  alter column fee set default 0;
+
+alter table public.appointments
   drop constraint if exists appointments_service_type_check;
 
 alter table public.appointments
