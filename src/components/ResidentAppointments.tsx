@@ -6,11 +6,10 @@ import {
   CheckCircle2,
   Clock,
   FileCheck2,
-  FileText,
   Home,
   Loader2,
-  MessageSquareWarning,
   RefreshCw,
+  X,
   XCircle,
 } from 'lucide-react';
 
@@ -18,27 +17,24 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type {
   Appointment,
+  AppointmentPurpose,
   AppointmentService,
   AppointmentStatus,
   Resident,
+  StoredAppointmentService,
 } from '../types/database';
-
-export type ResidentAppointmentView = 'services' | 'appointments' | 'book';
 
 interface ResidentAppointmentsProps {
   resident: Resident | null;
-  view: ResidentAppointmentView;
   initialService?: AppointmentService | null;
-  onBook: (service?: AppointmentService) => void;
-  onBooked: () => void;
 }
 
 interface ServiceDefinition {
   value: AppointmentService;
   label: string;
   description: string;
-  fee: number;
-  icon: typeof FileText;
+  feeLabel: string;
+  icon: typeof FileCheck2;
   iconClass: string;
 }
 
@@ -52,34 +48,25 @@ export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
     value: 'barangay_clearance',
     label: 'Barangay Clearance',
     description: 'Request a clearance for employment, business, or other legal purposes.',
-    fee: 100,
+    feeLabel: '₱130 student / ₱230 non-student',
     icon: FileCheck2,
     iconClass: 'bg-blue-100 text-blue-700',
   },
   {
-    value: 'certificate_of_indigency',
-    label: 'Certificate of Indigency',
-    description: 'Request proof of low-income status for government or financial assistance.',
-    fee: 0,
-    icon: FileText,
-    iconClass: 'bg-emerald-100 text-emerald-700',
-  },
-  {
     value: 'certificate_of_residency',
     label: 'Certificate of Residency',
-    description: 'Request proof that you are a legitimate resident of Barangay Old Lucban.',
-    fee: 50,
+    description: 'Request a residency certificate for a supported barangay purpose.',
+    feeLabel: '₱30 · First Low Income request is free',
     icon: Home,
     iconClass: 'bg-amber-100 text-amber-700',
   },
-  {
-    value: 'complaint',
-    label: 'Complaints',
-    description: 'Schedule a confidential visit to file or discuss a barangay complaint.',
-    fee: 0,
-    icon: MessageSquareWarning,
-    iconClass: 'bg-rose-100 text-rose-700',
-  },
+];
+
+export const RESIDENCY_PURPOSES: Array<{ value: AppointmentPurpose; label: string }> = [
+  { value: 'low_income', label: 'Low Income' },
+  { value: 'good_moral', label: 'Good Moral Certificate' },
+  { value: 'financial', label: 'Financial' },
+  { value: 'medical_assistance', label: 'Medical Assistance Certificate' },
 ];
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
@@ -139,439 +126,324 @@ function formatFee(fee: number) {
   }).format(Number(fee));
 }
 
-function serviceDefinition(value: AppointmentService) {
-  return APPOINTMENT_SERVICES.find((service) => service.value === value)
-    ?? APPOINTMENT_SERVICES[0];
+export function serviceLabel(value: StoredAppointmentService) {
+  const current = APPOINTMENT_SERVICES.find((service) => service.value === value)?.label;
+  if (current) return current;
+  if (value === 'certificate_of_indigency') return 'Certificate of Indigency (Legacy)';
+  if (value === 'complaint') return 'Complaints (Legacy)';
+  return value.replaceAll('_', ' ');
 }
 
-export default function ResidentAppointments({
-  resident,
-  view,
-  initialService,
-  onBook,
-  onBooked,
-}: ResidentAppointmentsProps) {
+function purposeLabel(value?: AppointmentPurpose | null) {
+  if (!value) return null;
+  return RESIDENCY_PURPOSES.find((purpose) => purpose.value === value)?.label ?? value.replaceAll('_', ' ');
+}
+
+export default function ResidentAppointments({ resident, initialService }: ResidentAppointmentsProps) {
   const { user } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [selectedService, setSelectedService] = useState<AppointmentService>(
-    initialService ?? 'barangay_clearance',
-  );
+  const [showBooking, setShowBooking] = useState(Boolean(initialService));
+  const [selectedService, setSelectedService] = useState<AppointmentService>(initialService ?? 'barangay_clearance');
+  const [selectedPurpose, setSelectedPurpose] = useState<AppointmentPurpose>('low_income');
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
-  const [purpose, setPurpose] = useState('');
+  const [details, setDetails] = useState('');
+  const [feePreview, setFeePreview] = useState<number | null>(null);
+  const [feeLoading, setFeeLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (initialService) setSelectedService(initialService);
-  }, [initialService]);
-
   const loadAppointments = useCallback(async () => {
     if (!user) {
       setAppointments([]);
       return;
     }
-
     setLoading(true);
     setError(null);
-
     const { data, error: appointmentError } = await supabase
       .from('appointments')
       .select('*')
       .eq('user_id', user.id)
       .order('appointment_date', { ascending: false })
       .order('appointment_time', { ascending: false });
-
-    if (appointmentError) {
-      setError(appointmentError.message);
-    } else {
-      setAppointments((data ?? []) as Appointment[]);
-    }
-
+    if (appointmentError) setError(appointmentError.message);
+    else setAppointments((data ?? []) as Appointment[]);
     setLoading(false);
   }, [user]);
 
   useEffect(() => {
-    if (view === 'appointments') void loadAppointments();
-  }, [loadAppointments, view]);
+    void loadAppointments();
+  }, [loadAppointments]);
+
+  useEffect(() => {
+    if (!resident || !showBooking) {
+      setFeePreview(null);
+      return;
+    }
+    let cancelled = false;
+    const loadFee = async () => {
+      setFeeLoading(true);
+      const { data, error: feeError } = await supabase.rpc('preview_appointment_fee', {
+        p_resident_id: resident.id,
+        p_service_type: selectedService,
+        p_service_purpose: selectedService === 'certificate_of_residency' ? selectedPurpose : null,
+      });
+      if (!cancelled) {
+        if (feeError) {
+          setFeePreview(null);
+          setError(feeError.message);
+        } else {
+          setFeePreview(Number(data));
+        }
+        setFeeLoading(false);
+      }
+    };
+    void loadFee();
+    return () => {
+      cancelled = true;
+    };
+  }, [resident, selectedPurpose, selectedService, showBooking]);
 
   const upcomingCount = useMemo(
-    () => appointments.filter((appointment) =>
-      ['pending', 'confirmed'].includes(appointment.status),
-    ).length,
+    () => appointments.filter((appointment) => ['pending', 'confirmed'].includes(appointment.status)).length,
     [appointments],
   );
+  const upcoming = appointments.filter((appointment) => ['pending', 'confirmed'].includes(appointment.status));
+  const previous = appointments.filter((appointment) => !['pending', 'confirmed'].includes(appointment.status));
+
+  const resetForm = () => {
+    setAppointmentDate('');
+    setAppointmentTime('');
+    setDetails('');
+    setSelectedPurpose('low_income');
+  };
 
   const submitAppointment = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
     setSuccess(null);
-
     if (!user || !resident) {
       setError('Complete your census record before booking an appointment.');
       return;
     }
-
-    if (!appointmentDate || !appointmentTime || purpose.trim().length < 5) {
+    if (!appointmentDate || !appointmentTime || details.trim().length < 5) {
       setError('Select a date and time, then provide at least five characters of details.');
       return;
     }
-
     const chosenDate = new Date(`${appointmentDate}T12:00:00`);
     if (chosenDate.getDay() === 0 || chosenDate.getDay() === 6) {
       setError('Appointments are available from Monday to Friday only.');
       return;
     }
-
     if (appointmentDate < todayInputValue()) {
       setError('Choose today or a future appointment date.');
       return;
     }
 
     setSaving(true);
-
     const { error: insertError } = await supabase.from('appointments').insert({
       resident_id: resident.id,
       user_id: user.id,
       service_type: selectedService,
+      service_purpose: selectedService === 'certificate_of_residency' ? selectedPurpose : null,
       appointment_date: appointmentDate,
       appointment_time: appointmentTime,
-      purpose: purpose.trim(),
+      purpose: details.trim(),
       status: 'pending',
     });
-
     setSaving(false);
 
     if (insertError) {
-      if (insertError.code === '23505') {
-        setError('You already have an active booking for this service, date, and time.');
-      } else {
-        setError(insertError.message);
-      }
+      if (insertError.code === '23505') setError('You already have an active booking for this service, date, and time.');
+      else setError(insertError.message);
       return;
     }
 
-    setSuccess('Appointment submitted successfully. Wait for administrator confirmation.');
-    setAppointmentDate('');
-    setAppointmentTime('');
-    setPurpose('');
-    window.setTimeout(onBooked, 900);
+    setSuccess('Appointment submitted successfully. The final fee was calculated securely by the barangay system.');
+    resetForm();
+    setShowBooking(false);
+    await loadAppointments();
   };
 
   const cancelAppointment = async (appointmentId: string) => {
     if (!window.confirm('Cancel this appointment?')) return;
-
     setCancellingId(appointmentId);
     setError(null);
-
-    const { data, error: cancellationError } = await supabase.rpc(
-      'cancel_resident_appointment',
-      { appointment_id: appointmentId },
-    );
-
+    const { data, error: cancellationError } = await supabase.rpc('cancel_resident_appointment', { appointment_id: appointmentId });
     setCancellingId(null);
-
     if (cancellationError) {
       setError(cancellationError.message);
       return;
     }
-
     const result = data as CancellationResult | null;
     if (!result?.cancelled) {
       setError(result?.message ?? 'The appointment could not be cancelled.');
       return;
     }
-
     setSuccess(result.message ?? 'Appointment cancelled successfully.');
     await loadAppointments();
   };
 
-  if (view === 'services') {
-    return (
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-6 py-6 sm:px-8">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">
-            Online barangay services
-          </p>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Available Services</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Select a service to schedule your visit to the barangay office.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onBook()}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-800"
-            >
-              <CalendarPlus size={18} />
-              Book Appointment
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-6 sm:grid-cols-2 sm:p-8 xl:grid-cols-4">
-          {APPOINTMENT_SERVICES.map((service) => {
-            const Icon = service.icon;
-            return (
-              <button
-                type="button"
-                key={service.value}
-                onClick={() => onBook(service.value)}
-                className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg"
-              >
-                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${service.iconClass}`}>
-                  <Icon size={23} />
-                </div>
-                <h3 className="mt-5 text-lg font-bold text-slate-900 group-hover:text-blue-700">
-                  {service.label}
-                </h3>
-                <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">
-                  {service.description}
-                </p>
-                <span className="mt-5 inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700">
-                  {formatFee(service.fee)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-    );
-  }
-
-  if (view === 'appointments') {
-    return (
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Appointment history</p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">My Appointments</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {upcomingCount} pending or confirmed appointment{upcomingCount === 1 ? '' : 's'}.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => void loadAppointments()}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-            >
-              <RefreshCw className={loading ? 'animate-spin' : ''} size={17} /> Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => onBook()}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
-            >
-              <CalendarPlus size={17} /> Book New
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 sm:p-8">
-          {error && <Message tone="error" text={error} />}
-          {success && <Message tone="success" text={success} />}
-
-          {loading ? (
-            <div className="flex items-center justify-center gap-3 py-16 text-slate-500">
-              <Loader2 className="animate-spin text-blue-700" /> Loading appointments...
-            </div>
-          ) : appointments.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center">
-              <CalendarDays className="mx-auto h-12 w-12 text-slate-300" />
-              <h3 className="mt-4 text-lg font-bold text-slate-800">No appointments yet</h3>
-              <p className="mt-2 text-sm text-slate-500">Choose an available service to schedule your first visit.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {appointments.map((appointment) => {
-                const service = serviceDefinition(appointment.service_type);
-                const Icon = service.icon;
-                const canCancel = ['pending', 'confirmed'].includes(appointment.status);
-                return (
-                  <article key={appointment.id} className="rounded-2xl border border-slate-200 p-5 shadow-sm">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex gap-4">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${service.iconClass}`}>
-                          <Icon size={22} />
-                        </div>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-slate-900">{service.label}</h3>
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[appointment.status]}`}>
-                              {appointment.status.replaceAll('_', ' ')}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
-                            <span className="inline-flex items-center gap-2"><CalendarDays size={16} />{formatAppointmentDate(appointment.appointment_date)}</span>
-                            <span className="inline-flex items-center gap-2"><Clock size={16} />{formatAppointmentTime(appointment.appointment_time)}</span>
-                            <span className="font-bold text-blue-700">{formatFee(appointment.fee)}</span>
-                          </div>
-                          <p className="mt-3 text-sm leading-6 text-slate-600">{appointment.purpose}</p>
-                          {appointment.admin_notes && (
-                            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-                              <strong>Administrator note:</strong> {appointment.admin_notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      {canCancel && (
-                        <button
-                          type="button"
-                          onClick={() => void cancelAppointment(appointment.id)}
-                          disabled={cancellingId === appointment.id}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
-                        >
-                          {cancellingId === appointment.id ? <Loader2 className="animate-spin" size={17} /> : <XCircle size={17} />}
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-    );
-  }
-
-  const selected = serviceDefinition(selectedService);
-
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 px-6 py-8 text-white sm:px-8">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-200">Barangay service portal</p>
-        <h2 className="mt-2 text-3xl font-bold">Book an Appointment</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100">
-          Choose a service and reserve a weekday schedule. Document fees are paid at the barangay office.
-        </p>
+      <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Barangay services</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">Appointments</h2>
+          <p className="mt-1 text-sm text-slate-500">View existing requests, previous visits, or book a new appointment here.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void loadAppointments()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={17} /> Refresh
+          </button>
+          <button type="button" onClick={() => setShowBooking((value) => !value)} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800">
+            {showBooking ? <X size={17} /> : <CalendarPlus size={17} />}
+            {showBooking ? 'Close Booking' : 'Book New'}
+          </button>
+        </div>
       </div>
 
-      <form onSubmit={submitAppointment} className="space-y-7 p-6 sm:p-8">
+      <div className="p-6 sm:p-8">
         {error && <Message tone="error" text={error} />}
         {success && <Message tone="success" text={success} />}
 
-        {!resident && (
-          <Message tone="error" text="Complete your census record before booking an appointment." />
+        {showBooking && (
+          <form onSubmit={submitAppointment} className="mb-8 rounded-3xl border border-blue-100 bg-blue-50/40 p-5 sm:p-6">
+            <div className="mb-5">
+              <h3 className="text-xl font-bold text-slate-900">Book an appointment</h3>
+              <p className="mt-1 text-sm text-slate-500">The displayed fee is verified again by Supabase when you submit.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {APPOINTMENT_SERVICES.map((service) => {
+                const Icon = service.icon;
+                const active = selectedService === service.value;
+                return (
+                  <button key={service.value} type="button" onClick={() => setSelectedService(service.value)} className={`rounded-2xl border p-4 text-left transition ${active ? 'border-blue-600 bg-white ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${service.iconClass}`}><Icon size={20} /></div>
+                      <div>
+                        <p className="font-bold text-slate-900">{service.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{service.description}</p>
+                        <p className="mt-2 text-sm font-bold text-blue-700">{service.feeLabel}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedService === 'certificate_of_residency' && (
+              <label className="mt-5 block text-sm font-bold text-slate-800">
+                Certificate purpose <span className="text-red-600">*</span>
+                <select value={selectedPurpose} onChange={(event) => setSelectedPurpose(event.target.value as AppointmentPurpose)} className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100">
+                  {RESIDENCY_PURPOSES.map((purpose) => <option key={purpose.value} value={purpose.value}>{purpose.label}</option>)}
+                </select>
+              </label>
+            )}
+
+            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <label className="block text-sm font-bold text-slate-800">Appointment date <span className="text-red-600">*</span>
+                <input type="date" value={appointmentDate} min={todayInputValue()} onChange={(event) => setAppointmentDate(event.target.value)} required className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+              </label>
+              <label className="block text-sm font-bold text-slate-800">Appointment time <span className="text-red-600">*</span>
+                <select value={appointmentTime} onChange={(event) => setAppointmentTime(event.target.value)} required className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100">
+                  <option value="">Select a time</option>
+                  {TIME_SLOTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-5 block text-sm font-bold text-slate-800">Request details <span className="text-red-600">*</span>
+              <textarea value={details} onChange={(event) => setDetails(event.target.value)} minLength={5} maxLength={1000} rows={4} required placeholder="Briefly explain why you need the document." className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+            </label>
+
+            <div className="mt-6 flex flex-col gap-4 border-t border-blue-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Fee before confirmation</p>
+                <p className="mt-1 text-2xl font-bold text-blue-800">{feeLoading ? 'Checking…' : feePreview == null ? 'Unavailable' : formatFee(feePreview)}</p>
+                {selectedService === 'certificate_of_residency' && selectedPurpose === 'low_income' && feePreview === 0 && (
+                  <p className="mt-1 text-xs font-semibold text-emerald-700">First Low Income request benefit applied.</p>
+                )}
+              </div>
+              <button type="submit" disabled={saving || feeLoading || feePreview == null || !resident} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-amber-400 px-6 font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">
+                {saving ? <Loader2 className="animate-spin" size={19} /> : <CalendarPlus size={19} />}
+                {saving ? 'Submitting…' : 'Confirm Appointment'}
+              </button>
+            </div>
+          </form>
         )}
 
-        <fieldset>
-          <legend className="text-sm font-bold text-slate-800">Select a service</legend>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {APPOINTMENT_SERVICES.map((service) => {
-              const Icon = service.icon;
-              const selectedOption = selectedService === service.value;
-              return (
-                <button
-                  type="button"
-                  key={service.value}
-                  onClick={() => setSelectedService(service.value)}
-                  className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
-                    selectedOption
-                      ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100'
-                      : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${service.iconClass}`}>
-                    <Icon size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-slate-900">{service.label}</p>
-                    <p className="mt-1 text-sm font-semibold text-blue-700">{formatFee(service.fee)}</p>
-                  </div>
-                  {selectedOption && <CheckCircle2 className="text-blue-700" size={20} />}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
-
-        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-slate-700">
-          <strong>{selected.label}:</strong> {selected.description}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Metric label="All requests" value={appointments.length} />
+          <Metric label="Pending / confirmed" value={upcomingCount} />
+          <Metric label="Completed / previous" value={previous.length} />
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="block text-sm font-bold text-slate-800">
-            Appointment date <span className="text-red-600">*</span>
-            <input
-              type="date"
-              value={appointmentDate}
-              min={todayInputValue()}
-              onChange={(event) => setAppointmentDate(event.target.value)}
-              required
-              className="mt-2 h-12 w-full rounded-xl border border-slate-300 px-4 font-normal outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-            />
-          </label>
-
-          <label className="block text-sm font-bold text-slate-800">
-            Appointment time <span className="text-red-600">*</span>
-            <select
-              value={appointmentTime}
-              onChange={(event) => setAppointmentTime(event.target.value)}
-              required
-              className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-            >
-              <option value="">Select a time</option>
-              {TIME_SLOTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-        </div>
-
-        <label className="block text-sm font-bold text-slate-800">
-          {selectedService === 'complaint' ? 'Complaint details' : 'Purpose of request'} <span className="text-red-600">*</span>
-          <textarea
-            value={purpose}
-            onChange={(event) => setPurpose(event.target.value)}
-            minLength={5}
-            maxLength={1000}
-            required
-            rows={5}
-            placeholder={selectedService === 'complaint'
-              ? 'Briefly explain the complaint you need to discuss.'
-              : 'Explain why you need this document.'}
-            className="mt-2 w-full rounded-xl border border-slate-300 p-4 font-normal outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-          />
-          <span className="mt-1 block text-right text-xs font-normal text-slate-400">{purpose.length}/1000</span>
-        </label>
-
-        <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm text-slate-500">Service fee</p>
-            <p className="text-2xl font-bold text-blue-800">{formatFee(selected.fee)}</p>
-          </div>
-          <button
-            type="submit"
-            disabled={saving || !resident}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-amber-400 px-6 font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="animate-spin" size={19} /> : <CalendarPlus size={19} />}
-            {saving ? 'Submitting...' : 'Submit Appointment'}
-          </button>
-        </div>
-      </form>
+        <AppointmentGroup title="Upcoming and active" appointments={upcoming} loading={loading} cancellingId={cancellingId} onCancel={cancelAppointment} />
+        <AppointmentGroup title="Completed and previous" appointments={previous} loading={loading} cancellingId={cancellingId} onCancel={cancelAppointment} />
+      </div>
     </section>
   );
+}
+
+function AppointmentGroup({ title, appointments, loading, cancellingId, onCancel }: { title: string; appointments: Appointment[]; loading: boolean; cancellingId: string | null; onCancel: (id: string) => Promise<void> }) {
+  return (
+    <div className="mt-7">
+      <div className="mb-3 flex items-center gap-2"><CalendarDays size={18} className="text-blue-700" /><h3 className="font-bold text-slate-900">{title}</h3></div>
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 py-10 text-sm text-slate-500"><Loader2 className="animate-spin text-blue-700" /> Loading appointments…</div>
+      ) : appointments.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">No appointments in this section.</div>
+      ) : (
+        <div className="space-y-3">
+          {appointments.map((appointment) => {
+            const canCancel = ['pending', 'confirmed'].includes(appointment.status);
+            const purpose = purposeLabel(appointment.service_purpose);
+            return (
+              <article key={appointment.id} className="rounded-2xl border border-slate-200 p-4 shadow-sm sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-slate-900">{serviceLabel(appointment.service_type)}</h4>
+                      {purpose && <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{purpose}</span>}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLES[appointment.status]}`}>{appointment.status}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+                      <span className="inline-flex items-center gap-2"><CalendarDays size={16} />{formatAppointmentDate(appointment.appointment_date)}</span>
+                      <span className="inline-flex items-center gap-2"><Clock size={16} />{formatAppointmentTime(appointment.appointment_time)}</span>
+                      <span className="font-bold text-blue-700">{formatFee(appointment.fee)}</span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{appointment.purpose}</p>
+                    {appointment.admin_notes && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Administrator note:</strong> {appointment.admin_notes}</p>}
+                  </div>
+                  {canCancel && (
+                    <button type="button" onClick={() => void onCancel(appointment.id)} disabled={cancellingId === appointment.id} className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+                      {cancellingId === appointment.id ? <Loader2 className="animate-spin" size={17} /> : <XCircle size={17} />} Cancel
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1 text-2xl font-bold text-slate-900">{value}</p></div>;
 }
 
 function Message({ tone, text }: { tone: 'error' | 'success'; text: string }) {
   const success = tone === 'success';
   return (
-    <div className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${
-      success
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-        : 'border-red-200 bg-red-50 text-red-700'
-    }`}>
-      {success
-        ? <CheckCircle2 className="mt-0.5 shrink-0" size={19} />
-        : <AlertCircle className="mt-0.5 shrink-0" size={19} />}
+    <div className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${success ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+      {success ? <CheckCircle2 className="mt-0.5 shrink-0" size={19} /> : <AlertCircle className="mt-0.5 shrink-0" size={19} />}
       <span>{text}</span>
     </div>
   );
