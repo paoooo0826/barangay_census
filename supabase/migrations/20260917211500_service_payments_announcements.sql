@@ -77,7 +77,6 @@ begin
         where a.resident_id = p_resident_id
           and a.service_type = 'certificate_of_residency'
           and a.service_purpose = 'low_income'
-          and a.status <> 'cancelled'
       ) into used_free_low_income;
 
       if not used_free_low_income then
@@ -130,6 +129,10 @@ begin
       raise exception 'Select a valid Certificate of Residency purpose.' using errcode = '22023';
     end if;
 
+    if new.service_type = 'certificate_of_residency' and new.service_purpose = 'low_income' then
+      perform pg_advisory_xact_lock(hashtextextended(new.resident_id::text || ':low-income', 0));
+    end if;
+
     new.fee := public.preview_appointment_fee(new.resident_id, new.service_type, new.service_purpose);
   end if;
 
@@ -143,6 +146,82 @@ create trigger enforce_appointment_request_trigger
 before insert or update on public.appointments
 for each row execute function public.enforce_appointment_request();
 
+create or replace function public.review_resident(
+  p_resident_id uuid,
+  p_action text,
+  p_remark text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  new_status text;
+  current_admin_id uuid;
+  clean_remark text := nullif(trim(p_remark), '');
+begin
+  if auth.uid() is null or not public.is_active_admin() then
+    raise exception 'Active administrator access required' using errcode = '42501';
+  end if;
+
+  if p_action is null or p_action not in ('approve', 'reject') then
+    raise exception 'Invalid review action' using errcode = '22023';
+  end if;
+
+  if p_action = 'reject' and clean_remark is null then
+    raise exception 'A reason is required for rejected records' using errcode = '22023';
+  end if;
+
+  select id into current_admin_id
+  from public.admin_profiles
+  where user_id = auth.uid() and coalesce(is_active, true) = true
+  limit 1;
+
+  if current_admin_id is null then
+    raise exception 'Active administrator access required' using errcode = '42501';
+  end if;
+
+  new_status := case when p_action = 'approve' then 'verified' else 'rejected' end;
+
+  update public.residents
+  set status = new_status,
+      verified_at = case when p_action = 'approve' then now() else null end,
+      updated_at = now()
+  where id = p_resident_id;
+
+  if not found then
+    raise exception 'Resident record not found' using errcode = 'P0002';
+  end if;
+
+  if clean_remark is not null then
+    insert into public.remarks (resident_id, admin_id, remark_text, status_change)
+    values (p_resident_id, current_admin_id, clean_remark, new_status);
+  end if;
+
+  insert into public.notifications (resident_id, title, message)
+  values (
+    p_resident_id,
+    case when p_action = 'approve' then 'Census Approved' else 'Census Rejected' end,
+    coalesce(clean_remark, 'Your census submission has been checked and approved.')
+  );
+
+  insert into public.audit_logs (user_id, action, entity_type, entity_id, details)
+  values (
+    auth.uid(),
+    p_action,
+    'resident',
+    p_resident_id,
+    jsonb_build_object('status', new_status, 'remark', coalesce(clean_remark, ''))
+  );
+
+  return jsonb_build_object('resident_id', p_resident_id, 'status', new_status);
+end;
+$function$;
+
+revoke all on function public.review_resident(uuid, text, text) from public, anon;
+grant execute on function public.review_resident(uuid, text, text) to authenticated;
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'announcement-images',
@@ -154,8 +233,6 @@ values (
 on conflict (id) do update
 set file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
-
-alter table storage.objects enable row level security;
 
 drop policy if exists "Admins manage announcement images" on storage.objects;
 create policy "Admins manage announcement images"
