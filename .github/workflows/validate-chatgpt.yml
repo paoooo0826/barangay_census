@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - chatgpt/latest-census-updates
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
