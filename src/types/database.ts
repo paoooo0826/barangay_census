@@ -67,9 +67,19 @@ export type ResidentStatus =
 
 export type AppointmentService =
   | 'barangay_clearance'
+  | 'certificate_of_residency';
+
+export type LegacyAppointmentService =
   | 'certificate_of_indigency'
-  | 'certificate_of_residency'
   | 'complaint';
+
+export type StoredAppointmentService = AppointmentService | LegacyAppointmentService;
+
+export type AppointmentPurpose =
+  | 'low_income'
+  | 'good_moral'
+  | 'financial'
+  | 'medical_assistance';
 
 export type AppointmentStatus =
   | 'pending'
@@ -171,6 +181,7 @@ export interface Announcement {
   is_published: boolean;
   published_at: string;
   expires_at?: string | null;
+  image_path?: string | null;
   created_by?: string | null;
   created_at: string;
   updated_at: string;
@@ -180,7 +191,8 @@ export interface Appointment {
   id: string;
   resident_id: string;
   user_id: string;
-  service_type: AppointmentService;
+  service_type: StoredAppointmentService;
+  service_purpose?: AppointmentPurpose | null;
   fee: number;
   appointment_date: string;
   appointment_time: string;
@@ -246,6 +258,14 @@ export interface Database {
       cancel_resident_appointment: {
         Args: { appointment_id: string };
         Returns: Json;
+      };
+      preview_appointment_fee: {
+        Args: {
+          p_resident_id: string;
+          p_service_type: AppointmentService;
+          p_service_purpose: AppointmentPurpose | null;
+        };
+        Returns: number;
       };
     };
     Enums: Record<string, never>;

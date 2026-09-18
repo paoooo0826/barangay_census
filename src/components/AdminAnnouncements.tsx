@@ -1,425 +1,96 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  BellRing,
-  CheckCircle2,
-  Loader2,
-  Megaphone,
-  Plus,
-  Send,
-  Trash2,
-} from 'lucide-react';
-
+import { AlertCircle, BellRing, CheckCircle2, ImagePlus, Loader2, Megaphone, Plus, Send, Trash2, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import SortControls from './SortControls';
 import { readAllRows } from '../lib/pagination';
 import { compareValues, type SortDirection } from '../lib/sorting';
-import type {
-  Announcement,
-  AnnouncementAudience,
-  AnnouncementPriority,
-} from '../types/database';
+import type { Announcement, AnnouncementAudience, AnnouncementPriority } from '../types/database';
 
-interface AdminAnnouncementsProps {
-  adminProfileId?: string;
-  refreshKey?: number;
-}
+interface Props { adminProfileId?: string; refreshKey?: number; }
+type AnnouncementView = Announcement & { imageUrl?: string | null };
+const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = { all: 'All residents', pending_review: 'Pending review residents', verified: 'Verified residents', returned: 'Residents with returned records', rejected: 'Residents with rejected records' };
+const PRIORITY_LABELS: Record<AnnouncementPriority, string> = { info: 'Information', important: 'Important', urgent: 'Urgent' };
+const PRIORITY_STYLES: Record<AnnouncementPriority, string> = { info: 'border-blue-200 bg-blue-50 text-blue-800', important: 'border-amber-200 bg-amber-50 text-amber-800', urgent: 'border-red-200 bg-red-50 text-red-800' };
+function formatDateTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en-PH', { year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }).format(date); }
 
-const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
-  all: 'All residents',
-  pending_review: 'Pending review residents',
-  verified: 'Verified residents',
-  returned: 'Residents with returned records',
-  rejected: 'Residents with rejected records',
-};
-
-const PRIORITY_LABELS: Record<AnnouncementPriority, string> = {
-  info: 'Information',
-  important: 'Important',
-  urgent: 'Urgent',
-};
-
-const PRIORITY_STYLES: Record<AnnouncementPriority, string> = {
-  info: 'border-blue-200 bg-blue-50 text-blue-800',
-  important: 'border-amber-200 bg-amber-50 text-amber-800',
-  urgent: 'border-red-200 bg-red-50 text-red-800',
-};
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
-}
-
-export default function AdminAnnouncements({
-  adminProfileId,
-  refreshKey,
-}: AdminAnnouncementsProps) {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [title, setTitle] = useState('');
-  const [message, setMessage] = useState('');
-  const [priority, setPriority] = useState<AnnouncementPriority>('info');
-  const [audience, setAudience] = useState<AnnouncementAudience>('all');
-  const [expiresAt, setExpiresAt] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [sortField, setSortField] = useState('created_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [renderTime] = useState(() => Date.now());
+export default function AdminAnnouncements({ adminProfileId, refreshKey }: Props) {
+  const [announcements, setAnnouncements] = useState<AnnouncementView[]>([]);
+  const [title, setTitle] = useState(''); const [message, setMessage] = useState('');
+  const [priority, setPriority] = useState<AnnouncementPriority>('info'); const [audience, setAudience] = useState<AnnouncementAudience>('all'); const [expiresAt, setExpiresAt] = useState('');
+  const [image, setImage] = useState<File | null>(null); const [imagePreview, setImagePreview] = useState('');
+  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [showForm, setShowForm] = useState(false);
+  const [sortField, setSortField] = useState('created_at'); const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set()); const [error, setError] = useState<string | null>(null); const [success, setSuccess] = useState<string | null>(null);
 
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
-
     try {
-      const data = await readAllRows<Announcement>((from, to) => supabase
-        .from('announcements')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: true })
-        .range(from, to));
-      setAnnouncements(data);
-      setError(null);
-    } catch (loadError) {
-      console.error('Unable to load announcements:', loadError);
-      setError('Unable to load announcements. Please try refreshing.');
-    } finally {
-      setLoading(false);
-    }
+      const rows = await readAllRows<Announcement>((from, to) => supabase.from('announcements').select('*').order('created_at',{ascending:false}).order('id',{ascending:true}).range(from,to));
+      const withImages = await Promise.all(rows.map(async (row) => {
+        if (!row.image_path) return { ...row, imageUrl: null };
+        const { data } = await supabase.storage.from('announcement-images').createSignedUrl(row.image_path, 60 * 60);
+        return { ...row, imageUrl: data?.signedUrl ?? null };
+      }));
+      setAnnouncements(withImages); setError(null);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load announcements.'); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => { void loadAnnouncements(); }, [loadAnnouncements, refreshKey]);
+  useEffect(() => () => { if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
-  useEffect(() => {
-    void loadAnnouncements();
-  }, [loadAnnouncements, refreshKey]);
+  const sorted = useMemo(() => [...announcements].sort((a,b) => {
+    const value = (x: Announcement) => sortField === 'title' ? x.title : sortField === 'priority' ? PRIORITY_LABELS[x.priority] : sortField === 'audience' ? AUDIENCE_LABELS[x.audience] : x.created_at;
+    return compareValues(value(a),value(b),sortDirection) || compareValues(a.id,b.id);
+  }), [announcements,sortField,sortDirection]);
 
-  const sortedAnnouncements = useMemo(() => [...announcements].sort((left, right) => {
-    const value = (announcement: Announcement) => {
-      if (sortField === 'title') return announcement.title;
-      if (sortField === 'priority') return PRIORITY_LABELS[announcement.priority];
-      if (sortField === 'audience') return AUDIENCE_LABELS[announcement.audience];
-      return announcement.created_at;
-    };
-    return compareValues(value(left), value(right), sortDirection) || compareValues(left.id, right.id);
-  }), [announcements, sortField, sortDirection]);
+  const chooseImage = (file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { setError('Announcement photo must be JPG, PNG, or WebP.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('Announcement photo must be 5 MB or smaller.'); return; }
+    if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+    setImage(file); setImagePreview(URL.createObjectURL(file)); setError(null);
+  };
+  const clearImage = () => { if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview); setImage(null); setImagePreview(''); };
 
   async function handlePublish(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSuccess(null);
-
-    if (title.trim().length < 3) {
-      setError('The announcement title must contain at least 3 characters.');
-      return;
-    }
-
-    if (message.trim().length < 5) {
-      setError('The announcement message must contain at least 5 characters.');
-      return;
-    }
-
-    setSaving(true);
-
-    const { data, error: publishError } = await supabase
-      .from('announcements')
-      .insert({
-        title: title.trim(),
-        message: message.trim(),
-        priority,
-        audience,
-        is_published: true,
-        published_at: new Date().toISOString(),
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-        created_by: adminProfileId ?? null,
-      })
-      .select()
-      .single();
-
-    if (publishError) {
-      console.error('Unable to publish announcement:', publishError);
-      setError('The announcement could not be published. Check your administrator access and try again.');
-    } else {
-      setAnnouncements((current) => [data as Announcement, ...current]);
-      setTitle('');
-      setMessage('');
-      setPriority('info');
-      setAudience('all');
-      setExpiresAt('');
-      setShowForm(false);
-      setSuccess('Announcement published to the selected residents.');
-    }
-
-    setSaving(false);
+    event.preventDefault(); setError(null); setSuccess(null);
+    if (title.trim().length < 3 || message.trim().length < 5) { setError('Enter a title and complete announcement message.'); return; }
+    setSaving(true); let uploadedPath: string | null = null;
+    try {
+      if (image) {
+        const extension = image.name.split('.').pop()?.toLowerCase() || 'jpg';
+        uploadedPath = `${adminProfileId ?? 'admin'}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('announcement-images').upload(uploadedPath, image, { contentType: image.type, cacheControl:'3600', upsert:false });
+        if (uploadError) throw uploadError;
+      }
+      const { error: publishError } = await supabase.from('announcements').insert({ title:title.trim(), message:message.trim(), priority, audience, is_published:true, published_at:new Date().toISOString(), expires_at:expiresAt ? new Date(expiresAt).toISOString() : null, created_by:adminProfileId ?? null, image_path:uploadedPath });
+      if (publishError) throw publishError;
+      setTitle(''); setMessage(''); setPriority('info'); setAudience('all'); setExpiresAt(''); clearImage(); setShowForm(false); setSuccess('Announcement published successfully.'); await loadAnnouncements();
+    } catch (e) {
+      if (uploadedPath) await supabase.storage.from('announcement-images').remove([uploadedPath]);
+      setError(e instanceof Error ? e.message : 'Announcement could not be published.');
+    } finally { setSaving(false); }
   }
 
-  async function togglePublished(announcement: Announcement) {
-    setError(null);
-    setSuccess(null);
-    const nextPublished = !announcement.is_published;
-
-    const { data, error: updateError } = await supabase
-      .from('announcements')
-      .update({
-        is_published: nextPublished,
-        published_at: nextPublished ? new Date().toISOString() : announcement.published_at,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', announcement.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      setError('The announcement status could not be changed.');
-      return;
-    }
-
-    setAnnouncements((current) =>
-      current.map((item) => (item.id === announcement.id ? (data as Announcement) : item)),
-    );
-    setSuccess(nextPublished ? 'Announcement published again.' : 'Announcement hidden from residents.');
+  async function togglePublished(a: AnnouncementView) {
+    const next = !a.is_published; setError(null);
+    const { error: updateError } = await supabase.from('announcements').update({ is_published:next, published_at:next ? new Date().toISOString() : a.published_at, updated_at:new Date().toISOString() }).eq('id',a.id);
+    if (updateError) setError(updateError.message); else { setSuccess(next ? 'Announcement published again.' : 'Announcement hidden.'); await loadAnnouncements(); }
+  }
+  async function deleteAnnouncement(a: AnnouncementView) {
+    if (!window.confirm(`Delete “${a.title}”?`)) return;
+    const { error: deleteError } = await supabase.from('announcements').delete().eq('id',a.id);
+    if (deleteError) { setError(deleteError.message); return; }
+    if (a.image_path) await supabase.storage.from('announcement-images').remove([a.image_path]);
+    setSuccess('Announcement deleted.'); await loadAnnouncements();
   }
 
-  async function deleteAnnouncement(announcement: Announcement) {
-    if (!window.confirm(`Delete the announcement “${announcement.title}”?`)) return;
-
-    setError(null);
-    setSuccess(null);
-    const { error: deleteError } = await supabase
-      .from('announcements')
-      .delete()
-      .eq('id', announcement.id);
-
-    if (deleteError) {
-      setError('The announcement could not be deleted.');
-      return;
-    }
-
-    setAnnouncements((current) => current.filter((item) => item.id !== announcement.id));
-    setSuccess('Announcement deleted.');
-  }
-
-  return (
-    <section className="mb-8 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-blue-700 to-indigo-700 p-6 text-white">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-            <Megaphone className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
-              Resident communication
-            </p>
-            <h2 className="mt-1 text-2xl font-bold">Announcements</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100">
-              Publish notices to every resident or target them by census review status.
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-expanded={showForm}
-          aria-controls="announcement-form"
-          disabled={saving}
-          onClick={() => setShowForm((current) => !current)}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-blue-800 transition hover:bg-blue-50 disabled:opacity-60"
-        >
-          <Plus className="h-4 w-4" /> {showForm ? 'Close form' : 'Add Announcement'}
-        </button>
-      </div>
-
-      {error && (
-        <div role="alert" className="m-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div role="status" className="m-6 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
-
-      <div className={`grid gap-0 ${showForm ? 'xl:grid-cols-[0.9fr_1.1fr]' : ''}`}>
-        {showForm && <form id="announcement-form" onSubmit={handlePublish} className="border-b border-slate-200 p-6 xl:border-b-0 xl:border-r">
-          <h3 className="font-bold text-slate-900">Create announcement</h3>
-          <div className="mt-5 space-y-4">
-            <div>
-              <label htmlFor="announcement-title" className="mb-2 block text-sm font-semibold text-slate-700">
-                Title
-              </label>
-              <input
-                id="announcement-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={120}
-                className="input"
-                placeholder="Example: Barangay assembly schedule"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="announcement-message" className="mb-2 block text-sm font-semibold text-slate-700">
-                Message
-              </label>
-              <textarea
-                id="announcement-message"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                maxLength={2000}
-                rows={5}
-                className="input min-h-32 resize-y"
-                placeholder="Write the complete notice for residents..."
-                required
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="announcement-priority" className="mb-2 block text-sm font-semibold text-slate-700">
-                  Priority
-                </label>
-                <select
-                  id="announcement-priority"
-                  value={priority}
-                  onChange={(event) => setPriority(event.target.value as AnnouncementPriority)}
-                  className="input"
-                >
-                  {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="announcement-audience" className="mb-2 block text-sm font-semibold text-slate-700">
-                  Audience
-                </label>
-                <select
-                  id="announcement-audience"
-                  value={audience}
-                  onChange={(event) => setAudience(event.target.value as AnnouncementAudience)}
-                  className="input"
-                >
-                  {Object.entries(AUDIENCE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="announcement-expiry" className="mb-2 block text-sm font-semibold text-slate-700">
-                Expiration <span className="font-normal text-slate-400">(optional)</span>
-              </label>
-              <input
-                id="announcement-expiry"
-                type="datetime-local"
-                value={expiresAt}
-                min={new Date().toISOString().slice(0, 16)}
-                onChange={(event) => setExpiresAt(event.target.value)}
-                className="input"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-            {saving ? 'Publishing...' : 'Publish announcement'}
-          </button>
-        </form>}
-
-        <div className="p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-bold text-slate-900">Announcement history</h3>
-              <p className="mt-1 text-sm text-slate-500">Published, hidden, and expired notices</p>
-            </div>
-            <BellRing className="h-5 w-5 text-blue-700" />
-          </div>
-          <div className="mt-4">
-            <SortControls id="announcements" field={sortField} direction={sortDirection} options={[
-              { value: 'created_at', label: 'Created date' },
-              { value: 'title', label: 'Title' },
-              { value: 'priority', label: 'Priority' },
-              { value: 'audience', label: 'Audience' },
-            ]} onFieldChange={setSortField} onDirectionChange={setSortDirection} />
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-16 text-slate-500">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading announcements...
-            </div>
-          ) : announcements.length === 0 ? (
-            <div className="mt-5 rounded-2xl border-2 border-dashed border-slate-200 px-5 py-12 text-center text-sm text-slate-500">
-              No announcements have been created yet.
-            </div>
-          ) : (
-            <div className="mt-5 max-h-[620px] space-y-4 overflow-y-auto pr-1">
-              {sortedAnnouncements.map((announcement) => {
-                const expired = Boolean(
-                  announcement.expires_at && new Date(announcement.expires_at).getTime() <= renderTime,
-                );
-
-                return (
-                  <article key={announcement.id} className={`rounded-2xl border p-4 ${PRIORITY_STYLES[announcement.priority]}`}>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider">
-                          <span>{PRIORITY_LABELS[announcement.priority]}</span>
-                          <span>•</span>
-                          <span>{AUDIENCE_LABELS[announcement.audience]}</span>
-                        </div>
-                        <h4 className="mt-2 text-base font-bold text-slate-900">{announcement.title}</h4>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${announcement.is_published && !expired ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {expired ? 'Expired' : announcement.is_published ? 'Published' : 'Hidden'}
-                      </span>
-                    </div>
-
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{announcement.message}</p>
-                    <p className="mt-3 text-xs text-slate-500">
-                      Published {formatDateTime(announcement.published_at)}
-                      {announcement.expires_at ? ` · Expires ${formatDateTime(announcement.expires_at)}` : ''}
-                    </p>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void togglePublished(announcement)}
-                        className="rounded-lg border border-current/20 bg-white/70 px-3 py-2 text-xs font-bold transition hover:bg-white"
-                      >
-                        {announcement.is_published ? 'Hide from residents' : 'Publish again'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteAnnouncement(announcement)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white/70 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <div className="border-b border-slate-100 bg-gradient-to-r from-blue-700 to-indigo-700 p-6 text-white"><div className="flex items-start gap-4"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15"><Megaphone size={24}/></div><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">Resident communication</p><h2 className="mt-1 text-2xl font-bold">Announcements</h2><p className="mt-2 text-sm text-blue-100">Publish text notices with an optional photo.</p></div></div><button type="button" onClick={() => setShowForm((v)=>!v)} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-blue-800">{showForm ? <X size={16}/> : <Plus size={16}/>} {showForm ? 'Close form' : 'Add Announcement'}</button></div>
+    {error && <div className="m-6 flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle size={17}/>{error}</div>}{success && <div className="m-6 flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700"><CheckCircle2 size={17}/>{success}</div>}
+    <div className={`grid ${showForm ? 'xl:grid-cols-[0.9fr_1.1fr]' : ''}`}>
+      {showForm && <form onSubmit={handlePublish} className="border-b border-slate-200 p-6 xl:border-b-0 xl:border-r"><h3 className="font-bold text-slate-900">Create announcement</h3><div className="mt-5 space-y-4"><label className="block text-sm font-semibold text-slate-700">Title<input value={title} onChange={(e)=>setTitle(e.target.value)} maxLength={120} className="input mt-2" required/></label><label className="block text-sm font-semibold text-slate-700">Message<textarea value={message} onChange={(e)=>setMessage(e.target.value)} maxLength={2000} rows={6} className="input mt-2 min-h-32 resize-y" required/></label><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-700">Priority<select value={priority} onChange={(e)=>setPriority(e.target.value as AnnouncementPriority)} className="input mt-2">{Object.entries(PRIORITY_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="text-sm font-semibold text-slate-700">Audience<select value={audience} onChange={(e)=>setAudience(e.target.value as AnnouncementAudience)} className="input mt-2">{Object.entries(AUDIENCE_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div><label className="block text-sm font-semibold text-slate-700">Expiration (optional)<input type="datetime-local" value={expiresAt} onChange={(e)=>setExpiresAt(e.target.value)} className="input mt-2"/></label><div><p className="text-sm font-semibold text-slate-700">Photo (optional)</p><label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600 hover:border-blue-400"><ImagePlus size={20}/> Add Photo<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e)=>chooseImage(e.target.files?.[0])}/></label>{imagePreview && <div className="relative mt-3 overflow-hidden rounded-2xl border border-slate-200"><img src={imagePreview} alt="Announcement preview" className="max-h-64 w-full object-cover"/><button type="button" onClick={clearImage} className="absolute right-2 top-2 rounded-full bg-slate-950/70 p-2 text-white"><X size={16}/></button></div>}</div></div><button type="submit" disabled={saving} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white disabled:opacity-60">{saving ? <Loader2 className="animate-spin"/> : <Send/>}{saving ? 'Publishing…' : 'Publish announcement'}</button></form>}
+      <div className="p-6"><div className="flex items-center justify-between"><div><h3 className="font-bold text-slate-900">Announcement history</h3><p className="mt-1 text-sm text-slate-500">Published, hidden, and expired notices</p></div><BellRing className="text-blue-700"/></div><div className="mt-4"><SortControls id="announcements" field={sortField} direction={sortDirection} options={[{value:'created_at',label:'Created date'},{value:'title',label:'Title'},{value:'priority',label:'Priority'},{value:'audience',label:'Audience'}]} onFieldChange={setSortField} onDirectionChange={setSortDirection}/></div>{loading ? <div className="flex justify-center py-16 text-slate-500"><Loader2 className="mr-2 animate-spin"/>Loading announcements…</div> : <div className="mt-5 space-y-4">{sorted.map((a)=>{ const long=a.message.length>240; const open=expanded.has(a.id); return <article key={a.id} className={`rounded-2xl border p-4 ${PRIORITY_STYLES[a.priority]}`}>{a.imageUrl && <img src={a.imageUrl} alt="" className="mb-4 max-h-64 w-full rounded-xl object-cover"/>}<div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase">{PRIORITY_LABELS[a.priority]} · {AUDIENCE_LABELS[a.audience]}</p><h4 className="mt-2 font-bold text-slate-900">{a.title}</h4></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.is_published ? 'bg-emerald-100 text-emerald-700':'bg-slate-200 text-slate-600'}`}>{a.is_published?'Published':'Hidden'}</span></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{long && !open ? `${a.message.slice(0,240).trim()}…` : a.message}</p>{long && <button type="button" onClick={()=>setExpanded((prev)=>{const next=new Set(prev); if(next.has(a.id)) next.delete(a.id); else next.add(a.id); return next;})} className="mt-2 text-sm font-bold text-blue-700">{open?'Show Less':'See More'}</button>}<p className="mt-3 text-xs text-slate-500">Published {formatDateTime(a.published_at)}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={()=>void togglePublished(a)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">{a.is_published?'Hide':'Publish'}</button><button type="button" onClick={()=>void deleteAnnouncement(a)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"><Trash2 size={14}/>Delete</button></div></article>;})}{!sorted.length && <div className="rounded-2xl border-2 border-dashed border-slate-200 px-5 py-12 text-center text-sm text-slate-500">No announcements yet.</div>}</div>}</div>
+    </div>
+  </section>;
 }
