@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Camera, CheckCircle2, FlipHorizontal2, Loader2, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import * as faceapi from 'face-api.js';
+import VideoGuide from './VideoGuide';
+import { faceInsideGuide } from '../lib/captureGuide';
 
 export type LivenessAction = 'blink_twice' | 'turn_left' | 'turn_right' | 'smile' | 'move_closer';
 
@@ -299,7 +301,6 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
   async function monitorLiveness(selectedActions: LivenessAction[], sessionId: number) {
     let index = 0;
     let consecutiveMatches = 0;
-    let lastDescriptor: Float32Array | null = null;
 
     const wait = (milliseconds: number) =>
       new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -337,9 +338,15 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
 
         setError('');
         const detection = detections[0];
-        lastDescriptor = detection.descriptor;
         const landmarks = detection.landmarks;
         const box = detection.detection.box;
+        if (!faceInsideGuide(box, video.videoWidth, video.videoHeight)) {
+          consecutiveMatches = 0;
+          setError('Center your entire face inside the oval guide and move slightly back.');
+          setStatus('Waiting for correct face position...');
+          await wait(300);
+          continue;
+        }
         const frameArea = video.videoWidth * video.videoHeight;
         const areaRatio = (box.width * box.height) / Math.max(1, frameArea);
         if (baselineAreaRef.current === null) baselineAreaRef.current = areaRatio;
@@ -398,14 +405,13 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
 
       if (
         index === selectedActions.length &&
-        lastDescriptor &&
         sessionId === monitorSessionRef.current
       ) {
         setPassed(selectedActions);
         setStatus('All movements detected. Completing face comparison...');
         await wait(500);
         if (sessionId === monitorSessionRef.current) {
-          await captureAndCompare(lastDescriptor, selectedActions);
+          await captureAndCompare(selectedActions);
         }
       }
     } catch (caught) {
@@ -416,10 +422,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
     }
   }
 
-  async function captureAndCompare(
-    liveDescriptor: Float32Array,
-    completedActions: LivenessAction[] = actions,
-  ) {
+  async function captureAndCompare(completedActions: LivenessAction[] = actions) {
     if (!videoRef.current || !canvasRef.current || !idQualityRef.current) throw new Error('Verification data is incomplete. Restart verification.');
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -428,6 +431,20 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Unable to capture the live face.');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 608, scoreThreshold: 0.55 });
+    const capturedFaces = await faceapi
+      .detectAllFaces(canvas, options)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+    if (capturedFaces.length !== 1) {
+      throw new Error(capturedFaces.length === 0
+        ? 'The final photo did not contain a clear face. Please restart verification.'
+        : 'The final photo contained multiple faces. Please restart with only the applicant visible.');
+    }
+    if (!faceInsideGuide(capturedFaces[0].detection.box, canvas.width, canvas.height)) {
+      throw new Error('Your face moved outside the guide before capture. Please restart verification.');
+    }
+    const liveDescriptor = capturedFaces[0].descriptor;
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Live face capture failed.')), 'image/jpeg', 0.92));
     const file = new File([blob], `captured-face-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
@@ -545,6 +562,7 @@ export default function FaceIdentityVerification({ idFrontFile, idFrontPreview, 
               className={cameraReady && !complete ? 'h-full w-full object-contain' : 'aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]'}
               style={{ transform: mirrorPreview ? 'scaleX(-1)' : 'none' }}
             />
+            {!complete && <VideoGuide videoRef={videoRef} kind="face" ready={!error} />}
             {!complete && (
               <button
                 type="button"

@@ -202,6 +202,7 @@ export interface Appointment {
   completed_at?: string | null;
   created_at: string;
   updated_at: string;
+  request_key?: string | null;
 }
 
 export interface AdminProfile {
@@ -266,6 +267,37 @@ export interface Database {
           p_service_purpose: AppointmentPurpose | null;
         };
         Returns: number;
+      };
+      save_resident_census: {
+        Args: {
+          p_resident: Json;
+          p_categories: Json;
+          p_government_id: Json;
+          p_face_verification: Json;
+        };
+        Returns: Json;
+      };
+      book_resident_appointment: {
+        Args: {
+          p_resident_id: string;
+          p_service_type: AppointmentService;
+          p_service_purpose: AppointmentPurpose | null;
+          p_appointment_date: string;
+          p_appointment_time: string;
+          p_purpose: string;
+          p_expected_fee: number;
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      transition_appointment: {
+        Args: {
+          p_appointment_id: string;
+          p_expected_status: AppointmentStatus;
+          p_new_status: AppointmentStatus;
+          p_admin_notes: string | null;
+        };
+        Returns: Json;
       };
     };
     Enums: Record<string, never>;

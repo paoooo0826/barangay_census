@@ -30,7 +30,7 @@ export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
       ages,
       sex: countBy(residents.map((r) => titleCase(r.sex || 'Not specified'))),
       civil: countBy(residents.map((r) => titleCase(r.civil_status || 'Not specified'))),
-      education: countBy(residents.map((r) => r.highest_education?.trim() || 'Not specified')).slice(0, 8),
+      education: countBy(residents.map((r) => r.highest_education?.trim() || 'Not specified')),
     };
   }, [residents]);
 
@@ -49,5 +49,5 @@ export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
 
 function ChartCard({ title, subtitle, icon: Icon, rows }: { title: string; subtitle: string; icon: typeof Users; rows: ChartRow[] }) {
   const max = Math.max(1, ...rows.map((row) => row.count)); const total = rows.reduce((sum, row) => sum + row.count, 0);
-  return <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700"><Icon size={20}/></div><div><h3 className="font-bold text-slate-900">{title}</h3><p className="text-xs text-slate-500">{subtitle}</p></div></div><div className="mt-6 space-y-4">{rows.length ? rows.map((row) => <div key={row.label}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="truncate font-medium text-slate-700">{row.label}</span><span className="shrink-0 font-bold text-slate-900">{row.count} <span className="font-normal text-slate-400">({total ? Math.round(row.count / total * 100) : 0}%)</span></span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${Math.max(row.count ? 5 : 0, row.count / max * 100)}%` }}/></div></div>) : <p className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">No census data available.</p>}</div></article>;
+  return <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700"><Icon size={20}/></div><div><h3 className="font-bold text-slate-900">{title}</h3><p className="text-xs text-slate-500">{subtitle}</p></div></div><div className="mt-6 space-y-4">{rows.length ? rows.map((row) => <div key={row.label}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="truncate font-medium text-slate-700">{row.label}</span><span className="shrink-0 font-bold text-slate-900">{row.count} <span className="font-normal text-slate-400">({total ? Math.round(row.count / total * 100) : 0}%)</span></span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${row.count / max * 100}%` }}/></div></div>) : <p className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">No census data available.</p>}</div></article>;
 }

@@ -23,9 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 
-import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import ResidentQrCard from '../components/ResidentQrCard';
 
 import type {
   FaceVerification,
@@ -45,6 +43,14 @@ interface ResidentData {
   governmentId: GovernmentId | null;
   faceVerification: FaceVerification | null;
   remarks: Remark[];
+  categories: ResidentCategoryData[];
+}
+
+interface ResidentCategoryData {
+  category_id: number;
+  indigenous_group?: string | null;
+  other_description?: string | null;
+  categories?: { name?: string | null } | Array<{ name?: string | null }> | null;
 }
 
 type ReviewAction = 'approve' | 'reject';
@@ -139,7 +145,7 @@ async function createVerificationImageUrl(pathOrUrl?: string | null) {
     .createSignedUrl(pathOrUrl, 60 * 60);
 
   if (error) {
-    console.error('Unable to create verification image URL:', error);
+    console.error('Unable to load a verification image:', error.message);
     return null;
   }
 
@@ -160,7 +166,7 @@ async function createHouseholdImageUrl(pathOrUrl?: string | null) {
     .createSignedUrl(pathOrUrl, 60 * 60);
 
   if (error) {
-    console.error('Unable to create household image URL:', error);
+    console.error('Unable to load the household image:', error.message);
     return null;
   }
 
@@ -189,13 +195,16 @@ const formatCurrency = (value?: number | null) => {
   }).format(Number(value));
 };
 
+const categoryName = (row: ResidentCategoryData) => {
+  const joined = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+  return joined?.name || `Category ${row.category_id}`;
+};
+
 export default function AdminReview({
   residentId,
   onBack,
   onDecisionComplete,
 }: AdminReviewProps) {
-  const { adminProfile } = useAuth();
-
   const [data, setData] = useState<ResidentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -208,6 +217,8 @@ export default function AdminReview({
 
   useEffect(() => {
     void fetchResidentData();
+    const refreshTimer = window.setInterval(() => void fetchResidentData(), 50 * 60 * 1000);
+    return () => window.clearInterval(refreshTimer);
   }, [residentId]);
 
   const fetchResidentData = async () => {
@@ -225,7 +236,7 @@ export default function AdminReview({
         throw residentError;
       }
 
-      const [idResult, faceResult, remarksResult] = await Promise.all([
+      const [idResult, faceResult, remarksResult, categoriesResult] = await Promise.all([
         supabase
           .from('government_ids')
           .select('*')
@@ -245,6 +256,11 @@ export default function AdminReview({
           .order('created_at', {
             ascending: false,
           }),
+
+        supabase
+          .from('resident_categories')
+          .select('category_id, indigenous_group, other_description, categories(name)')
+          .eq('resident_id', residentId),
       ]);
 
       if (idResult.error) {
@@ -257,6 +273,10 @@ export default function AdminReview({
 
       if (remarksResult.error) {
         throw remarksResult.error;
+      }
+
+      if (categoriesResult.error) {
+        throw categoriesResult.error;
       }
 
       const governmentId = idResult.data
@@ -292,6 +312,7 @@ export default function AdminReview({
         governmentId: governmentId as GovernmentId | null,
         faceVerification: faceVerification as FaceVerification | null,
         remarks: (remarksResult.data ?? []) as Remark[],
+        categories: (categoriesResult.data ?? []) as ResidentCategoryData[],
       });
     } catch (fetchError) {
       console.error('Error loading resident:', fetchError);
@@ -351,7 +372,7 @@ export default function AdminReview({
   };
 
   const handleAction = async () => {
-    if (!selectedAction || !data || !adminProfile) {
+    if (!selectedAction || !data) {
       return;
     }
 
@@ -379,7 +400,7 @@ export default function AdminReview({
       onDecisionComplete();
     } catch (actionError) {
       console.error('Action error:', actionError);
-      setError('Failed to update the resident status. Please try again.');
+      setError(actionError instanceof Error ? actionError.message : 'Failed to update the resident status. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -587,10 +608,6 @@ export default function AdminReview({
           </div>
         </section>
 
-        <div className="mb-8">
-          <ResidentQrCard resident={resident} compact />
-        </div>
-
         <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -702,51 +719,6 @@ export default function AdminReview({
             </section>
           )}
 
-          {data.faceVerification && (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Face verification result
-                  </p>
-
-                  <p className="mt-2 text-sm font-semibold text-slate-800">
-                    {formatLabel(
-                      (
-                        data.faceVerification as FaceVerification & {
-                          verification_status?: string | null;
-                        }
-                      ).verification_status,
-                    )}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Match score
-                  </p>
-
-                  <p className="mt-2 text-sm font-semibold text-slate-800">
-                    {(
-                      data.faceVerification as FaceVerification & {
-                        match_score?: number | null;
-                      }
-                    ).match_score != null
-                      ? `${Math.round(
-                          Number(
-                            (
-                              data.faceVerification as FaceVerification & {
-                                match_score?: number | null;
-                              }
-                            ).match_score,
-                          ) * 100,
-                        )}%`
-                      : 'Not available'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
         </section>
 
         <section className="mb-8 grid gap-6 lg:grid-cols-2">
@@ -978,6 +950,14 @@ export default function AdminReview({
               />
             </div>
           </article>
+        </section>
+
+        <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-100 text-teal-700"><Contact className="h-5 w-5" /></div>
+            <div><p className="text-sm font-semibold text-teal-700">Resident classification</p><h2 className="text-lg font-bold text-slate-900">Categories</h2></div>
+          </div>
+          {data.categories.length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.categories.map((row) => <article key={row.category_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="font-bold text-slate-900">{categoryName(row)}</p>{row.indigenous_group && <p className="mt-2 text-sm text-slate-600"><strong>Indigenous group:</strong> {row.indigenous_group}</p>}{row.other_description && <p className="mt-2 text-sm text-slate-600"><strong>Description:</strong> {row.other_description}</p>}</article>)}</div> : <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No special resident category selected.</p>}
         </section>
 
         {data.remarks.length > 0 && (

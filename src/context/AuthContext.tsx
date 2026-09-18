@@ -35,6 +35,12 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function clearAccountTemporaryData(userId?: string) {
+  sessionStorage.removeItem('pendingResidentVerification');
+  if (userId) sessionStorage.removeItem(`pendingResidentVerification:${userId}`);
+  sessionStorage.removeItem('residentDashboardNotice');
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
@@ -122,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await supabase.auth.signOut();
       } finally {
+        clearAccountTemporaryData(session.user.id);
         setSession(null);
         setAdminProfile(null);
         setInactivitySecondsRemaining(null);
@@ -225,8 +232,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async (): Promise<AuthResult> => {
     localStorage.removeItem('barangay-census-last-activity');
+    const userId = session?.user.id;
     const { error } = await supabase.auth.signOut();
     if (!error) {
+      clearAccountTemporaryData(userId);
       setSession(null);
       setAdminProfile(null);
     }

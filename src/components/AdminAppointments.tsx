@@ -59,9 +59,15 @@ export default function AdminAppointments({ refreshKey }: AdminAppointmentsProps
     let adminNotes = a.admin_notes ?? null;
     if (status === 'rejected') { const reason = window.prompt('Enter the reason for rejecting this appointment:'); if (reason === null) return; if (reason.trim().length < 3) { setError('Enter a short reason before rejecting the appointment.'); return; } adminNotes = reason.trim(); }
     setUpdatingId(a.id); setError(null); setSuccess(null);
-    const payload: Record<string, unknown> = { status, admin_notes: adminNotes }; if (status === 'completed') payload.completed_at = new Date().toISOString();
-    const { error: updateError } = await supabase.from('appointments').update(payload).eq('id', a.id); setUpdatingId(null);
+    const { data, error: updateError } = await supabase.rpc('transition_appointment', {
+      p_appointment_id: a.id,
+      p_expected_status: a.status,
+      p_new_status: status,
+      p_admin_notes: adminNotes,
+    }); setUpdatingId(null);
     if (updateError) { setError(updateError.message); return; }
+    const result = data as { updated?: boolean; conflict?: boolean } | null;
+    if (!result?.updated) { setError(result?.conflict ? 'This appointment changed in another session. The list has been refreshed.' : 'The appointment could not be updated.'); await loadAppointments(); return; }
     setSuccess(`Appointment marked as ${status}.`); await loadAppointments();
   }
 

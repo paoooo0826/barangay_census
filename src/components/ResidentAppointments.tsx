@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CalendarDays,
@@ -41,6 +41,12 @@ interface ServiceDefinition {
 interface CancellationResult {
   cancelled?: boolean;
   message?: string;
+}
+
+interface BookingResult {
+  booked?: boolean;
+  fee_changed?: boolean;
+  current_fee?: number;
 }
 
 export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
@@ -96,9 +102,16 @@ const TIME_SLOTS = [
 ] as const;
 
 function todayInputValue() {
-  const today = new Date();
-  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-  return today.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function timeHasPassed(date: string, time: string) {
+  if (date !== todayInputValue()) return false;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return time <= `${value.hour}:${value.minute}`;
 }
 
 function formatAppointmentDate(value: string) {
@@ -141,6 +154,7 @@ function purposeLabel(value?: AppointmentPurpose | null) {
 
 export default function ResidentAppointments({ resident, initialService }: ResidentAppointmentsProps) {
   const { user } = useAuth();
+  const bookingRequestKey = useRef<string | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [showBooking, setShowBooking] = useState(Boolean(initialService));
   const [selectedService, setSelectedService] = useState<AppointmentService>(initialService ?? 'barangay_clearance');
@@ -207,6 +221,10 @@ export default function ResidentAppointments({ resident, initialService }: Resid
     };
   }, [resident, selectedPurpose, selectedService, showBooking]);
 
+  useEffect(() => {
+    bookingRequestKey.current = null;
+  }, [appointmentDate, appointmentTime, details, selectedPurpose, selectedService]);
+
   const upcomingCount = useMemo(
     () => appointments.filter((appointment) => ['pending', 'confirmed'].includes(appointment.status)).length,
     [appointments],
@@ -238,21 +256,26 @@ export default function ResidentAppointments({ resident, initialService }: Resid
       setError('Appointments are available from Monday to Friday only.');
       return;
     }
-    if (appointmentDate < todayInputValue()) {
-      setError('Choose today or a future appointment date.');
+    if (appointmentDate < todayInputValue() || timeHasPassed(appointmentDate, appointmentTime)) {
+      setError('Choose a future appointment date and time.');
+      return;
+    }
+    if (feePreview == null) {
+      setError('Wait for the fee to finish loading before confirming.');
       return;
     }
 
     setSaving(true);
-    const { error: insertError } = await supabase.from('appointments').insert({
-      resident_id: resident.id,
-      user_id: user.id,
-      service_type: selectedService,
-      service_purpose: selectedService === 'certificate_of_residency' ? selectedPurpose : null,
-      appointment_date: appointmentDate,
-      appointment_time: appointmentTime,
-      purpose: details.trim(),
-      status: 'pending',
+    bookingRequestKey.current ??= crypto.randomUUID();
+    const { data, error: insertError } = await supabase.rpc('book_resident_appointment', {
+      p_resident_id: resident.id,
+      p_service_type: selectedService,
+      p_service_purpose: selectedService === 'certificate_of_residency' ? selectedPurpose : null,
+      p_appointment_date: appointmentDate,
+      p_appointment_time: appointmentTime,
+      p_purpose: details.trim(),
+      p_expected_fee: feePreview,
+      p_request_key: bookingRequestKey.current,
     });
     setSaving(false);
 
@@ -262,7 +285,20 @@ export default function ResidentAppointments({ resident, initialService }: Resid
       return;
     }
 
-    setSuccess('Appointment submitted successfully. The final fee was calculated securely by the barangay system.');
+    const result = data as BookingResult | null;
+    if (!result?.booked && result?.fee_changed) {
+      setFeePreview(Number(result.current_fee));
+      setError(`The fee changed to ${formatFee(Number(result.current_fee))}. Review it and confirm again.`);
+      bookingRequestKey.current = null;
+      return;
+    }
+    if (!result?.booked) {
+      setError('The appointment could not be booked. Refresh and try again.');
+      return;
+    }
+
+    setSuccess('Appointment submitted successfully at the confirmed fee.');
+    bookingRequestKey.current = null;
     resetForm();
     setShowBooking(false);
     await loadAppointments();
@@ -352,7 +388,7 @@ export default function ResidentAppointments({ resident, initialService }: Resid
               <label className="block text-sm font-bold text-slate-800">Appointment time <span className="text-red-600">*</span>
                 <select value={appointmentTime} onChange={(event) => setAppointmentTime(event.target.value)} required className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100">
                   <option value="">Select a time</option>
-                  {TIME_SLOTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {TIME_SLOTS.map(([value, label]) => <option key={value} value={value} disabled={timeHasPassed(appointmentDate, value)}>{label}</option>)}
                 </select>
               </label>
             </div>
