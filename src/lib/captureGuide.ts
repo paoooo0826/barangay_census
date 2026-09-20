@@ -58,9 +58,12 @@ export function inspectIdFrame(image: ImageData, previous?: Uint8Array) {
   }
   const lit = light / count > 45 && light / count < 240 && bright / count < 0.65;
   const crisp = sharp / count > 65;
-  const stable = motion / count < 7;
+  const motionScore = motion / count;
+  const stable = motionScore < 15;
   return {
     acceptable: edges && lit && crisp && stable,
+    alignmentReady: edges && lit && crisp,
+    motionScore,
     gray,
     message: !lit ? 'Use even lighting and avoid glare.' : !edges ? 'Align all four card edges with the guide on a contrasting background.' : !crisp ? 'Move into focus so the text is sharp.' : !stable ? 'Hold the ID still.' : 'Hold still — capturing automatically…',
   };

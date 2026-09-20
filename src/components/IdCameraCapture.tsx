@@ -60,6 +60,7 @@ export default function IdCameraCapture({ side, disabled, onCapture }: Props) {
       if (!context) throw new Error('This browser cannot analyze camera images.');
       let previous: Uint8Array | undefined;
       let stableFrames = 0;
+      const requiredStableFrames = 4;
       while (generation.current === token) {
         if (video.readyState >= 2 && video.videoWidth) {
           analysis.width = Math.min(480, video.videoWidth);
@@ -67,9 +68,12 @@ export default function IdCameraCapture({ side, disabled, onCapture }: Props) {
           context.drawImage(video, 0, 0, analysis.width, analysis.height);
           const result = inspectIdFrame(context.getImageData(0, 0, analysis.width, analysis.height), previous);
           previous = result.gray;
-          stableFrames = result.acceptable ? stableFrames + 1 : 0;
-          setMessage(result.message); setProgress(stableFrames);
-          if (stableFrames >= 5) {
+          if (result.acceptable) stableFrames = Math.min(requiredStableFrames, stableFrames + 1);
+          else if (result.alignmentReady) stableFrames = Math.max(0, stableFrames - 1);
+          else stableFrames = 0;
+          setMessage(stableFrames > 0 ? `Hold still — capturing ${stableFrames}/${requiredStableFrames}…` : result.message);
+          setProgress(stableFrames);
+          if (stableFrames >= requiredStableFrames) {
             const crop = idGuide(video.videoWidth, video.videoHeight);
             const canvas = document.createElement('canvas');
             const margin = Math.min(crop.width, crop.height) * 0.06;
@@ -85,7 +89,7 @@ export default function IdCameraCapture({ side, disabled, onCapture }: Props) {
             return;
           }
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 300));
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
     } catch (caught) {
       if (generation.current === token) {
