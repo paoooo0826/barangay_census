@@ -6,87 +6,70 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type Sex = 'Male' | 'Female';
+export type Sex = "Male" | "Female";
 
 export type CivilStatus =
-  | 'Single'
-  | 'Married'
-  | 'Widowed'
-  | 'Separated'
-  | 'Divorced'
-  | 'Live-in';
+  "Single" | "Married" | "Widowed" | "Separated" | "Divorced" | "Live-in";
 
 export type EducationLevel =
-  | 'No Formal Education'
-  | 'Pre-School'
-  | 'Kindergarten'
-  | 'Elementary'
-  | 'High School'
-  | 'Junior High School'
-  | 'Senior High School'
-  | 'Vocational'
-  | 'College'
-  | 'Post Graduate'
+  | "No Formal Education"
+  | "Pre-School"
+  | "Kindergarten"
+  | "Elementary"
+  | "High School"
+  | "Junior High School"
+  | "Senior High School"
+  | "Vocational"
+  | "College"
+  | "Post Graduate"
   | "Master's Degree"
-  | 'Doctorate';
+  | "Doctorate";
 
 export type EducationStatus =
-  | 'Currently Studying'
-  | 'Completed'
-  | 'Not Currently Studying'
-  | 'No Formal Education';
+  | "Currently Studying"
+  | "Completed"
+  | "Not Currently Studying"
+  | "No Formal Education";
 
 export type TenurialStatus =
-  | 'House Owner'
-  | 'Sharer'
-  | 'Caretaker'
-  | 'Renter'
-  | 'Owned'
-  | 'Rented'
-  | 'Rent Free'
-  | 'Living with Relatives'
-  | 'Informal Settler'
-  | 'Others';
+  | "House Owner"
+  | "Sharer"
+  | "Caretaker"
+  | "Renter"
+  | "Owned"
+  | "Rented"
+  | "Rent Free"
+  | "Living with Relatives"
+  | "Informal Settler"
+  | "Others";
 
 export type Category =
-  | 'None'
-  | 'Senior Citizen'
-  | 'PWD'
-  | 'Solo Parent'
-  | '4Ps Beneficiary'
-  | 'Indigenous People'
-  | 'Youth'
-  | 'OFW'
-  | 'Pregnant Woman';
+  | "None"
+  | "Senior Citizen"
+  | "PWD"
+  | "Solo Parent"
+  | "4Ps Beneficiary"
+  | "Indigenous People"
+  | "Youth"
+  | "OFW"
+  | "Pregnant Woman";
 
 export type ResidentStatus =
-  | 'pending_review'
-  | 'verified'
-  | 'returned'
-  | 'rejected';
+  "pending_review" | "verified" | "returned" | "rejected";
 
 export type AppointmentService =
-  | 'barangay_clearance'
-  | 'certificate_of_residency';
+  "barangay_clearance" | "certificate_of_residency";
 
-export type LegacyAppointmentService =
-  | 'certificate_of_indigency'
-  | 'complaint';
+export type LegacyAppointmentService = "certificate_of_indigency" | "complaint";
 
-export type StoredAppointmentService = AppointmentService | LegacyAppointmentService;
+export type StoredAppointmentService =
+  AppointmentService | LegacyAppointmentService;
 
 export type AppointmentPurpose =
-  | 'low_income'
-  | 'good_moral'
-  | 'financial'
-  | 'medical_assistance';
+  "low_income" | "good_moral" | "financial" | "medical_assistance";
 
 export type AppointmentStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'completed'
-  | 'cancelled'
-  | 'rejected';
+  "pending" | "confirmed" | "completed" | "cancelled" | "rejected";
 
 export interface CategoryRow {
   id: number;
@@ -147,9 +130,15 @@ export interface FaceVerification {
   similarity_score?: number | null;
   liveness_passed?: boolean | null;
   liveness_actions?: string[] | null;
-  verification_recommendation?: 'match' | 'manual_review' | 'retry' | string | null;
-  id_quality?: { brightness?: number; blurVariance?: number; faceAreaRatio?: number; detectedFaces?: number } | null;
-  verification_status?: 'passed' | 'skipped' | null;
+  verification_recommendation?:
+    "match" | "manual_review" | "retry" | string | null;
+  id_quality?: {
+    brightness?: number;
+    blurVariance?: number;
+    faceAreaRatio?: number;
+    detectedFaces?: number;
+  } | null;
+  verification_status?: "passed" | "skipped" | null;
   verification_reason?: string | null;
   device_type?: string | null;
 }
@@ -163,14 +152,10 @@ export interface Remark {
   created_at: string;
 }
 
-export type AnnouncementPriority = 'info' | 'important' | 'urgent';
+export type AnnouncementPriority = "info" | "important" | "urgent";
 
 export type AnnouncementAudience =
-  | 'all'
-  | 'pending_review'
-  | 'verified'
-  | 'returned'
-  | 'rejected';
+  "all" | "pending_review" | "verified" | "returned" | "rejected";
 
 export interface Announcement {
   id: string;
@@ -182,6 +167,9 @@ export interface Announcement {
   published_at: string;
   expires_at?: string | null;
   image_path?: string | null;
+  archived?: boolean;
+  archived_at?: string | null;
+  archived_by?: string | null;
   created_by?: string | null;
   created_at: string;
   updated_at: string;
@@ -239,7 +227,11 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       review_resident: {
-        Args: { p_resident_id: string; p_action: 'approve' | 'reject'; p_remark: string };
+        Args: {
+          p_resident_id: string;
+          p_action: "approve" | "reject";
+          p_remark: string;
+        };
         Returns: Json;
       };
       check_registration_email: {

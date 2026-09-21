@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,16 +21,17 @@ import {
   User,
   X,
   XCircle,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { supabase } from '../lib/supabase';
+import { supabase } from "../lib/supabase";
+import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
 
 import type {
   FaceVerification,
   GovernmentId,
   Remark,
   Resident,
-} from '../types/database';
+} from "../types/database";
 
 interface AdminReviewProps {
   residentId: string;
@@ -50,16 +51,13 @@ interface ResidentCategoryData {
   category_id: number;
   indigenous_group?: string | null;
   other_description?: string | null;
-  categories?: { name?: string | null } | Array<{ name?: string | null }> | null;
+  categories?:
+    { name?: string | null } | Array<{ name?: string | null }> | null;
 }
 
-type ReviewAction = 'approve' | 'reject';
+type ReviewAction = "approve" | "reject";
 
-type ResidentStatus =
-  | 'pending_review'
-  | 'verified'
-  | 'returned'
-  | 'rejected';
+type ResidentStatus = "pending_review" | "verified" | "returned" | "rejected";
 
 interface StatusConfig {
   label: string;
@@ -73,33 +71,33 @@ interface PreviewImage {
   title: string;
 }
 
-const VERIFICATION_BUCKET = 'resident-verification';
-const HOUSEHOLD_IMAGES_BUCKET = 'household-images';
+const VERIFICATION_BUCKET = "resident-verification";
+const HOUSEHOLD_IMAGES_BUCKET = "household-images";
 
 const STATUS_CONFIG: Record<ResidentStatus, StatusConfig> = {
   pending_review: {
-    label: 'Pending Review',
-    badgeClass: 'bg-amber-50 text-amber-700 ring-amber-200',
-    dotClass: 'bg-amber-500',
-    panelClass: 'border-amber-200 bg-amber-50',
+    label: "Pending Review",
+    badgeClass: "bg-amber-50 text-amber-700 ring-amber-200",
+    dotClass: "bg-amber-500",
+    panelClass: "border-amber-200 bg-amber-50",
   },
   verified: {
-    label: 'Approved',
-    badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    dotClass: 'bg-emerald-500',
-    panelClass: 'border-emerald-200 bg-emerald-50',
+    label: "Approved",
+    badgeClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    dotClass: "bg-emerald-500",
+    panelClass: "border-emerald-200 bg-emerald-50",
   },
   returned: {
-    label: 'Returned',
-    badgeClass: 'bg-orange-50 text-orange-700 ring-orange-200',
-    dotClass: 'bg-orange-500',
-    panelClass: 'border-orange-200 bg-orange-50',
+    label: "Returned",
+    badgeClass: "bg-orange-50 text-orange-700 ring-orange-200",
+    dotClass: "bg-orange-500",
+    panelClass: "border-orange-200 bg-orange-50",
   },
   rejected: {
-    label: 'Rejected',
-    badgeClass: 'bg-red-50 text-red-700 ring-red-200',
-    dotClass: 'bg-red-500',
-    panelClass: 'border-red-200 bg-red-50',
+    label: "Rejected",
+    badgeClass: "bg-red-50 text-red-700 ring-red-200",
+    dotClass: "bg-red-500",
+    panelClass: "border-red-200 bg-red-50",
   },
 };
 
@@ -114,19 +112,19 @@ const ACTION_CONFIG: Record<
   }
 > = {
   approve: {
-    title: 'Approve census record',
+    title: "Approve census record",
     description:
-      'This resident record will be marked as verified and approved.',
-    confirmLabel: 'Approve Record',
-    confirmClass: 'bg-emerald-600 hover:bg-emerald-700',
+      "This resident record will be marked as verified and approved.",
+    confirmLabel: "Approve Record",
+    confirmClass: "bg-emerald-600 hover:bg-emerald-700",
     icon: CheckCircle2,
   },
   reject: {
-    title: 'Reject census record',
+    title: "Reject census record",
     description:
-      'This resident record will be rejected. Please provide a clear reason.',
-    confirmLabel: 'Reject Record',
-    confirmClass: 'bg-red-600 hover:bg-red-700',
+      "This resident record will be rejected. Please provide a clear reason.",
+    confirmLabel: "Reject Record",
+    confirmClass: "bg-red-600 hover:bg-red-700",
     icon: XCircle,
   },
 };
@@ -145,7 +143,7 @@ async function createVerificationImageUrl(pathOrUrl?: string | null) {
     .createSignedUrl(pathOrUrl, 60 * 60);
 
   if (error) {
-    console.error('Unable to load a verification image:', error.message);
+    console.error("Unable to load a verification image:", error.message);
     return null;
   }
 
@@ -166,7 +164,7 @@ async function createHouseholdImageUrl(pathOrUrl?: string | null) {
     .createSignedUrl(pathOrUrl, 60 * 60);
 
   if (error) {
-    console.error('Unable to load the household image:', error.message);
+    console.error("Unable to load the household image:", error.message);
     return null;
   }
 
@@ -175,29 +173,31 @@ async function createHouseholdImageUrl(pathOrUrl?: string | null) {
 
 const formatLabel = (value?: string | null) => {
   if (!value) {
-    return 'Not provided';
+    return "Not provided";
   }
 
   return value
-    .replaceAll('_', ' ')
+    .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
 const formatCurrency = (value?: number | null) => {
   if (value == null || !Number.isFinite(Number(value))) {
-    return 'Not provided';
+    return "Not provided";
   }
 
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
     minimumFractionDigits: 2,
   }).format(Number(value));
 };
 
 const categoryName = (row: ResidentCategoryData) => {
-  const joined = Array.isArray(row.categories) ? row.categories[0] : row.categories;
-  return joined?.name || `Category ${row.category_id}`;
+  const joined = Array.isArray(row.categories)
+    ? row.categories[0]
+    : row.categories;
+  return categoryLabel(joined?.name) || `Category ${row.category_id}`;
 };
 
 export default function AdminReview({
@@ -209,15 +209,19 @@ export default function AdminReview({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showRemarksModal, setShowRemarksModal] = useState(false);
-  const [selectedAction, setSelectedAction] =
-    useState<ReviewAction | null>(null);
-  const [remarkText, setRemarkText] = useState('');
+  const [selectedAction, setSelectedAction] = useState<ReviewAction | null>(
+    null,
+  );
+  const [remarkText, setRemarkText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
 
   useEffect(() => {
     void fetchResidentData();
-    const refreshTimer = window.setInterval(() => void fetchResidentData(), 50 * 60 * 1000);
+    const refreshTimer = window.setInterval(
+      () => void fetchResidentData(),
+      50 * 60 * 1000,
+    );
     return () => window.clearInterval(refreshTimer);
   }, [residentId]);
 
@@ -227,41 +231,44 @@ export default function AdminReview({
 
     try {
       const { data: resident, error: residentError } = await supabase
-        .from('residents')
-        .select('*')
-        .eq('id', residentId)
+        .from("residents")
+        .select("*")
+        .eq("id", residentId)
         .single();
 
       if (residentError) {
         throw residentError;
       }
 
-      const [idResult, faceResult, remarksResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('government_ids')
-          .select('*')
-          .eq('resident_id', residentId)
-          .maybeSingle(),
+      const [idResult, faceResult, remarksResult, categoriesResult] =
+        await Promise.all([
+          supabase
+            .from("government_ids")
+            .select("*")
+            .eq("resident_id", residentId)
+            .maybeSingle(),
 
-        supabase
-          .from('face_verifications')
-          .select('*')
-          .eq('resident_id', residentId)
-          .maybeSingle(),
+          supabase
+            .from("face_verifications")
+            .select("*")
+            .eq("resident_id", residentId)
+            .maybeSingle(),
 
-        supabase
-          .from('remarks')
-          .select('*')
-          .eq('resident_id', residentId)
-          .order('created_at', {
-            ascending: false,
-          }),
+          supabase
+            .from("remarks")
+            .select("*")
+            .eq("resident_id", residentId)
+            .order("created_at", {
+              ascending: false,
+            }),
 
-        supabase
-          .from('resident_categories')
-          .select('category_id, indigenous_group, other_description, categories(name)')
-          .eq('resident_id', residentId),
-      ]);
+          supabase
+            .from("resident_categories")
+            .select(
+              "category_id, indigenous_group, other_description, categories(name)",
+            )
+            .eq("resident_id", residentId),
+        ]);
 
       if (idResult.error) {
         throw idResult.error;
@@ -315,8 +322,8 @@ export default function AdminReview({
         categories: (categoriesResult.data ?? []) as ResidentCategoryData[],
       });
     } catch (fetchError) {
-      console.error('Error loading resident:', fetchError);
-      setError('Failed to load resident information.');
+      console.error("Error loading resident:", fetchError);
+      setError("Failed to load resident information.");
       setData(null);
     } finally {
       setLoading(false);
@@ -343,19 +350,19 @@ export default function AdminReview({
 
   const formatDate = (date?: string | null) => {
     if (!date) {
-      return 'Not provided';
+      return "Not provided";
     }
 
-    return new Date(date).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    return new Date(date).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
   const openActionModal = (action: ReviewAction) => {
     setSelectedAction(action);
-    setRemarkText('');
+    setRemarkText("");
     setError(null);
     setShowRemarksModal(true);
   };
@@ -367,7 +374,7 @@ export default function AdminReview({
 
     setShowRemarksModal(false);
     setSelectedAction(null);
-    setRemarkText('');
+    setRemarkText("");
     setError(null);
   };
 
@@ -376,8 +383,8 @@ export default function AdminReview({
       return;
     }
 
-    if (selectedAction !== 'approve' && !remarkText.trim()) {
-      setError('Please provide remarks before continuing.');
+    if (selectedAction !== "approve" && !remarkText.trim()) {
+      setError("Please provide remarks before continuing.");
       return;
     }
 
@@ -385,7 +392,7 @@ export default function AdminReview({
     setError(null);
 
     try {
-      const { error: reviewError } = await supabase.rpc('review_resident', {
+      const { error: reviewError } = await supabase.rpc("review_resident", {
         p_resident_id: residentId,
         p_action: selectedAction,
         p_remark: remarkText.trim(),
@@ -394,13 +401,17 @@ export default function AdminReview({
       if (reviewError) throw reviewError;
 
       setShowRemarksModal(false);
-      setRemarkText('');
+      setRemarkText("");
       setSelectedAction(null);
 
       onDecisionComplete();
     } catch (actionError) {
-      console.error('Action error:', actionError);
-      setError(actionError instanceof Error ? actionError.message : 'Failed to update the resident status. Please try again.');
+      console.error("Action error:", actionError);
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Failed to update the resident status. Please try again.",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -408,7 +419,7 @@ export default function AdminReview({
 
   const residentName = useMemo(() => {
     if (!data) {
-      return '';
+      return "";
     }
 
     return [
@@ -418,7 +429,7 @@ export default function AdminReview({
       data.resident.suffix,
     ]
       .filter(Boolean)
-      .join(' ');
+      .join(" ");
   }, [data]);
 
   if (loading) {
@@ -489,23 +500,23 @@ export default function AdminReview({
 
   const verificationImages = [
     {
-      title: 'Government ID Front',
-      description: 'Front image of the submitted identification card',
+      title: "Government ID Front",
+      description: "Front image of the submitted identification card",
       url: data.governmentId?.front_image_url ?? null,
     },
     {
-      title: 'Government ID Back',
-      description: 'Back image of the submitted identification card',
+      title: "Government ID Back",
+      description: "Back image of the submitted identification card",
       url: data.governmentId?.back_image_url ?? null,
     },
     {
-      title: 'Captured Face',
-      description: 'Face image captured during resident registration',
+      title: "Captured Face",
+      description: "Face image captured during resident registration",
       url: data.faceVerification?.captured_face_url ?? null,
     },
     {
-      title: 'Household Photo',
-      description: 'Photo of the resident’s house or household',
+      title: "Household Photo",
+      description: "Photo of the resident’s house or household",
       url: resident.household_photo_url ?? null,
     },
   ];
@@ -600,7 +611,7 @@ export default function AdminReview({
               <div>
                 <p className="font-semibold">Current record status</p>
                 <p className="mt-1 text-sm opacity-80">
-                  This census submission is currently marked as{' '}
+                  This census submission is currently marked as{" "}
                   <span className="font-semibold">{status.label}</span>.
                 </p>
               </div>
@@ -631,9 +642,11 @@ export default function AdminReview({
           </div>
 
           <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Submitted ID Type</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
+              Submitted ID Type
+            </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
-              {data.governmentId?.id_type || 'Not provided'}
+              {data.governmentId?.id_type || "Not provided"}
             </p>
           </div>
 
@@ -696,29 +709,80 @@ export default function AdminReview({
             ))}
           </div>
 
-
           {data.faceVerification && (
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><ShieldCheck size={20} /></div>
+                <div className="rounded-xl bg-indigo-100 p-2 text-indigo-700">
+                  <ShieldCheck size={20} />
+                </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Automated identity screening</h2>
-                  <p className="text-sm text-slate-500">Decision support only. The administrator makes the final approval decision.</p>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Automated identity screening
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Decision support only. The administrator makes the final
+                    approval decision.
+                  </p>
                 </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Face result</p><p className="mt-1 font-bold text-slate-900">{data.faceVerification.is_matched ? 'Matched' : 'Not matched'}</p></div>
-                <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Distance</p><p className="mt-1 font-bold text-slate-900">{data.faceVerification.match_distance == null ? 'Not recorded' : Number(data.faceVerification.match_distance).toFixed(3)}</p></div>
-                <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Similarity indicator</p><p className="mt-1 font-bold text-slate-900">{data.faceVerification.similarity_score == null ? 'Not recorded' : `${Number(data.faceVerification.similarity_score).toFixed(1)}%`}</p></div>
-                <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Liveness</p><p className="mt-1 font-bold text-slate-900">{data.faceVerification.liveness_passed ? 'Passed' : 'Not passed'}</p></div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Face result
+                  </p>
+                  <p className="mt-1 font-bold text-slate-900">
+                    {data.faceVerification.is_matched
+                      ? "Matched"
+                      : "Not matched"}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Distance
+                  </p>
+                  <p className="mt-1 font-bold text-slate-900">
+                    {data.faceVerification.match_distance == null
+                      ? "Not recorded"
+                      : Number(data.faceVerification.match_distance).toFixed(3)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Similarity indicator
+                  </p>
+                  <p className="mt-1 font-bold text-slate-900">
+                    {data.faceVerification.similarity_score == null
+                      ? "Not recorded"
+                      : `${Number(data.faceVerification.similarity_score).toFixed(1)}%`}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Liveness
+                  </p>
+                  <p className="mt-1 font-bold text-slate-900">
+                    {data.faceVerification.liveness_passed
+                      ? "Passed"
+                      : "Not passed"}
+                  </p>
+                </div>
               </div>
               <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                <p className="text-sm font-semibold text-indigo-900">Recommendation: {formatLabel(data.faceVerification.verification_recommendation)}</p>
-                <p className="mt-1 text-xs text-indigo-700">Liveness actions: {(data.faceVerification.liveness_actions ?? []).map(formatLabel).join(', ') || 'Not recorded'}</p>
+                <p className="text-sm font-semibold text-indigo-900">
+                  Recommendation:{" "}
+                  {formatLabel(
+                    data.faceVerification.verification_recommendation,
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-indigo-700">
+                  Liveness actions:{" "}
+                  {(data.faceVerification.liveness_actions ?? [])
+                    .map(formatLabel)
+                    .join(", ") || "Not recorded"}
+                </p>
               </div>
             </section>
           )}
-
         </section>
 
         <section className="mb-8 grid gap-6 lg:grid-cols-2">
@@ -747,7 +811,7 @@ export default function AdminReview({
 
               <InfoItem
                 label="Middle Name"
-                value={resident.middle_name || 'Not provided'}
+                value={resident.middle_name || "Not provided"}
                 icon={Contact}
               />
 
@@ -759,7 +823,7 @@ export default function AdminReview({
 
               <InfoItem
                 label="Suffix"
-                value={resident.suffix || 'Not provided'}
+                value={resident.suffix || "Not provided"}
                 icon={Contact}
               />
 
@@ -773,7 +837,7 @@ export default function AdminReview({
 
               <InfoItem
                 label="Birth Place"
-                value={resident.birth_place || 'Not provided'}
+                value={resident.birth_place || "Not provided"}
                 icon={MapPin}
               />
 
@@ -791,20 +855,14 @@ export default function AdminReview({
 
               <InfoItem
                 label="Religion"
-                value={resident.religion || 'Not provided'}
+                value={resident.religion || "Not provided"}
                 icon={User}
               />
 
               <InfoItem
                 label="Citizenship"
-                value={resident.citizenship || 'Not provided'}
+                value={resident.citizenship || "Not provided"}
                 icon={ShieldCheck}
-              />
-
-              <InfoItem
-                label="PhilSys Number"
-                value={resident.philsys_number || 'Not provided'}
-                icon={FileCheck}
               />
             </div>
           </article>
@@ -836,37 +894,37 @@ export default function AdminReview({
               <div className="grid gap-4 sm:grid-cols-2">
                 <InfoItem
                   label="Contact Number"
-                  value={resident.contact_number || 'Not provided'}
+                  value={resident.contact_number || "Not provided"}
                   icon={Phone}
                 />
 
                 <InfoItem
                   label="Email Address"
-                  value={resident.email_address || 'Not provided'}
+                  value={resident.email_address || "Not provided"}
                   icon={Mail}
                 />
 
                 <InfoItem
                   label="Region"
-                  value={resident.region || 'Not provided'}
+                  value={resident.region || "Not provided"}
                   icon={MapPin}
                 />
 
                 <InfoItem
                   label="Province"
-                  value={resident.province || 'Not provided'}
+                  value={resident.province || "Not provided"}
                   icon={MapPin}
                 />
 
                 <InfoItem
                   label="City / Municipality"
-                  value={resident.city_municipality || 'Not provided'}
+                  value={resident.city_municipality || "Not provided"}
                   icon={MapPin}
                 />
 
                 <InfoItem
                   label="Barangay"
-                  value={resident.barangay || 'Not provided'}
+                  value={resident.barangay || "Not provided"}
                   icon={MapPin}
                 />
               </div>
@@ -900,15 +958,11 @@ export default function AdminReview({
 
               <InfoItem
                 label="Education Status"
-                value={formatLabel(resident.education_status)}
+                value={
+                  educationStatusLabel(resident.education_status) ||
+                  "Not provided"
+                }
                 icon={GraduationCap}
-              />
-
-              <InfoItem
-                label="Vocational Course"
-                value={resident.vocational_course || 'Not applicable'}
-                icon={GraduationCap}
-                fullWidth
               />
             </div>
           </article>
@@ -932,7 +986,7 @@ export default function AdminReview({
             <div className="grid gap-4 sm:grid-cols-2">
               <InfoItem
                 label="Occupation"
-                value={resident.profession_occupation || 'Not provided'}
+                value={resident.profession_occupation || "Not provided"}
                 icon={BriefcaseBusiness}
                 fullWidth
               />
@@ -954,10 +1008,44 @@ export default function AdminReview({
 
         <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-100 text-teal-700"><Contact className="h-5 w-5" /></div>
-            <div><p className="text-sm font-semibold text-teal-700">Resident classification</p><h2 className="text-lg font-bold text-slate-900">Categories</h2></div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-100 text-teal-700">
+              <Contact className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-teal-700">
+                Resident classification
+              </p>
+              <h2 className="text-lg font-bold text-slate-900">Categories</h2>
+            </div>
           </div>
-          {data.categories.length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.categories.map((row) => <article key={row.category_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="font-bold text-slate-900">{categoryName(row)}</p>{row.indigenous_group && <p className="mt-2 text-sm text-slate-600"><strong>Indigenous group:</strong> {row.indigenous_group}</p>}{row.other_description && <p className="mt-2 text-sm text-slate-600"><strong>Description:</strong> {row.other_description}</p>}</article>)}</div> : <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">No special resident category selected.</p>}
+          {data.categories.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {data.categories.map((row) => (
+                <article
+                  key={row.category_id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <p className="font-bold text-slate-900">
+                    {categoryName(row)}
+                  </p>
+                  {row.indigenous_group && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      <strong>Indigenous group:</strong> {row.indigenous_group}
+                    </p>
+                  )}
+                  {row.other_description && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      <strong>Description:</strong> {row.other_description}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+              No special resident category selected.
+            </p>
+          )}
         </section>
 
         {data.remarks.length > 0 && (
@@ -1010,24 +1098,35 @@ export default function AdminReview({
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-blue-700">Administrator checking</p>
-              <h2 className="mt-1 text-xl font-bold text-slate-900">Check census record</h2>
+              <p className="text-sm font-semibold text-blue-700">
+                Administrator checking
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">
+                Check census record
+              </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                New submissions are automatically approved. Check the information above and
-                reject invalid submissions with a reason. Existing pending or rejected records
-                can be approved after checking.
+                New submissions are automatically approved. Check the
+                information above and reject invalid submissions with a reason.
+                Existing pending or rejected records can be approved after
+                checking.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              {resident.status !== 'verified' && (
-                <button type="button" onClick={() => openActionModal('approve')}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700">
+              {resident.status !== "verified" && (
+                <button
+                  type="button"
+                  onClick={() => openActionModal("approve")}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                >
                   <CheckCircle2 className="h-5 w-5" /> Approve Record
                 </button>
               )}
-              {resident.status !== 'rejected' && (
-                <button type="button" onClick={() => openActionModal('reject')}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700">
+              {resident.status !== "rejected" && (
+                <button
+                  type="button"
+                  onClick={() => openActionModal("reject")}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700"
+                >
                   <XCircle className="h-5 w-5" /> Reject Record
                 </button>
               )}
@@ -1051,9 +1150,9 @@ export default function AdminReview({
                 <div className="flex items-start gap-3">
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-                      selectedAction === 'approve'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-red-100 text-red-700'
+                      selectedAction === "approve"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-red-100 text-red-700"
                     }`}
                   >
                     <selectedActionConfig.icon className="h-5 w-5" />
@@ -1094,15 +1193,15 @@ export default function AdminReview({
                 className="text-sm font-semibold text-slate-800"
               >
                 Remarks
-                {selectedAction !== 'approve' && (
+                {selectedAction !== "approve" && (
                   <span className="ml-1 text-red-500">*</span>
                 )}
               </label>
 
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                {selectedAction === 'approve'
-                  ? 'Remarks are optional for approved records.'
-                  : 'Explain why this submission is rejected.'}
+                {selectedAction === "approve"
+                  ? "Remarks are optional for approved records."
+                  : "Explain why this submission is rejected."}
               </p>
 
               <textarea
@@ -1110,9 +1209,9 @@ export default function AdminReview({
                 value={remarkText}
                 onChange={(event) => setRemarkText(event.target.value)}
                 placeholder={
-                  selectedAction === 'approve'
-                    ? 'Optional approval message'
-                    : 'Enter clear remarks for the resident'
+                  selectedAction === "approve"
+                    ? "Optional approval message"
+                    : "Enter clear remarks for the resident"
                 }
                 className="mt-3 min-h-[150px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
               />
@@ -1206,7 +1305,7 @@ function InfoItem({
   return (
     <div
       className={`rounded-2xl border border-slate-200 bg-slate-50 p-4 ${
-        fullWidth ? 'sm:col-span-2' : ''
+        fullWidth ? "sm:col-span-2" : ""
       }`}
     >
       <div className="flex items-start gap-3">
