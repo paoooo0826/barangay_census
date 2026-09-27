@@ -19,6 +19,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import ResidentAppointments from "../components/ResidentAppointments";
+import ResidentNotifications from "../components/ResidentNotifications";
 import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
 import type {
   Announcement,
@@ -356,6 +357,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 size={18}
               />
             </button>
+            <ResidentNotifications
+              residentId={resident?.id}
+              onOpenAppointments={() => setTab("appointments")}
+              onOpenRecord={() => setTab(resident ? "record" : "home")}
+            />
             <button
               type="button"
               onClick={() => setProfileOpen((open) => !open)}

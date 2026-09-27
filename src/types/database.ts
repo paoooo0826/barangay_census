@@ -71,6 +71,8 @@ export type AppointmentPurpose =
 export type AppointmentStatus =
   "pending" | "confirmed" | "completed" | "cancelled" | "rejected";
 
+export type NotificationCategory = "census" | "appointment" | "system";
+
 export interface CategoryRow {
   id: number;
   name: Category | string;
@@ -188,9 +190,22 @@ export interface Appointment {
   status: AppointmentStatus;
   admin_notes?: string | null;
   completed_at?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
   created_at: string;
   updated_at: string;
   request_key?: string | null;
+}
+
+export interface ResidentNotification {
+  id: string;
+  resident_id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  related_entity_id?: string | null;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface AdminProfile {
@@ -249,8 +264,12 @@ export interface Database {
         Returns: Json;
       };
       cancel_resident_appointment: {
-        Args: { appointment_id: string };
+        Args: { p_appointment_id: string; p_reason: string };
         Returns: Json;
+      };
+      mark_resident_notifications_read: {
+        Args: { p_notification_ids: string[] };
+        Returns: number;
       };
       preview_appointment_fee: {
         Args: {

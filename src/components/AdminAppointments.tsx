@@ -6,9 +6,12 @@ import {
   CheckCircle2,
   CircleCheckBig,
   Clock,
+  Eye,
   Loader2,
+  MessageSquareText,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import type {
@@ -128,6 +131,8 @@ export default function AdminAppointments({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<AdminAppointment | null>(null);
 
   const loadAppointments = useCallback(async () => {
     setLoading(true);
@@ -303,7 +308,8 @@ export default function AdminAppointments({
   ];
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <>
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-sm font-semibold text-blue-700">
@@ -461,14 +467,15 @@ export default function AdminAppointments({
                         {formatDate(a.appointment_date)} ·{" "}
                         {formatTime(a.appointment_time)}
                       </p>
-                      <p className="mt-2 text-sm text-slate-600">{a.purpose}</p>
-                      {a.admin_notes && (
-                        <p className="mt-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-                          <strong>Admin note:</strong> {a.admin_notes}
-                        </p>
-                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAppointment(a)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-blue-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50"
+                      >
+                        <Eye size={16} /> View Details
+                      </button>
                       {a.status === "pending" && (
                         <button
                           disabled={busy}
@@ -515,6 +522,134 @@ export default function AdminAppointments({
           </div>
         )}
       </div>
-    </section>
+      </section>
+      {selectedAppointment && (
+        <AdminAppointmentDetails
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointment(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function AdminAppointmentDetails({
+  appointment,
+  onClose,
+}: {
+  appointment: AdminAppointment;
+  onClose: () => void;
+}) {
+  const resident = residentFrom(appointment);
+  const purpose = purposeLabel(appointment);
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+              Appointment record
+            </p>
+            <h3 className="mt-1 text-xl font-bold text-slate-900">
+              {serviceLabel(
+                appointment.service_type as StoredAppointmentService,
+              )}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close appointment details"
+            className="rounded-xl border border-slate-200 p-2 text-slate-500"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="space-y-5 p-5 sm:p-6">
+          <div className="flex flex-wrap gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_STYLES[appointment.status]}`}
+            >
+              {appointment.status}
+            </span>
+            {purpose && (
+              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
+                {purpose}
+              </span>
+            )}
+          </div>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <AdminDetail label="Resident" value={fullName(resident)} />
+            <AdminDetail
+              label="Tracking Number"
+              value={resident?.tracking_number ?? "Not available"}
+            />
+            <AdminDetail
+              label="Appointment Date"
+              value={formatDate(appointment.appointment_date)}
+            />
+            <AdminDetail
+              label="Appointment Time"
+              value={formatTime(appointment.appointment_time)}
+            />
+            <AdminDetail label="Fee" value={formatFee(appointment.fee)} />
+            <AdminDetail label="Status" value={appointment.status} />
+            <AdminDetail
+              label="Contact Number"
+              value={resident?.contact_number ?? "Not available"}
+            />
+            <AdminDetail
+              label="Email Address"
+              value={resident?.email_address ?? "Not available"}
+            />
+          </dl>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+              <MessageSquareText size={17} className="text-blue-700" />
+              Resident request details
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+              {appointment.purpose}
+            </p>
+          </div>
+          {appointment.admin_notes && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <strong>Administrator remark:</strong>
+              <p className="mt-1 whitespace-pre-wrap">
+                {appointment.admin_notes}
+              </p>
+            </div>
+          )}
+          {appointment.cancellation_reason && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <strong>Resident cancellation reason:</strong>
+              <p className="mt-1 whitespace-pre-wrap">
+                {appointment.cancellation_reason}
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 font-bold capitalize text-slate-800">{value}</dd>
+    </div>
   );
 }
