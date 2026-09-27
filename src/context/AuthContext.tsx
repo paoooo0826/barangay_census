@@ -76,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") clearAccountTemporaryData();
+      setLoading(true);
       setSession(nextSession);
       void loadAdminProfile(nextSession?.user.id ?? null).finally(() => {
         if (active) setLoading(false);
@@ -92,10 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
   ): Promise<AuthResult> => {
-    const { error } = await supabase.auth.signInWithPassword({
+    setLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     });
+
+    if (error) {
+      setLoading(false);
+      return { error };
+    }
+
+    setSession(data.session);
+    await loadAdminProfile(data.user?.id ?? null);
+    setLoading(false);
 
     return { error };
   };

@@ -57,20 +57,25 @@ export default function App() {
   const adminProtected = path === "/admin/dashboard" || Boolean(reviewMatch);
   const loggedInOnLoginPage =
     Boolean(user) && (path === "/resident" || path === "/admin");
+  const isActiveAdmin = Boolean(
+    adminProfile && adminProfile.is_active !== false,
+  );
 
   useEffect(() => {
     let active = true;
     if (loading || !user || isPasswordReset) return;
+    if (isActiveAdmin && residentProtected) {
+      navigate("/admin/dashboard");
+      return;
+    }
     if (path === "/admin") {
       navigate(
-        adminProfile?.is_active !== false && adminProfile
-          ? "/admin/dashboard"
-          : "/resident/dashboard",
+        isActiveAdmin ? "/admin/dashboard" : "/resident/dashboard",
       );
       return;
     }
     if (path !== "/resident" && path !== "/resident/register") return;
-    if (adminProfile?.is_active !== false && adminProfile) {
+    if (isActiveAdmin) {
       navigate("/admin/dashboard");
       return;
     }
@@ -91,7 +96,15 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [adminProfile, isPasswordReset, loading, navigate, path, user]);
+  }, [
+    isActiveAdmin,
+    isPasswordReset,
+    loading,
+    navigate,
+    path,
+    residentProtected,
+    user,
+  ]);
 
   const handleLogout = useCallback(async () => {
     setLogoutError("");
@@ -131,7 +144,7 @@ export default function App() {
     );
   } else if (
     adminProtected &&
-    (!user || !adminProfile || adminProfile.is_active === false)
+    (!user || !isActiveAdmin)
   ) {
     page = (
       <AdminAuth
