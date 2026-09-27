@@ -378,19 +378,8 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               <div className="absolute right-0 top-14 hidden w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:block">
                 <button
                   type="button"
-                  onClick={() => {
-                    setTab("profile");
-                    setProfileOpen(false);
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-blue-50"
-                >
-                  <User size={18} />
-                  Profile
-                </button>
-                <button
-                  type="button"
                   onClick={onLogout}
-                  className="flex w-full items-center gap-3 border-t border-slate-200 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
                 >
                   <LogOut size={18} />
                   Logout
@@ -402,6 +391,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
         <nav className="mx-auto hidden max-w-6xl gap-2 border-t border-slate-100 px-4 py-3 md:flex sm:px-6">
           {[
             { value: "home" as Tab, label: "Home", icon: Home },
+            { value: "profile" as Tab, label: "Profile", icon: User },
             {
               value: "appointments" as Tab,
               label: "Appointments",
@@ -449,6 +439,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             <nav className="space-y-1">
               {[
                 { value: "home" as Tab, label: "Home", icon: Home },
+                { value: "profile" as Tab, label: "Profile", icon: User },
                 {
                   value: "appointments" as Tab,
                   label: "Appointments",
@@ -459,7 +450,6 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                   label: "Record Summary",
                   icon: FileText,
                 },
-                { value: "profile" as Tab, label: "Profile", icon: User },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
