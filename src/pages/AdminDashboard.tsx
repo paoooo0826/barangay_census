@@ -508,9 +508,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-bold">
-                    Five Most Recent Resident Updates
-                  </h2>
+                  <h2 className="text-xl font-bold">Recent Updates</h2>
                   <p className="mt-1 text-sm text-slate-500">
                     Latest submitted or updated census records.
                   </p>
