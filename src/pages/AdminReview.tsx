@@ -1013,9 +1013,11 @@ export default function AdminReview({
             </div>
             <div>
               <p className="text-sm font-semibold text-teal-700">
-                Resident classification
+                Census information
               </p>
-              <h2 className="text-lg font-bold text-slate-900">Categories</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Resident Classification
+              </h2>
             </div>
           </div>
           {data.categories.length ? (
@@ -1043,7 +1045,7 @@ export default function AdminReview({
             </div>
           ) : (
             <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
-              No special resident category selected.
+              No resident classification selected.
             </p>
           )}
         </section>

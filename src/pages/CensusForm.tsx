@@ -617,7 +617,8 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
     )
       nextErrors.indigenous_group = "Indigenous group is required.";
     if (isCategorySelected("Others") && !formData.other_description.trim())
-      nextErrors.other_description = "Describe the other category.";
+      nextErrors.other_description =
+        "Describe the other resident classification.";
     if (formData.first_name && !isValidName(formData.first_name))
       nextErrors.first_name = "Enter at least 2 valid letters.";
     if (formData.last_name && !isValidName(formData.last_name))
@@ -1557,7 +1558,9 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">7. Category</h2>
+            <h2 className="mb-6 text-xl font-bold">
+              7. Resident Classification
+            </h2>
             <div className="grid gap-4 md:grid-cols-3">
               {[...CATEGORY_CONFIG.main, ...CATEGORY_CONFIG.other].map(
                 (cat) => (
@@ -1596,7 +1599,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 {isCategorySelected("Others") && (
                   <div className="space-y-2">
                     <label className="label">
-                      Other Category Description{" "}
+                      Other Resident Classification Description{" "}
                       <span className="text-red-600">*</span>
                     </label>
                     <input

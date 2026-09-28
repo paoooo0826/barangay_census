@@ -223,7 +223,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             name: categoryLabel(
               (Array.isArray(row.categories)
                 ? row.categories[0]?.name
-                : row.categories?.name) ?? "Unknown category",
+                : row.categories?.name) ?? "Unknown classification",
             ),
             indigenous_group: row.indigenous_group ?? null,
             other_description: row.other_description ?? null,
@@ -888,7 +888,7 @@ function Profile({
           ]}
         />
         <SummaryCard
-          title="Housing & Categories"
+          title="Housing & Resident Classification"
           rows={[
             ["Tenurial Status", resident.tenurial_status],
             [
@@ -897,7 +897,7 @@ function Profile({
                 ? `₱${Number(resident.monthly_rent).toLocaleString("en-PH")}`
                 : null,
             ],
-            ["Resident Categories", categoryText],
+            ["Resident Classification", categoryText],
             ["Last Updated", formatDate(resident.updated_at)],
           ]}
         />
@@ -1011,7 +1011,7 @@ function RecordSummary({
           ]}
         />
         <SummaryCard
-          title="Housing & Categories"
+          title="Housing & Resident Classification"
           rows={[
             ["Tenurial Status", resident.tenurial_status],
             [
@@ -1021,7 +1021,7 @@ function RecordSummary({
                 : null,
             ],
             [
-              "Categories",
+              "Resident Classification",
               categories.length
                 ? categories
                     .map((category) =>

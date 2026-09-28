@@ -21,6 +21,6 @@ export function educationStatusLabel(value?: string | null) {
 export function categoryLabel(value?: string | null) {
   if (value === "PWD") return "Person with Disability (PWD)";
   if (value === "FHONA")
-    return "Former HUKBNP Members and their Descendants (FHONA)";
+    return "Former HUKBNP Members and their Descendants";
   return value ?? "";
 }
