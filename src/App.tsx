@@ -64,10 +64,6 @@ export default function App() {
   useEffect(() => {
     let active = true;
     if (loading || !user || isPasswordReset) return;
-    if (isActiveAdmin && residentProtected) {
-      navigate("/admin/dashboard");
-      return;
-    }
     if (path === "/admin") {
       navigate(
         isActiveAdmin ? "/admin/dashboard" : "/resident/dashboard",
@@ -75,10 +71,6 @@ export default function App() {
       return;
     }
     if (path !== "/resident" && path !== "/resident/register") return;
-    if (isActiveAdmin) {
-      navigate("/admin/dashboard");
-      return;
-    }
     setAuthRedirecting(true);
     void (async () => {
       try {
