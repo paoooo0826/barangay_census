@@ -3,7 +3,6 @@ import {
   AlertCircle,
   Camera,
   CheckCircle2,
-  FlipHorizontal2,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -48,9 +47,12 @@ const MODEL_URL =
   "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
 const MATCH_THRESHOLD = 0.55;
 const STRONG_MATCH_THRESHOLD = 0.45;
+const BLINK_CLOSED_EAR_THRESHOLD = 0.22;
+const BLINK_REOPEN_EAR_THRESHOLD = 0.235;
+const BLINK_POLL_INTERVAL_MS = 100;
 
 const ACTION_LABELS: Record<LivenessAction, string> = {
-  blink_twice: "Blink twice",
+  blink_twice: "Blink twice slowly",
   turn_left: "Turn your head left",
   turn_right: "Turn your head right",
   smile: "Smile",
@@ -167,7 +169,6 @@ export default function FaceIdentityVerification({
   const [passed, setPassed] = useState<LivenessAction[]>([]);
   const [complete, setComplete] = useState(false);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
-  const [mirrorPreview, setMirrorPreview] = useState(true);
 
   const currentAction = actions[actionIndex];
   const actionSummary = useMemo(
@@ -426,7 +427,7 @@ export default function FaceIdentityVerification({
 
         const options = new faceapi.TinyFaceDetectorOptions({
           inputSize: 416,
-          scoreThreshold: 0.55,
+          scoreThreshold: requestedAction === "blink_twice" ? 0.45 : 0.55,
         });
         const detections = await faceapi
           .detectAllFaces(video, options)
@@ -484,8 +485,12 @@ export default function FaceIdentityVerification({
         }
         if (requestedAction === "blink_twice") {
           const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
-          if (ear < 0.19) blinkClosedRef.current = true;
-          if (ear > 0.23 && blinkClosedRef.current) {
+          if (ear <= BLINK_CLOSED_EAR_THRESHOLD)
+            blinkClosedRef.current = true;
+          if (
+            ear >= BLINK_REOPEN_EAR_THRESHOLD &&
+            blinkClosedRef.current
+          ) {
             blinkCountRef.current += 1;
             blinkClosedRef.current = false;
           }
@@ -514,9 +519,15 @@ export default function FaceIdentityVerification({
           }
         } else {
           setStatus(
-            `Automatic detection active: ${ACTION_LABELS[requestedAction]}`,
+            requestedAction === "blink_twice" && blinkCountRef.current > 0
+              ? `Blink detected: ${blinkCountRef.current} of 2. Blink once more.`
+              : `Automatic detection active: ${ACTION_LABELS[requestedAction]}`,
           );
-          await wait(300);
+          await wait(
+            requestedAction === "blink_twice"
+              ? BLINK_POLL_INTERVAL_MS
+              : 300,
+          );
         }
       }
 
@@ -781,22 +792,9 @@ export default function FaceIdentityVerification({
                   ? "h-full w-full object-contain"
                   : "aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
               }
-              style={{ transform: mirrorPreview ? "scaleX(-1)" : "none" }}
             />
             {!complete && (
               <VideoGuide videoRef={videoRef} kind="face" ready={!error} />
-            )}
-            {!complete && (
-              <button
-                type="button"
-                onClick={() => setMirrorPreview((current) => !current)}
-                className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-xl bg-black/70 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur transition hover:bg-black/85"
-                aria-pressed={mirrorPreview}
-                title="Flip the camera preview horizontally"
-              >
-                <FlipHorizontal2 size={16} />
-                Flip preview
-              </button>
             )}
             {!complete && currentAction && (
               <div className="absolute inset-x-3 bottom-3 rounded-xl bg-black/70 p-3 text-center text-sm font-bold text-white">
@@ -807,10 +805,8 @@ export default function FaceIdentityVerification({
           <canvas ref={canvasRef} className="hidden" />
           {!complete && !cameraReady && (
             <p className="mt-3 text-xs text-slate-500">
-              The preview is mirrored for natural movement. Use{" "}
-              <span className="font-semibold">Flip preview</span> if your device
-              shows the opposite orientation. The saved verification photo
-              remains in its correct camera orientation.
+              The camera preview and saved verification photo use the normal,
+              non-mirrored camera orientation.
             </p>
           )}
           {actionSummary && (
