@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Public browser configuration; access is controlled by Supabase Auth and RLS.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://pqpezqeagxeuetztwlam.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Knu9QnUZOgrOMFq6HIYxbg_VgDGkEaI';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
