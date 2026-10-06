@@ -1024,9 +1024,9 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
 
   if (loadingExisting)
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-pine-50">
         <div className="text-center">
-          <Loader2 className="mx-auto h-10 w-10 animate-spin text-blue-600" />
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-pine-600" />
           <p className="mt-3 text-sm text-slate-600">
             Loading your census information...
           </p>
@@ -1034,19 +1034,20 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       </div>
     );
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-5 sm:px-6">
           <button
             type="button"
             onClick={onDashboard}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"
+            className="icon-button shrink-0 border border-slate-200 bg-white text-slate-600"
             title="Back to dashboard"
+            aria-label="Back to dashboard"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pine-600">
               Barangay Old Lucban
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
@@ -1071,9 +1072,61 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             </div>
           </div>
         )}
-        <div className="space-y-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">1. Location Information</h2>
+        <nav
+          aria-label="Census form sections"
+          className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-700">
+              Jump to a section
+            </p>
+            <p className="text-xs text-slate-500">
+              Required fields are marked <span className="text-red-600">*</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ["location", "Location"],
+              ["personal", "Personal information"],
+              ["education", "Education"],
+              ["housing", "Housing"],
+              ["identity", "ID verification"],
+              ["household", "Household photo"],
+              ["classification", "Resident classification"],
+            ].map(([id, label], number) => (
+              <button
+                key={id}
+                type="button"
+                className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 transition hover:border-pine-300 hover:bg-pine-50"
+                onClick={() => {
+                  const section = document.getElementById(`census-${id}`);
+                  section?.scrollIntoView({
+                    behavior: window.matchMedia(
+                      "(prefers-reduced-motion: reduce)",
+                    ).matches
+                      ? "auto"
+                      : "smooth",
+                    block: "start",
+                  });
+                  section
+                    ?.querySelector<HTMLElement>("h2")
+                    ?.focus({ preventScroll: true });
+                }}
+              >
+                <span className="mr-1.5 text-earth-600">{number + 1}.</span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+        <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm sm:p-8">
+          <section
+            id="census-location"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="mb-6 text-xl font-bold">
+              1. Location Information
+            </h2>
             <div className="grid gap-6 md:grid-cols-2">
               {[
                 ["Region", "region"],
@@ -1082,8 +1135,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 ["Barangay", "barangay"],
               ].map(([label, key]) => (
                 <div key={key} className="space-y-2">
-                  <label className="label">{label}</label>
+                  <label htmlFor={`census-${key}`} className="label">
+                    {label}
+                  </label>
                   <input
+                    id={`census-${key}`}
                     data-field={key}
                     className={fieldInputClass(key as keyof CensusFormData)}
                     value={formData[key as keyof CensusFormData] as string}
@@ -1094,8 +1150,13 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">2. Personal Information</h2>
+          <section
+            id="census-personal"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="mb-6 text-xl font-bold">
+              2. Personal Information
+            </h2>
             <div className="grid gap-6 md:grid-cols-2">
               {[
                 ["Last Name", "last_name"],
@@ -1109,7 +1170,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 ["Email Address", "email_address"],
               ].map(([label, key]) => (
                 <div key={key} className="space-y-2">
-                  <label className="label">
+                  <label htmlFor={`census-${key}`} className="label">
                     {label}
                     {(REQUIRED_CENSUS_FIELDS.includes(
                       key as keyof CensusFormData,
@@ -1119,6 +1180,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                     )}
                   </label>
                   <input
+                    id={`census-${key}`}
                     data-field={key}
                     className={fieldInputClass(key as keyof CensusFormData)}
                     aria-invalid={Boolean(
@@ -1159,10 +1221,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 </div>
               ))}
               <div className="space-y-2">
-                <label className="label">
+                <label htmlFor="census-birth_date" className="label">
                   Birth Date <span className="text-red-600">*</span>
                 </label>
                 <input
+                  id="census-birth_date"
                   type="date"
                   max={new Date().toISOString().split("T")[0]}
                   data-field="birth_date"
@@ -1177,18 +1240,22 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 )}
               </div>
               <div className="space-y-2">
-                <label className="label">Age</label>
+                <label htmlFor="census-age" className="label">
+                  Age
+                </label>
                 <input
+                  id="census-age"
                   className="input"
                   readOnly
                   value={age ? `${age} years old` : ""}
                 />
               </div>
               <div className="space-y-2">
-                <label className="label">
+                <label htmlFor="census-sex" className="label">
                   Sex <span className="text-red-600">*</span>
                 </label>
                 <select
+                  id="census-sex"
                   data-field="sex"
                   className={fieldInputClass("sex")}
                   value={formData.sex}
@@ -1200,10 +1267,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="label">
+                <label htmlFor="census-civil_status" className="label">
                   Civil Status <span className="text-red-600">*</span>
                 </label>
                 <select
+                  id="census-civil_status"
                   data-field="civil_status"
                   className={fieldInputClass("civil_status")}
                   value={formData.civil_status}
@@ -1218,10 +1286,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 </select>
               </div>
               <div className="space-y-2 md:col-span-2">
-                <label className="label">
+                <label htmlFor="census-residential_address" className="label">
                   Residential Address <span className="text-red-600">*</span>
                 </label>
                 <textarea
+                  id="census-residential_address"
                   data-field="residential_address"
                   className={fieldInputClass("residential_address")}
                   value={formData.residential_address}
@@ -1238,14 +1307,20 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">3. Education</h2>
+          <section
+            id="census-education"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="mb-6 text-xl font-bold">
+              3. Education
+            </h2>
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="label">
+                <label htmlFor="census-highest_education" className="label">
                   Highest Education <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id="census-highest_education"
                   data-field="highest_education"
                   className={fieldInputClass("highest_education")}
                   value={formData.highest_education}
@@ -1265,10 +1340,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 )}
               </div>
               <div className="space-y-2">
-                <label className="label">
+                <label htmlFor="census-education_status" className="label">
                   Education Status <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id="census-education_status"
                   data-field="education_status"
                   className={fieldInputClass("education_status")}
                   value={formData.education_status}
@@ -1294,8 +1370,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">
+          <section
+            id="census-housing"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="mb-6 text-xl font-bold">
               4. Tenurial Status <span className="text-red-600">*</span>
             </h2>
             <div className="mb-6 grid gap-4 sm:grid-cols-2">
@@ -1365,12 +1444,16 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             </div>
             <div
               data-field="tenurial_status"
+              role="radiogroup"
+              aria-label="Tenurial status"
+              aria-required="true"
+              aria-invalid={Boolean(fieldErrors.tenurial_status)}
               className={`grid gap-4 rounded-2xl md:grid-cols-2 ${fieldErrors.tenurial_status ? "border border-red-500 bg-red-50 p-3" : ""}`}
             >
               {TENURIAL_STATUS_OPTIONS.map((status) => (
                 <label
                   key={status}
-                  className="flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white p-4 hover:border-blue-300"
+                  className="flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white p-4 hover:border-pine-300"
                 >
                   <input
                     type="radio"
@@ -1397,11 +1480,12 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
               </p>
             )}
             {formData.tenurial_status === "Renter" && (
-              <div className="mt-6 max-w-md rounded-2xl border border-blue-200 bg-blue-50/70 p-5">
-                <label className="label">
+              <div className="mt-6 max-w-md rounded-2xl border border-pine-200 bg-pine-50/70 p-5">
+                <label htmlFor="census-monthly_rent" className="label">
                   Monthly Rent (PHP) <span className="text-red-600">*</span>
                 </label>
                 <input
+                  id="census-monthly_rent"
                   type="number"
                   min="1"
                   step="0.01"
@@ -1420,13 +1504,18 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
+          <section
+            id="census-identity"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
             <div className="mb-6 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
                 <ShieldCheck size={23} />
               </div>
               <div>
-                <h2 className="text-xl font-bold">5. Identity Verification</h2>
+                <h2 tabIndex={-1} className="text-xl font-bold">
+                  5. Identity Verification
+                </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Upload or automatically capture clear images of your
                   government ID, then complete live face verification.
@@ -1434,10 +1523,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
               </div>
             </div>
             <div className="mb-6 max-w-md space-y-2">
-              <label className="label">
+              <label htmlFor="census-governmentIdType" className="label">
                 Government ID Type <span className="text-red-600">*</span>
               </label>
               <select
+                id="census-governmentIdType"
                 data-field="governmentIdType"
                 className={fieldInputClass("governmentIdType")}
                 value={governmentIdType}
@@ -1455,10 +1545,14 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
               </select>
               {governmentIdType === "Other" && (
                 <div className="pt-2">
-                  <label className="label">
+                  <label
+                    htmlFor="census-otherGovernmentIdType"
+                    className="label"
+                  >
                     Specify Other ID <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="census-otherGovernmentIdType"
                     data-field="otherGovernmentIdType"
                     className={fieldInputClass("otherGovernmentIdType")}
                     value={otherGovernmentIdType}
@@ -1494,7 +1588,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                     className={`overflow-hidden rounded-2xl border bg-white ${fieldErrors[validationField] ? "border-red-500" : "border-slate-200"}`}
                   >
                     <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 font-semibold">
-                      <CreditCard size={18} className="text-blue-600" />
+                      <CreditCard size={18} className="text-pine-600" />
                       {item.title} <span className="text-red-600">*</span>
                     </div>
                     <div className="p-4">
@@ -1510,7 +1604,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                         </div>
                       )}
                       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700">
+                        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-pine-200 bg-pine-50 px-4 py-2.5 text-sm font-semibold text-pine-700">
                           <Upload size={18} />
                           {item.preview ? "Replace file" : "Upload file"}
                           <input
@@ -1611,8 +1705,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="text-xl font-bold">
+          <section
+            id="census-household"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="text-xl font-bold">
               6. House / Household Photo <span className="text-red-600">*</span>
             </h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -1635,7 +1732,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                     <X className="h-5 w-5" />
                   </button>
                 )}
-                <label className="absolute bottom-3 left-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/95 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-lg">
+                <label className="absolute bottom-3 left-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white/95 px-4 py-2.5 text-sm font-semibold text-pine-700 shadow-lg">
                   <Upload className="h-4 w-4" />
                   Replace image
                   <input
@@ -1653,11 +1750,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 data-field="householdPhoto"
                 className={`mt-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center ${fieldErrors.householdPhoto ? "border-red-500 bg-red-50" : "border-slate-300 bg-white"}`}
               >
-                <ImageIcon className="h-9 w-9 text-blue-700" />
+                <ImageIcon className="h-9 w-9 text-pine-700" />
                 <p className="mt-4 font-semibold">
                   Upload house or household picture
                 </p>
-                <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">
+                <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-pine-600 px-4 py-2.5 text-sm font-semibold text-white">
                   <Upload className="h-4 w-4" />
                   Select Image
                 </span>
@@ -1673,8 +1770,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:p-6">
-            <h2 className="mb-6 text-xl font-bold">
+          <section
+            id="census-classification"
+            className="form-section rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-6"
+          >
+            <h2 tabIndex={-1} className="mb-6 text-xl font-bold">
               7. Resident Classification
             </h2>
             <div className="grid gap-4 md:grid-cols-3">
@@ -1699,10 +1799,11 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
               <div className="mt-6 grid gap-5 md:grid-cols-2">
                 {isCategorySelected("Indigenous People") && (
                   <div className="space-y-2">
-                    <label className="label">
+                    <label htmlFor="census-indigenous_group" className="label">
                       Indigenous Group <span className="text-red-600">*</span>
                     </label>
                     <input
+                      id="census-indigenous_group"
                       data-field="indigenous_group"
                       className={fieldInputClass("indigenous_group")}
                       value={formData.indigenous_group}
@@ -1714,11 +1815,12 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 )}
                 {isCategorySelected("Others") && (
                   <div className="space-y-2">
-                    <label className="label">
+                    <label htmlFor="census-other_description" className="label">
                       Other Resident Classification Description{" "}
                       <span className="text-red-600">*</span>
                     </label>
                     <input
+                      id="census-other_description"
                       data-field="other_description"
                       className={fieldInputClass("other_description")}
                       value={formData.other_description}
@@ -1736,7 +1838,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             type="button"
             onClick={handleSubmit}
             disabled={loading || loadingExisting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+            className="btn-primary w-full py-4"
           >
             {loading ? (
               <Loader2 className="animate-spin" />

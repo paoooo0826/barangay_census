@@ -44,7 +44,7 @@ export default function RecentServices({ refreshKey }: { refreshKey: number }) {
         </div>
         <a
           href="#/admin/dashboard?tab=services"
-          className="text-sm font-bold text-blue-700"
+          className="text-sm font-bold text-pine-700"
         >
           View All Services
         </a>

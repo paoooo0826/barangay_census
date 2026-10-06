@@ -19,6 +19,8 @@ import { supabase } from "../lib/supabase";
 import AdminAnalytics from "../components/AdminAnalytics";
 import AdminAnnouncements from "../components/AdminAnnouncements";
 import HousingManager from "../components/HousingManager";
+import BarangayBrand from "../components/BarangayBrand";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import RecentServices from "../components/RecentServices";
 import AdminAppointments from "../components/AdminAppointments";
 import SortControls from "../components/SortControls";
@@ -60,8 +62,8 @@ const PRIMARY_TABS: Array<{
 ];
 const STATUS_STYLES: Record<ResidentStatus, string> = {
   pending_review: "bg-amber-100 text-amber-800",
-  verified: "bg-emerald-100 text-emerald-800",
-  returned: "bg-blue-100 text-blue-800",
+  verified: "bg-sage-100 text-sage-800",
+  returned: "bg-pine-100 text-pine-800",
   rejected: "bg-red-100 text-red-800",
 };
 const STATUS_LABELS: Record<ResidentStatus, string> = {
@@ -114,7 +116,8 @@ function AdminNavLinks({
             key={item.value}
             href={`#/admin/dashboard?tab=${item.value}`}
             onClick={onSelect}
-            className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${activeTab === item.value ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"}`}
+            aria-current={activeTab === item.value ? "page" : undefined}
+            className={`nav-item ${activeTab === item.value ? "nav-item-active" : ""}`}
           >
             <Icon size={18} />
             {item.label}
@@ -232,10 +235,23 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   const activeAnnouncements = summary.announcements.published;
   const recentResidents = summary.recentResidents;
   const profileName = adminProfile?.full_name?.trim() || "Administrator";
+  const mobileRef = useDialogFocus<HTMLElement>(mobileOpen, () =>
+    setMobileOpen(false),
+  );
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur lg:pl-72">
+      <a
+        href="#admin-main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("admin-main")?.focus();
+        }}
+        className="sr-only z-[150] rounded-xl bg-pine-800 p-3 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to main content
+      </a>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-slate-50/95 backdrop-blur lg:pl-72">
         <div className="flex min-h-20 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
@@ -243,14 +259,16 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               onClick={() => setMobileOpen(true)}
               className="rounded-xl border border-slate-200 p-2.5 text-slate-700 lg:hidden"
               aria-label="Open navigation"
+              aria-expanded={mobileOpen}
+              aria-controls="admin-mobile-navigation"
             >
               <Menu size={21} />
             </button>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-                Barangay Old Lucban
+              <p className="page-eyebrow">Barangay Old Lucban</p>
+              <p className="mt-1 text-sm font-semibold text-pine-900">
+                Administrator Portal
               </p>
-              <h1 className="font-bold">Administrator Portal</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -258,7 +276,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               type="button"
               onClick={() => void refresh()}
               disabled={refreshing}
-              className="rounded-xl border border-slate-200 p-2.5 text-slate-600"
+              className="icon-button"
               aria-label="Refresh"
             >
               <RefreshCw
@@ -268,9 +286,9 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             </button>
             <a
               href="#/admin/dashboard?tab=account"
-              className={`hidden items-center gap-3 rounded-xl border px-3 py-2 sm:flex ${activeTab === "account" ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"}`}
+              className={`hidden items-center gap-3 rounded-xl border px-3 py-2 sm:flex ${activeTab === "account" ? "border-pine-300 bg-pine-50" : "border-slate-200 bg-white"}`}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 font-bold text-white">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-pine-700 font-bold text-white">
                 {profileName.charAt(0).toUpperCase()}
               </span>
               <span className="text-left">
@@ -284,12 +302,10 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         </div>
       </header>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-72 flex-col border-r border-slate-200 bg-white p-5 lg:flex">
-        <div className="mb-6 rounded-2xl bg-gradient-to-br from-blue-800 to-blue-600 p-5 text-white">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
-            Barangay Old Lucban
-          </p>
-          <p className="mt-1 text-xl font-bold">Admin Console</p>
+        <div className="mb-6 border-b border-slate-200 pb-6 pt-1">
+          <BarangayBrand compact subtitle="Administrator Portal" />
         </div>
+        <p className="page-eyebrow mb-3 px-4">Workspace</p>
         <nav className="space-y-1">
           <AdminNavLinks activeTab={activeTab} />
         </nav>
@@ -310,20 +326,24 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             type="button"
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
-            className="absolute inset-0 bg-slate-950/50"
+            className="menu-backdrop absolute inset-0 bg-slate-950/50"
           />
-          <aside className="relative flex h-full w-[min(88vw,320px)] flex-col bg-white p-5 shadow-2xl">
+          <aside
+            ref={mobileRef}
+            tabIndex={-1}
+            id="admin-mobile-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Administrator navigation"
+            className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
+          >
             <div className="mb-6 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-                  Barangay Old Lucban
-                </p>
-                <p className="font-bold">Admin Navigation</p>
-              </div>
+              <BarangayBrand compact subtitle="Administrator Portal" />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-xl border border-slate-200 p-2"
+                aria-label="Close administrator menu"
+                className="icon-button"
               >
                 <X size={20} />
               </button>
@@ -336,7 +356,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               <a
                 href="#/admin/dashboard?tab=account"
                 onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${activeTab === "account" ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-blue-50"}`}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${activeTab === "account" ? "bg-pine-700 text-white" : "text-slate-600 hover:bg-pine-50"}`}
               >
                 <UserCog size={18} />
                 Profile / Account
@@ -353,7 +373,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
           </aside>
         </div>
       )}
-      <main className="space-y-6 px-4 py-8 sm:px-6 lg:ml-72 lg:px-8">
+      <main
+        id="admin-main"
+        tabIndex={-1}
+        className="mx-auto min-w-0 max-w-[1600px] space-y-6 px-4 py-8 outline-none sm:px-6 lg:ml-72 lg:px-8"
+      >
         {(error || (activeTab === "records" && recordError)) && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error || (activeTab === "records" ? recordError : null)}
@@ -361,6 +385,14 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         )}
         {activeTab === "dashboard" && (
           <>
+            <div className="pb-1">
+              <p className="page-eyebrow">Your barangay workspace</p>
+              <h1 className="page-title mt-2">Barangay overview</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+                Resident records, service requests, and the tasks that need your
+                attention.
+              </p>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Stat label="Total Residents" value={stats.total} />
               <Stat label="Approved" value={stats.verified} />
@@ -418,16 +450,16 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     <a
                       key={action.label}
                       href={`#/admin/dashboard?tab=${action.href}`}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 transition hover:border-blue-300 hover:bg-blue-50"
+                      className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 transition hover:border-pine-300 hover:bg-pine-50"
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
                         <Icon size={20} />
                       </span>
                       <span className="min-w-0 flex-1 font-bold text-slate-800">
                         {action.label}
                       </span>
                       {action.count !== null && (
-                        <span className="rounded-full bg-blue-700 px-2.5 py-1 text-xs font-bold text-white">
+                        <span className="rounded-full bg-pine-700 px-2.5 py-1 text-xs font-bold text-white">
                           {action.count}
                         </span>
                       )}
@@ -447,7 +479,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 </div>
                 <a
                   href="#/admin/dashboard?tab=records"
-                  className="text-sm font-bold text-blue-700"
+                  className="text-sm font-bold text-pine-700"
                 >
                   View All
                 </a>
@@ -477,7 +509,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     <button
                       type="button"
                       onClick={() => onReview(resident.id)}
-                      className="rounded-xl bg-blue-700 px-4 py-2 text-sm font-bold text-white"
+                      className="rounded-xl bg-pine-700 px-4 py-2 text-sm font-bold text-white"
                     >
                       View
                     </button>
@@ -496,7 +528,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 p-5 sm:p-6">
               <div className="flex items-center gap-3">
-                <FileSearch className="text-blue-700" />
+                <FileSearch className="text-pine-700" />
                 <div>
                   <h2 className="text-xl font-bold">Resident Records</h2>
                   <p className="text-sm text-slate-500">
@@ -562,7 +594,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-bold">{fullName(resident)}</h3>
-                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                          <span className="rounded-full bg-pine-50 px-2.5 py-1 text-xs font-bold text-pine-700">
                             {resident.residence_classification === "resident"
                               ? "Resident"
                               : resident.residence_classification ===
@@ -590,7 +622,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       </div>
                       <button
                         onClick={() => onReview(resident.id)}
-                        className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white"
+                        className="rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-bold text-white"
                       >
                         Open Record
                       </button>
@@ -640,7 +672,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         )}{" "}
         {activeTab === "account" && (
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-            <p className="text-sm font-semibold text-blue-700">
+            <p className="text-sm font-semibold text-pine-700">
               Administrator account
             </p>
             <h2 className="mt-1 text-2xl font-bold">Profile / Account</h2>

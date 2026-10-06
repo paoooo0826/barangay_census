@@ -233,7 +233,7 @@ export default function IdCameraCapture({
         type="button"
         disabled={disabled || busy}
         onClick={() => void start()}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-pine-800 disabled:opacity-50"
       >
         <Camera size={18} />
         Take live photo

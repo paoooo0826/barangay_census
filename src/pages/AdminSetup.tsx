@@ -240,29 +240,29 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
     return(
 
       <div className="
-      min-h-screen 
-      bg-gradient-to-br 
-      from-gray-50 
+      min-h-screen
+      bg-gradient-to-br
+      from-slate-50
       to-amber-50
-      flex 
-      items-center 
+      flex
+      items-center
       justify-center
       ">
 
         <div className="text-center">
 
-          <Loader2 
+          <Loader2
           className="
-          w-10 
-          h-10 
-          animate-spin 
-          mx-auto 
-          mb-4 
+          w-10
+          h-10
+          animate-spin
+          mx-auto
+          mb-4
           text-accent
           "
           />
 
-          <p className="text-gray-600">
+          <p className="text-slate-600">
             Checking system status...
           </p>
 
@@ -285,7 +285,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
       <div className="
       min-h-screen
       bg-gradient-to-br
-      from-gray-50
+      from-slate-50
       to-amber-50
       flex
       items-center
@@ -295,10 +295,10 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
 
         <div className="
-        card 
-        p-8 
-        max-w-md 
-        w-full 
+        card
+        p-8
+        max-w-md
+        w-full
         text-center
         ">
 
@@ -309,7 +309,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
           h-16
           mx-auto
           mb-4
-          text-green-600
+          text-sage-600
           "
           />
 
@@ -324,7 +324,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
 
           <p className="
-          text-gray-600
+          text-slate-600
           mb-6
           ">
             An admin account already exists.
@@ -364,7 +364,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
       <div className="
       min-h-screen
-      bg-green-50
+      bg-sage-50
       flex
       items-center
       justify-center
@@ -385,7 +385,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
           h-16
           mx-auto
           mb-4
-          text-green-600
+          text-sage-600
           "
           />
 
@@ -430,7 +430,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
     <div className="
     min-h-screen
     bg-gradient-to-br
-    from-gray-50
+    from-slate-50
     to-amber-50
     flex
     items-center
@@ -484,7 +484,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
 
           <p className="
-          text-gray-600
+          text-slate-600
           mt-2
           ">
             Create the first administrator account.
@@ -695,7 +695,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
         className="
         mt-6
         text-sm
-        text-gray-500
+        text-slate-500
         "
 
         >

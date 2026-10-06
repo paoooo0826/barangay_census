@@ -54,7 +54,7 @@ const PRIORITY_LABELS: Record<AnnouncementPriority, string> = {
   urgent: "Urgent",
 };
 const PRIORITY_STYLES: Record<AnnouncementPriority, string> = {
-  info: "border-blue-200 bg-blue-50 text-blue-800",
+  info: "border-pine-200 bg-pine-50 text-pine-800",
   important: "border-amber-200 bg-amber-50 text-amber-800",
   urgent: "border-red-200 bg-red-50 text-red-800",
 };
@@ -567,19 +567,21 @@ export default function AdminAnnouncements({
     `input mt-2 ${fieldErrors[field] ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-100" : ""}`;
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-blue-700 to-indigo-700 p-6 text-white">
+      <div className="border-b border-slate-200 bg-white p-5 text-slate-900 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
               <Megaphone size={24} />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-earth-600">
                 Resident communication
               </p>
-              <h2 className="mt-1 text-2xl font-bold">Announcements</h2>
-              <p className="mt-2 text-sm text-blue-100">
-                Publish responsive banner notices and manage an archive.
+              <h1 className="mt-2 text-3xl font-normal text-pine-900">
+                Announcements
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                Share updates with residents and manage past notices.
               </p>
             </div>
           </div>
@@ -589,7 +591,7 @@ export default function AdminAnnouncements({
               if (showForm) closeForm();
               else setShowForm(true);
             }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-blue-800"
+            className="btn-primary shrink-0"
           >
             {showForm ? <X size={16} /> : <Plus size={16} />}{" "}
             {showForm ? "Close form" : "Add Announcement"}
@@ -603,7 +605,7 @@ export default function AdminAnnouncements({
         </div>
       )}
       {success && (
-        <div className="m-6 flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+        <div className="m-6 flex gap-2 rounded-xl border border-sage-200 bg-sage-50 p-3 text-sm text-sage-700">
           <CheckCircle2 size={17} />
           {success}
         </div>
@@ -721,7 +723,7 @@ export default function AdminAnnouncements({
                 <p className="text-sm font-semibold text-slate-700">
                   Photo (optional)
                 </p>
-                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600 hover:border-blue-400">
+                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600 hover:border-pine-400">
                   <ImagePlus size={20} />
                   Add Photo
                   <input
@@ -762,7 +764,7 @@ export default function AdminAnnouncements({
             <button
               type="submit"
               disabled={saving || preparingImage}
-              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+              className="btn-primary mt-5 w-full"
             >
               {saving ? <Loader2 className="animate-spin" /> : <Send />}
               {preparingImage
@@ -783,20 +785,20 @@ export default function AdminAnnouncements({
                 Archive announcements before permanent deletion.
               </p>
             </div>
-            <BellRing className="text-blue-700" />
+            <BellRing className="text-pine-700" />
           </div>
           <div className="mt-5 flex gap-2">
             <button
               type="button"
               onClick={() => setTab("active")}
-              className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "active" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
+              className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "active" ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-700"}`}
             >
               Active ({counts.active})
             </button>
             <button
               type="button"
               onClick={() => setTab("archived")}
-              className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "archived" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
+              className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "archived" ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-700"}`}
             >
               Archived ({counts.archived})
             </button>
@@ -864,7 +866,7 @@ export default function AdminAnnouncements({
                           </h4>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.archived ? "bg-slate-200 text-slate-700" : a.is_published && (!a.expires_at || new Date(a.expires_at).getTime() > currentTime) ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.archived ? "bg-slate-200 text-slate-700" : a.is_published && (!a.expires_at || new Date(a.expires_at).getTime() > currentTime) ? "bg-sage-100 text-sage-700" : "bg-slate-200 text-slate-600"}`}
                         >
                           {a.archived
                             ? "Archived"
@@ -892,7 +894,7 @@ export default function AdminAnnouncements({
                               return next;
                             })
                           }
-                          className="mt-2 text-sm font-bold text-blue-700"
+                          className="mt-2 text-sm font-bold text-pine-700"
                         >
                           {open ? "Show Less" : "See More"}
                         </button>
@@ -908,7 +910,7 @@ export default function AdminAnnouncements({
                             <button
                               type="button"
                               disabled={saving || preparingImage}
-                              className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700"
+                              className="rounded-lg border border-pine-200 px-3 py-2 text-xs font-bold text-pine-700"
                               onClick={() => editAnnouncement(a)}
                             >
                               Edit
@@ -943,7 +945,7 @@ export default function AdminAnnouncements({
                               onClick={() =>
                                 void runAction(() => restoreAnnouncement(a))
                               }
-                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700"
+                              className="inline-flex items-center gap-1 rounded-lg border border-pine-200 bg-white px-3 py-2 text-xs font-bold text-pine-700"
                             >
                               <RotateCcw size={14} />
                               Restore

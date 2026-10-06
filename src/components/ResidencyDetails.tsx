@@ -121,7 +121,7 @@ export default function ResidencyDetails({
     <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <h2 className="text-lg font-bold text-slate-900">Barangay Residency</h2>
       {success && (
-        <p role="status" className="mt-2 text-sm text-emerald-700">
+        <p role="status" className="mt-2 text-sm text-sage-700">
           {success}
         </p>
       )}
@@ -172,7 +172,7 @@ export default function ResidencyDetails({
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <div>
               <p className="text-xs text-slate-500">Current classification</p>
-              <p className="font-bold text-blue-700">
+              <p className="font-bold text-pine-700">
                 {current
                   ? labels[current.current_classification]
                   : periods.length
@@ -207,7 +207,7 @@ export default function ResidencyDetails({
           </p>
           {history.length > 0 && (
             <details className="mt-4">
-              <summary className="cursor-pointer text-sm font-bold text-blue-700">
+              <summary className="cursor-pointer text-sm font-bold text-pine-700">
                 Classification History
               </summary>
               <ul className="mt-3 space-y-2">

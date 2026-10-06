@@ -781,9 +781,9 @@ export default function FaceIdentityVerification({
   }
 
   return (
-    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-5">
+    <div className="rounded-2xl border border-pine-200 bg-pine-50/50 p-5">
       <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-blue-100 p-2 text-blue-700">
+        <div className="rounded-xl bg-pine-100 p-2 text-pine-700">
           <ShieldCheck size={22} />
         </div>
         <div>
@@ -826,7 +826,7 @@ export default function FaceIdentityVerification({
           type="button"
           disabled={busy || disabled || (!idFrontFile && !idFrontPreview)}
           onClick={() => void validateIdAndStart()}
-          className={`${autoStart ? "sr-only" : "mt-4 inline-flex"} items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50`}
+          className={`${autoStart ? "sr-only" : "mt-4 inline-flex"} items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50`}
         >
           {busy ? (
             <Loader2 className="animate-spin" size={18} />
@@ -922,7 +922,7 @@ export default function FaceIdentityVerification({
             >
               <p>Random challenge: {actionSummary}</p>
               {cameraReady && !complete && (
-                <p className="mt-1 font-semibold text-emerald-300">
+                <p className="mt-1 font-semibold text-sage-300">
                   Automatic monitoring · {passed.length} of {actions.length}{" "}
                   movements detected
                 </p>
@@ -934,7 +934,7 @@ export default function FaceIdentityVerification({
 
       {complete && (
         <div
-          className={`mt-4 rounded-xl border p-4 text-sm ${cameraUnavailable ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+          className={`mt-4 rounded-xl border p-4 text-sm ${cameraUnavailable ? "border-amber-200 bg-amber-50 text-amber-800" : "border-sage-200 bg-sage-50 text-sage-800"}`}
         >
           <div className="flex items-center gap-2 font-bold">
             {cameraUnavailable ? (
