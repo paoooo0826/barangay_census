@@ -252,7 +252,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               return { ...announcement, imageUrl: null };
             const { data, error: imageError } = await supabase.storage
               .from("announcement-images")
-              .createSignedUrl(announcement.image_path, 3600);
+              .createSignedUrl(announcement.image_path, 300);
             return {
               ...announcement,
               imageUrl: imageError ? null : (data?.signedUrl ?? null),
@@ -513,7 +513,9 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
 
         {tab === "housing" && <HousingManager />}
         {(tab === "home" || tab === "profile" || tab === "record") &&
-          resident && <ResidencyDetails residentId={resident.id} />}
+          resident && (
+            <ResidencyDetails residentId={resident.id} onRecordStart={onEdit} />
+          )}
         {tab === "appointments" && <ResidentAppointments resident={resident} />}
         {tab === "profile" && (
           <Profile

@@ -38,7 +38,7 @@ interface Props {
   idFrontFile: File | null;
   idFrontPreview?: string;
   disabled?: boolean;
-  onVerified: (result: FaceVerificationResult) => void;
+  onVerified: (result: FaceVerificationResult) => void | Promise<void>;
   onReset?: () => void;
   autoStart?: boolean;
 }
@@ -154,8 +154,12 @@ export default function FaceIdentityVerification({
   const baselineAreaRef = useRef<number | null>(null);
   const fullscreenRequestedRef = useRef(false);
   const monitorSessionRef = useRef(0);
+  const attemptRef = useRef(0);
+  const mountedRef = useRef(true);
+  const validatingRef = useRef(false);
   const completingRef = useRef(false);
   const autoStartKeyRef = useRef("");
+  const capturePreviewRef = useRef("");
 
   const [modelsReady, setModelsReady] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -169,6 +173,7 @@ export default function FaceIdentityVerification({
   const [passed, setPassed] = useState<LivenessAction[]>([]);
   const [complete, setComplete] = useState(false);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
+  const [capturePreview, setCapturePreview] = useState("");
 
   const currentAction = actions[actionIndex];
   const actionSummary = useMemo(
@@ -176,7 +181,16 @@ export default function FaceIdentityVerification({
     [actions],
   );
 
-  useEffect(() => () => stopCamera(), []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      attemptRef.current += 1;
+      stopCamera();
+      exitBrowserFullscreen();
+      clearCapturePreview();
+    };
+  }, []);
   useEffect(() => {
     if (!cameraReady) return;
     const previousOverflow = document.body.style.overflow;
@@ -187,6 +201,9 @@ export default function FaceIdentityVerification({
   }, [cameraReady]);
   useEffect(() => {
     resetVerification();
+    autoStartKeyRef.current = "";
+  }, [idFrontFile, idFrontPreview]);
+  useEffect(() => {
     const key = idFrontFile
       ? `${idFrontFile.name}:${idFrontFile.size}:${idFrontFile.lastModified}`
       : (idFrontPreview ?? "");
@@ -201,7 +218,19 @@ export default function FaceIdentityVerification({
     monitorSessionRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    setCameraReady(false);
+    if (videoRef.current) videoRef.current.srcObject = null;
+    if (mountedRef.current) setCameraReady(false);
+  }
+
+  function activeAttempt(attempt: number) {
+    return mountedRef.current && attempt === attemptRef.current;
+  }
+
+  function clearCapturePreview() {
+    if (capturePreviewRef.current)
+      URL.revokeObjectURL(capturePreviewRef.current);
+    capturePreviewRef.current = "";
+    if (mountedRef.current) setCapturePreview("");
   }
 
   async function enterBrowserFullscreen() {
@@ -229,8 +258,11 @@ export default function FaceIdentityVerification({
   }
 
   function resetVerification() {
+    attemptRef.current += 1;
+    validatingRef.current = false;
     stopCamera();
     exitBrowserFullscreen();
+    clearCapturePreview();
     idDescriptorRef.current = null;
     idQualityRef.current = null;
     idFaceAvailableRef.current = false;
@@ -242,6 +274,7 @@ export default function FaceIdentityVerification({
     setActionIndex(0);
     setPassed([]);
     setComplete(false);
+    setBusy(false);
     setCameraUnavailable(false);
     setError("");
     setStatus("Upload the ID front, then validate it.");
@@ -257,17 +290,23 @@ export default function FaceIdentityVerification({
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
     ]);
-    setModelsReady(true);
+    if (mountedRef.current) setModelsReady(true);
   }
 
   async function validateIdAndStart() {
-    await enterBrowserFullscreen();
+    if (disabled || validatingRef.current) return;
+    validatingRef.current = true;
+    const attempt = ++attemptRef.current;
     setBusy(true);
     setError("");
     try {
+      await enterBrowserFullscreen();
+      if (!activeAttempt(attempt)) return;
       await loadModels();
+      if (!activeAttempt(attempt)) return;
       setStatus("Checking the ID image quality and detected faces...");
       const image = await sourceToImage(idFrontFile, idFrontPreview);
+      if (!activeAttempt(attempt)) return;
       const pixelQuality = analyzePixels(image);
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
@@ -277,6 +316,7 @@ export default function FaceIdentityVerification({
         .detectAllFaces(image, options)
         .withFaceLandmarks()
         .withFaceDescriptors();
+      if (!activeAttempt(attempt)) return;
       if (faces.length > 1)
         throw new Error(
           "More than one face was detected on the ID. Only the cardholder photo should be visible.",
@@ -322,8 +362,10 @@ export default function FaceIdentityVerification({
           ? "ID accepted. Starting live camera liveness check..."
           : "No face photo was found on the ID. Liveness will continue and the application will require manual administrator review.",
       );
-      await startCamera(selected);
+      await startCamera(selected, attempt);
     } catch (caught) {
+      if (!activeAttempt(attempt)) return;
+      stopCamera();
       exitBrowserFullscreen();
       const message = cameraErrorMessage(caught);
       const isCameraProblem =
@@ -338,7 +380,10 @@ export default function FaceIdentityVerification({
         setStatus("ID validation failed.");
       }
     } finally {
-      setBusy(false);
+      if (activeAttempt(attempt)) {
+        validatingRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -363,7 +408,11 @@ export default function FaceIdentityVerification({
       : "The camera could not be opened.";
   }
 
-  async function startCamera(selectedActions: LivenessAction[]) {
+  async function startCamera(
+    selectedActions: LivenessAction[],
+    attempt = attemptRef.current,
+  ) {
+    if (!activeAttempt(attempt)) return;
     if (!navigator.mediaDevices?.getUserMedia)
       throw new DOMException("Camera unsupported", "NotFoundError");
     stopCamera();
@@ -377,6 +426,10 @@ export default function FaceIdentityVerification({
       },
       audio: false,
     });
+    if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
     streamRef.current = stream;
     setCameraReady(true);
 
@@ -384,6 +437,8 @@ export default function FaceIdentityVerification({
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );
+    if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
+      return;
     const video = videoRef.current;
     if (!video) {
       stream.getTracks().forEach((track) => track.stop());
@@ -396,15 +451,18 @@ export default function FaceIdentityVerification({
 
     video.srcObject = stream;
     await video.play();
+    if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
+      return;
     setStatus(
       `Automatic detection active: ${ACTION_LABELS[selectedActions[0]]}`,
     );
-    void monitorLiveness(selectedActions, sessionId);
+    void monitorLiveness(selectedActions, sessionId, attempt);
   }
 
   async function monitorLiveness(
     selectedActions: LivenessAction[],
     sessionId: number,
+    attempt: number,
   ) {
     let index = 0;
     let consecutiveMatches = 0;
@@ -415,6 +473,7 @@ export default function FaceIdentityVerification({
     try {
       while (
         index < selectedActions.length &&
+        activeAttempt(attempt) &&
         sessionId === monitorSessionRef.current &&
         streamRef.current
       ) {
@@ -434,6 +493,9 @@ export default function FaceIdentityVerification({
           .withFaceLandmarks()
           .withFaceExpressions()
           .withFaceDescriptors();
+
+        if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
+          return;
 
         if (detections.length !== 1) {
           consecutiveMatches = 0;
@@ -485,12 +547,8 @@ export default function FaceIdentityVerification({
         }
         if (requestedAction === "blink_twice") {
           const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
-          if (ear <= BLINK_CLOSED_EAR_THRESHOLD)
-            blinkClosedRef.current = true;
-          if (
-            ear >= BLINK_REOPEN_EAR_THRESHOLD &&
-            blinkClosedRef.current
-          ) {
+          if (ear <= BLINK_CLOSED_EAR_THRESHOLD) blinkClosedRef.current = true;
+          if (ear >= BLINK_REOPEN_EAR_THRESHOLD && blinkClosedRef.current) {
             blinkCountRef.current += 1;
             blinkClosedRef.current = false;
           }
@@ -524,26 +582,25 @@ export default function FaceIdentityVerification({
               : `Automatic detection active: ${ACTION_LABELS[requestedAction]}`,
           );
           await wait(
-            requestedAction === "blink_twice"
-              ? BLINK_POLL_INTERVAL_MS
-              : 300,
+            requestedAction === "blink_twice" ? BLINK_POLL_INTERVAL_MS : 300,
           );
         }
       }
 
       if (
         index === selectedActions.length &&
+        activeAttempt(attempt) &&
         sessionId === monitorSessionRef.current
       ) {
         setPassed(selectedActions);
         setStatus("All movements detected. Completing face comparison...");
         await wait(500);
-        if (sessionId === monitorSessionRef.current) {
-          await captureAndCompare(selectedActions);
+        if (activeAttempt(attempt) && sessionId === monitorSessionRef.current) {
+          await captureAndCompare(selectedActions, attempt, sessionId);
         }
       }
     } catch (caught) {
-      if (sessionId === monitorSessionRef.current) {
+      if (activeAttempt(attempt) && sessionId === monitorSessionRef.current) {
         setError(
           caught instanceof Error
             ? caught.message
@@ -558,8 +615,15 @@ export default function FaceIdentityVerification({
 
   async function captureAndCompare(
     completedActions: LivenessAction[] = actions,
+    attempt = attemptRef.current,
+    sessionId = monitorSessionRef.current,
   ) {
-    if (completingRef.current) return;
+    if (
+      !activeAttempt(attempt) ||
+      sessionId !== monitorSessionRef.current ||
+      completingRef.current
+    )
+      return;
     completingRef.current = true;
     try {
       if (!videoRef.current || !canvasRef.current || !idQualityRef.current)
@@ -568,8 +632,13 @@ export default function FaceIdentityVerification({
         );
       const video = videoRef.current;
       const canvas = canvasRef.current;
+      const idQuality = idQualityRef.current;
+      const idDescriptor = idDescriptorRef.current;
+      const idFaceAvailable = idFaceAvailableRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      if (!canvas.width || !canvas.height)
+        throw new Error("The live camera has no image. Restart verification.");
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Unable to capture the live face.");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -581,6 +650,8 @@ export default function FaceIdentityVerification({
         .detectAllFaces(canvas, options)
         .withFaceLandmarks()
         .withFaceDescriptors();
+      if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
+        return;
       if (capturedFaces.length !== 1) {
         throw new Error(
           capturedFaces.length === 0
@@ -610,14 +681,23 @@ export default function FaceIdentityVerification({
           0.92,
         ),
       );
+      if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
+        return;
       const file = new File([blob], `captured-face-${Date.now()}.jpg`, {
         type: "image/jpeg",
       });
       if (file.size === 0)
         throw new Error("The live face image is empty. Restart verification.");
+      clearCapturePreview();
+      capturePreviewRef.current = URL.createObjectURL(file);
+      setCapturePreview(capturePreviewRef.current);
 
-      if (!idFaceAvailableRef.current || !idDescriptorRef.current) {
-        onVerified({
+      if (!idFaceAvailable || !idDescriptor) {
+        stopCamera();
+        exitBrowserFullscreen();
+        setBusy(true);
+        setStatus("Saving captured verification…");
+        await onVerified({
           file,
           matched: false,
           matchDistance: 0,
@@ -625,25 +705,21 @@ export default function FaceIdentityVerification({
           livenessPassed: true,
           livenessActions: completedActions,
           recommendation: "manual_review",
-          idQuality: idQualityRef.current,
+          idQuality,
           verificationStatus: "passed",
           verificationReason:
             "Government ID has no usable face photograph. Face comparison was skipped.",
           deviceType: deviceType(),
         });
+        if (!activeAttempt(attempt)) return;
         setComplete(true);
         setStatus(
           "Liveness passed. The ID has no usable face photo, so manual administrator verification is required.",
         );
-        stopCamera();
-        exitBrowserFullscreen();
         return;
       }
 
-      const distance = faceapi.euclideanDistance(
-        idDescriptorRef.current,
-        liveDescriptor,
-      );
+      const distance = faceapi.euclideanDistance(idDescriptor, liveDescriptor);
       const similarityScore = Math.max(0, Math.min(100, (1 - distance) * 100));
       const recommendation: FaceVerificationResult["recommendation"] =
         distance <= STRONG_MATCH_THRESHOLD
@@ -660,7 +736,11 @@ export default function FaceIdentityVerification({
           "The live face is not sufficiently similar to the face on the ID. Please retry with better lighting and a front-facing position.",
         );
       }
-      onVerified({
+      stopCamera();
+      exitBrowserFullscreen();
+      setBusy(true);
+      setStatus("Saving captured verification…");
+      await onVerified({
         file,
         matched,
         matchDistance: distance,
@@ -668,20 +748,35 @@ export default function FaceIdentityVerification({
         livenessPassed: true,
         livenessActions: completedActions,
         recommendation,
-        idQuality: idQualityRef.current,
+        idQuality,
         verificationStatus: "passed",
         deviceType: deviceType(),
       });
+      if (!activeAttempt(attempt)) return;
       setComplete(true);
       setStatus(
         recommendation === "match"
           ? "Strong face match. Awaiting administrator review."
           : "Possible match. Administrator review is required.",
       );
+    } catch (caught) {
+      if (!activeAttempt(attempt)) return;
       stopCamera();
       exitBrowserFullscreen();
+      setComplete(false);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to save live verification. Please retry.",
+      );
+      setStatus(
+        "Verification did not finish. Restart verification to try again.",
+      );
     } finally {
-      completingRef.current = false;
+      if (activeAttempt(attempt)) {
+        completingRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -742,7 +837,7 @@ export default function FaceIdentityVerification({
         </button>
       )}
 
-      {(cameraReady || complete) && (
+      {(cameraReady || complete || capturePreview) && (
         <div
           className={
             cameraReady && !complete
@@ -783,20 +878,28 @@ export default function FaceIdentityVerification({
                 : "relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
             }
           >
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              className={
-                cameraReady && !complete
-                  ? "h-full w-full object-contain"
-                  : "aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
-              }
-            />
-            {!complete && (
+            {capturePreview ? (
+              <img
+                src={capturePreview}
+                alt="Captured live verification photo"
+                className="aspect-[4/3] w-full object-contain"
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                className={
+                  cameraReady && !complete
+                    ? "h-full w-full object-contain"
+                    : "aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
+                }
+              />
+            )}
+            {!complete && !capturePreview && (
               <VideoGuide videoRef={videoRef} kind="face" ready={!error} />
             )}
-            {!complete && currentAction && (
+            {!complete && !capturePreview && currentAction && (
               <div className="absolute inset-x-3 bottom-3 rounded-xl bg-black/70 p-3 text-center text-sm font-bold text-white">
                 {ACTION_LABELS[currentAction]}
               </div>

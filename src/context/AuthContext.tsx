@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -26,6 +27,7 @@ interface AuthContextValue {
   user: User | null;
   session: Session | null;
   adminProfile: AdminProfile | null;
+  adminProfileError: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
@@ -34,6 +36,19 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+async function readAdminProfile(userId: string) {
+  const { data, error } = await supabase
+    .from("admin_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+const PROFILE_ERROR =
+  "Unable to check administrator access. Check your connection and retry.";
 
 function clearAccountTemporaryData(userId?: string) {
   sessionStorage.removeItem("pendingResidentVerification");
@@ -48,11 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<{
     userId: string | null | undefined;
     data: AdminProfile | null;
-  }>({ userId: undefined, data: null });
+    error: string | null;
+  }>({ userId: undefined, data: null, error: null });
   const profileRequest = useRef(0);
   const userId = session?.user.id ?? null;
   const loading = !sessionReady || profile.userId !== userId;
   const adminProfile = profile.userId === userId ? profile.data : null;
+  const adminProfileError = profile.userId === userId ? profile.error : null;
 
   useEffect(() => {
     let active = true;
@@ -90,20 +107,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const request = ++profileRequest.current;
     let active = true;
     if (!userId) {
-      setProfile({ userId: null, data: null });
+      setProfile({ userId: null, data: null, error: null });
       return;
     }
     // Outside the auth callback: no Auth lock re-entry, and token refresh
     // for the same account never replaces the protected page with a loader.
-    void supabase
-      .from("admin_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    void readAdminProfile(userId)
+      .then((data) => {
         if (!active || request !== profileRequest.current) return;
-        if (error) console.warn("Unable to load admin profile:", error.message);
-        setProfile({ userId, data: error ? null : data });
+        setProfile({ userId, data, error: null });
+      })
+      .catch(() => {
+        if (!active || request !== profileRequest.current) return;
+        setProfile({ userId, data: null, error: PROFILE_ERROR });
       });
     return () => {
       active = false;
@@ -111,82 +127,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [userId]);
 
-  const signIn = async (
-    email: string,
-    password: string,
-  ): Promise<AuthResult> => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    });
-    return { error };
-  };
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<AuthResult> => {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      return { error };
+    },
+    [],
+  );
 
-  const signUp = async (
-    email: string,
-    password: string,
-  ): Promise<SignUpResult> => {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/resident`,
-      },
-    });
+  const signUp = useCallback(
+    async (email: string, password: string): Promise<SignUpResult> => {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/resident`,
+        },
+      });
 
-    const isExistingUser = Boolean(
-      data.user &&
-      Array.isArray(data.user.identities) &&
-      data.user.identities.length === 0,
-    );
+      const isExistingUser = Boolean(
+        data.user &&
+        Array.isArray(data.user.identities) &&
+        data.user.identities.length === 0,
+      );
 
-    return {
-      data: { user: data.user },
-      user: data.user,
-      error,
-      isExistingUser,
-      needsEmailConfirmation: Boolean(
-        data.user && !data.session && !isExistingUser,
-      ),
-    };
-  };
+      return {
+        data: { user: data.user },
+        user: data.user,
+        error,
+        isExistingUser,
+        needsEmailConfirmation: Boolean(
+          data.user && !data.session && !isExistingUser,
+        ),
+      };
+    },
+    [],
+  );
 
-  const signOut = async (): Promise<AuthResult> => {
-    const userId = session?.user.id;
+  const signOut = useCallback(async (): Promise<AuthResult> => {
     const { error } = await supabase.auth.signOut();
     if (!error) {
-      clearAccountTemporaryData(userId);
+      clearAccountTemporaryData(userId ?? undefined);
       setSession(null);
-      setProfile({ userId: null, data: null });
+      setProfile({ userId: null, data: null, error: null });
     }
     return { error };
-  };
+  }, [userId]);
 
-  const refreshAdminProfile = async () => {
+  const refreshAdminProfile = useCallback(async () => {
     if (!userId) return;
     const request = ++profileRequest.current;
-    const { data, error } = await supabase
-      .from("admin_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (request !== profileRequest.current) return;
-    if (error) console.warn("Unable to refresh admin profile:", error.message);
-    else setProfile({ userId, data });
-  };
+    try {
+      const data = await readAdminProfile(userId);
+      if (request === profileRequest.current)
+        setProfile({ userId, data, error: null });
+    } catch {
+      if (request === profileRequest.current)
+        setProfile((current) => ({ ...current, userId, error: PROFILE_ERROR }));
+    }
+  }, [userId]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user: session?.user ?? null,
       session,
       adminProfile,
+      adminProfileError,
       loading,
       signIn,
       signUp,
       signOut,
       refreshAdminProfile,
     }),
-    [session, adminProfile, loading],
+    [
+      session,
+      adminProfile,
+      adminProfileError,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      refreshAdminProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

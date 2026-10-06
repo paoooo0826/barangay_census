@@ -23,9 +23,11 @@ const labels: Record<string, string> = {
 export default function ResidencyDetails({
   residentId,
   admin = false,
+  onRecordStart,
 }: {
   residentId: string;
   admin?: boolean;
+  onRecordStart?: () => void;
 }) {
   const lock = useRef(false);
   const request = useRef(0);
@@ -65,11 +67,16 @@ export default function ResidencyDetails({
     setLoading(false);
   }, [residentId]);
   useEffect(() => {
+    setLoading(true);
     void load();
     const timer = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      request.current += 1;
+    };
   }, [load]);
   const current = periods.find((p) => !p.end_date);
+  const missingStart = !loading && !error && periods.length === 0;
   async function savePeriod(event: React.FormEvent) {
     event.preventDefault();
     if (lock.current || !action) return;
@@ -141,13 +148,36 @@ export default function ResidencyDetails({
         <p className="mt-2 text-sm text-slate-500">Loading residency…</p>
       ) : (
         <>
+          {missingStart && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-900">
+                Residence start date required
+              </p>
+              <p className="mt-1 text-sm text-amber-800">
+                Record the actual date residence began. Six-month classification
+                can only be calculated from a recorded continuous residence
+                period.
+              </p>
+              {!admin && onRecordStart && (
+                <button
+                  type="button"
+                  className="btn-secondary mt-3"
+                  onClick={onRecordStart}
+                >
+                  Add residence start date
+                </button>
+              )}
+            </div>
+          )}
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <div>
               <p className="text-xs text-slate-500">Current classification</p>
               <p className="font-bold text-blue-700">
                 {current
                   ? labels[current.current_classification]
-                  : "Start date not recorded"}
+                  : periods.length
+                    ? "Residence period ended"
+                    : "Residence start date required"}
               </p>
             </div>
             <div>

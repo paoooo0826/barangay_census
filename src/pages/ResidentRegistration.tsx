@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -73,6 +73,10 @@ export default function ResidentRegistration({
   onBack,
 }: RegistrationProps) {
   const { user } = useAuth();
+  const userId = user?.id;
+  const mounted = useRef(true);
+  const saveGeneration = useRef(0);
+  const saveLock = useRef(false);
   const [step, setStep] = useState(1);
   const [idType, setIdType] = useState("");
   const [frontImage, setFrontImage] = useState<File | null>(null);
@@ -87,6 +91,36 @@ export default function ResidentRegistration({
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<RegistrationField, string>>
   >({});
+
+  useEffect(() => {
+    mounted.current = true;
+    saveGeneration.current += 1;
+    return () => {
+      mounted.current = false;
+      saveGeneration.current += 1;
+    };
+  }, [userId]);
+
+  useEffect(
+    () => () => {
+      if (frontPreview.startsWith("blob:")) URL.revokeObjectURL(frontPreview);
+    },
+    [frontPreview],
+  );
+  useEffect(
+    () => () => {
+      if (backPreview.startsWith("blob:")) URL.revokeObjectURL(backPreview);
+    },
+    [backPreview],
+  );
+
+  function resetSavedVerification() {
+    saveGeneration.current += 1;
+    saveLock.current = false;
+    setVerification(null);
+    setLoading(false);
+    setComplete(false);
+  }
 
   useEffect(() => {
     if (step !== 1 || !idType || !frontImage || !backImage) return;
@@ -110,7 +144,7 @@ export default function ResidentRegistration({
         URL.revokeObjectURL(currentPreview);
       setFile(file);
       setPreview(URL.createObjectURL(file));
-      setVerification(null);
+      resetSavedVerification();
       setFieldErrors((current) => ({ ...current, [field]: undefined }));
       setError("");
     } catch (caught) {
@@ -128,7 +162,7 @@ export default function ResidentRegistration({
     if (currentPreview.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
     setFile(null);
     setPreview("");
-    setVerification(null);
+    resetSavedVerification();
   }
 
   function goToVerification() {
@@ -146,6 +180,7 @@ export default function ResidentRegistration({
   }
 
   async function uploadFile(file: File, path: string, uploadedPaths: string[]) {
+    validateImage(file);
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, file, {
@@ -160,9 +195,9 @@ export default function ResidentRegistration({
   async function saveVerification(
     result: FaceVerificationResult | null = verification,
   ) {
+    if (saveLock.current) return;
     if (!user || !frontImage || !backImage || !result) {
-      setError("Complete the ID and live verification first.");
-      return;
+      throw new Error("Complete the ID and live verification first.");
     }
     if (
       result.verificationStatus !== "passed" ||
@@ -170,10 +205,17 @@ export default function ResidentRegistration({
       !result.file ||
       result.file.size === 0
     ) {
-      setError(
+      throw new Error(
         "A successful live capture is required before continuing. Restart verification.",
       );
-      return;
+    }
+    saveLock.current = true;
+    const generation = ++saveGeneration.current;
+    const stillActive = () =>
+      mounted.current && generation === saveGeneration.current;
+    function ensureActive() {
+      if (!stillActive())
+        throw new Error("Verification was cancelled. Restart verification.");
     }
     setLoading(true);
     setError("");
@@ -184,6 +226,7 @@ export default function ResidentRegistration({
         .select("id")
         .eq("user_id", user.id)
         .maybeSingle();
+      ensureActive();
       if (lookupError) throw lookupError;
       if (existing)
         throw new Error(
@@ -196,16 +239,19 @@ export default function ResidentRegistration({
         `${folder}/id-front.${fileExtension(frontImage)}`,
         uploadedPaths,
       );
+      ensureActive();
       const backImagePath = await uploadFile(
         backImage,
         `${folder}/id-back.${fileExtension(backImage)}`,
         uploadedPaths,
       );
+      ensureActive();
       const capturedFacePath = await uploadFile(
         result.file,
         `${folder}/captured-face.jpg`,
         uploadedPaths,
       );
+      ensureActive();
 
       const stored: StoredVerification = {
         userId: user.id,
@@ -234,13 +280,18 @@ export default function ResidentRegistration({
     } catch (caught) {
       if (uploadedPaths.length > 0)
         await supabase.storage.from(STORAGE_BUCKET).remove(uploadedPaths);
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to save the verification files.",
-      );
+      if (stillActive())
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to save the verification files.",
+        );
+      throw caught;
     } finally {
-      setLoading(false);
+      if (stillActive()) {
+        saveLock.current = false;
+        setLoading(false);
+      }
     }
   }
 
@@ -432,11 +483,12 @@ export default function ResidentRegistration({
                   idFrontFile={frontImage}
                   idFrontPreview={frontPreview}
                   autoStart
+                  disabled={loading}
                   onVerified={(result) => {
                     setVerification(result);
-                    void saveVerification(result);
+                    return saveVerification(result);
                   }}
-                  onReset={() => setVerification(null)}
+                  onReset={resetSavedVerification}
                 />
                 {loading && (
                   <div className="flex items-center justify-center gap-2 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">
