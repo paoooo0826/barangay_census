@@ -4,13 +4,23 @@ export default function BarangayBrand({
   subtitle = "Resident Information & Service Portal",
   light = false,
   compact = false,
+  homeHref = "#/",
+  onHome,
 }: {
   subtitle?: string;
   light?: boolean;
   compact?: boolean;
+  homeHref?: string;
+  onHome?: () => void;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <a
+      href={homeHref}
+      onClick={onHome}
+      aria-label="Barangay Old Lucban — Home"
+      title="Go to Home"
+      className="group flex min-h-11 min-w-0 items-center gap-3 rounded-lg text-left"
+    >
       <img
         src={barangaySeal}
         alt="Barangay Happy Homes–Old Lucban seal"
@@ -20,7 +30,7 @@ export default function BarangayBrand({
       />
       <div className="min-w-0">
         <p
-          className={`text-sm font-bold leading-5 sm:text-base ${light ? "text-white" : "text-pine-900"}`}
+          className={`text-sm font-bold leading-5 underline-offset-4 group-hover:underline sm:text-base ${light ? "text-white" : "text-pine-900"}`}
         >
           Barangay Old Lucban
         </p>
@@ -30,6 +40,6 @@ export default function BarangayBrand({
           {subtitle}
         </p>
       </div>
-    </div>
+    </a>
   );
 }

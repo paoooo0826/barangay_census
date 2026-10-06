@@ -1047,9 +1047,15 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pine-600">
+            <button
+              type="button"
+              onClick={onDashboard}
+              aria-label="Barangay Old Lucban — Home"
+              title="Go to Home"
+              className="min-h-11 rounded-lg text-left text-sm font-semibold uppercase tracking-[0.18em] text-pine-600 underline-offset-4 hover:underline"
+            >
               Barangay Old Lucban
-            </p>
+            </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
               {isEditMode
                 ? "Update Census Information"

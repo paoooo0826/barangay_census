@@ -264,12 +264,19 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             >
               <Menu size={21} />
             </button>
-            <div>
-              <p className="page-eyebrow">Barangay Old Lucban</p>
+            <a
+              href="#/admin/dashboard?tab=dashboard"
+              aria-label="Barangay Old Lucban — Home"
+              title="Go to Home"
+              className="group rounded-lg"
+            >
+              <p className="page-eyebrow underline-offset-4 group-hover:underline">
+                Barangay Old Lucban
+              </p>
               <p className="mt-1 text-sm font-semibold text-pine-900">
                 Administrator Portal
               </p>
-            </div>
+            </a>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -303,7 +310,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
       </header>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-72 flex-col border-r border-slate-200 bg-white p-5 lg:flex">
         <div className="mb-6 border-b border-slate-200 pb-6 pt-1">
-          <BarangayBrand compact subtitle="Administrator Portal" />
+          <BarangayBrand
+            compact
+            subtitle="Administrator Portal"
+            homeHref="#/admin/dashboard?tab=dashboard"
+          />
         </div>
         <p className="page-eyebrow mb-3 px-4">Workspace</p>
         <nav className="space-y-1">
@@ -338,7 +349,12 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
           >
             <div className="mb-6 flex items-center justify-between">
-              <BarangayBrand compact subtitle="Administrator Portal" />
+              <BarangayBrand
+                compact
+                subtitle="Administrator Portal"
+                homeHref="#/admin/dashboard?tab=dashboard"
+                onHome={() => setMobileOpen(false)}
+              />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}

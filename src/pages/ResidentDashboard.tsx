@@ -326,6 +326,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
     () => setMobileOpen(false),
     768,
   );
+  const goHome = () => {
+    setTab("home");
+    setMobileOpen(false);
+    setProfileOpen(false);
+  };
   if (loading)
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -350,7 +355,12 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <BarangayBrand compact subtitle="Resident Portal" />
+            <BarangayBrand
+              compact
+              subtitle="Resident Portal"
+              homeHref="#/resident/dashboard"
+              onHome={goHome}
+            />
           </div>
           <div className="relative flex shrink-0 gap-2">
             <button
@@ -487,7 +497,12 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
           >
             <div className="mb-6 flex items-center justify-between">
-              <BarangayBrand compact subtitle="Resident Portal" />
+              <BarangayBrand
+                compact
+                subtitle="Resident Portal"
+                homeHref="#/resident/dashboard"
+                onHome={goHome}
+              />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
