@@ -202,6 +202,7 @@ export default function ResidentAppointments({
   initialService,
 }: ResidentAppointmentsProps) {
   const { user } = useAuth();
+  const userId = user?.id;
   const bookingRequestKey = useRef<string | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [showBooking, setShowBooking] = useState(Boolean(initialService));
@@ -228,7 +229,7 @@ export default function ResidentAppointments({
   const [success, setSuccess] = useState<string | null>(null);
 
   const loadAppointments = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setAppointments([]);
       return;
     }
@@ -237,13 +238,13 @@ export default function ResidentAppointments({
     const { data, error: appointmentError } = await supabase
       .from("appointments")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .order("appointment_date", { ascending: false })
       .order("appointment_time", { ascending: false });
     if (appointmentError) setError(appointmentError.message);
     else setAppointments((data ?? []) as Appointment[]);
     setLoading(false);
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     void loadAppointments();

@@ -17,20 +17,31 @@ begin
   select md5(coalesce(string_agg(to_jsonb(r)::text, '' order by id), ''))
     into before_fingerprint from public.residents r;
 
-  insert into auth.users (id) values (resident_user), (other_user), (admin_user);
+  insert into auth.users (id,email) values
+    (resident_user,resident_user::text||'@test.invalid'),
+    (other_user,other_user::text||'@test.invalid'),
+    (admin_user,admin_user::text||'@test.invalid');
+  insert into storage.objects(bucket_id,name,owner_id,metadata)
+    select 'resident-verification',resident_user::text||'/approval-test/'||filename,resident_user::text,
+      '{"size":128,"mimetype":"image/jpeg"}'::jsonb
+    from unnest(array['front.jpg','back.jpg','face.jpg']) filename;
   insert into public.admin_profiles (user_id, full_name, is_active)
     values (admin_user, 'Temporary census deployment test', true);
 
   perform set_config('request.jwt.claim.sub', resident_user::text, true);
   execute 'set local role authenticated';
 
-  insert into public.residents (
-    first_name, last_name, birth_date, birth_place, sex, civil_status,
-    residential_address, tenurial_status, status, tracking_number
-  ) values (
-    'Temporary', 'Deployment test', '2000-01-01', 'Baguio City', 'Male', 'Single',
-    'Temporary test record', 'Sharer', 'pending_review', 'TEST-' || gen_random_uuid()::text
-  ) returning * into row_data;
+  select * into row_data from jsonb_populate_record(null::public.residents,
+    public.save_resident_census(
+      jsonb_build_object('first_name','Temporary','last_name',resident_user::text,'birth_date','2000-01-01',
+        'birth_place','Baguio City','sex','Male','civil_status','Single','residential_address','Temporary test record',
+        'region','CAR','province','Benguet','city_municipality','Baguio City','barangay','Old Lucban',
+        'citizenship','Filipino','tenurial_status','Sharer'), '[]'::jsonb,
+      jsonb_build_object('id_type','PhilSys ID','front_image_url',resident_user::text||'/approval-test/front.jpg',
+        'back_image_url',resident_user::text||'/approval-test/back.jpg'),
+      jsonb_build_object('captured_face_url',resident_user::text||'/approval-test/face.jpg',
+        'liveness_passed',true,'verification_status','passed','verification_recommendation','manual_review',
+        'liveness_actions','["blink_twice","turn_left","smile"]'::jsonb)));
 
   record_id := row_data.id;
   saved_tracking := row_data.tracking_number;

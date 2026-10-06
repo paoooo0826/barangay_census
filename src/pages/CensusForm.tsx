@@ -189,6 +189,8 @@ const CATEGORY_CONFIG = {
 export default function CensusForm({ onDashboard }: CensusFormProps) {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const { user } = useAuth();
+  const userId = user?.id;
+  const accountEmail = user?.email;
   const [residenceLocked, setResidenceLocked] = useState(false);
   const [formData, setFormData] = useState<CensusFormData>(initialFormData);
   const [loading, setLoading] = useState(false);
@@ -220,18 +222,18 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
 
   useEffect(() => {
     void loadCategories();
-    if (!user) return;
+    if (!userId) return;
     if (!isEditMode)
       setFormData((current) => ({
         ...current,
-        email_address: user.email ?? "",
+        email_address: accountEmail ?? "",
       }));
-    const verificationKey = `pendingResidentVerification:${user.id}`;
+    const verificationKey = `pendingResidentVerification:${userId}`;
     const rawVerification = window.sessionStorage.getItem(verificationKey);
     if (rawVerification) {
       try {
         const verification = JSON.parse(rawVerification) as StoredVerification;
-        if (verification.userId && verification.userId !== user.id)
+        if (verification.userId && verification.userId !== userId)
           throw new Error("Verification belongs to another account.");
         setExistingVerification(verification);
         if (
@@ -266,17 +268,17 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         window.sessionStorage.removeItem(verificationKey);
       }
     }
-  }, [isEditMode, user]);
+  }, [isEditMode, userId, accountEmail]);
 
   const loadExistingResident = useCallback(async () => {
-    if (!isEditMode || !user) return;
+    if (!isEditMode || !userId) return;
     setLoadingExisting(true);
     setError(null);
     try {
       const { data: resident, error: residentError } = await supabase
         .from("residents")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .maybeSingle();
       if (residentError) throw residentError;
       if (!resident) {
@@ -342,7 +344,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           faceVerification
         )
           setExistingVerification({
-            userId: user.id,
+            userId: userId,
             idType: savedIdType,
             frontImagePath: governmentId.front_image_url,
             backImagePath: governmentId.back_image_url,
@@ -403,7 +405,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         citizenship: resident.citizenship ?? "Filipino",
         profession_occupation: resident.profession_occupation ?? "",
         contact_number: resident.contact_number ?? "",
-        email_address: user.email ?? "",
+        email_address: accountEmail ?? "",
         highest_education: (resident.highest_education as EducationLevel) ?? "",
         education_status: (resident.education_status as EducationStatus) ?? "",
         vocational_course: resident.vocational_course ?? "",
@@ -427,7 +429,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
     } finally {
       setLoadingExisting(false);
     }
-  }, [isEditMode, user]);
+  }, [isEditMode, userId, accountEmail]);
   useEffect(() => {
     void loadExistingResident();
   }, [loadExistingResident]);
@@ -605,7 +607,13 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
     if (!governmentIdBack && !existingVerification?.backImagePath)
       nextErrors.governmentIdBack = "Government ID back is required.";
     const requiresFreshLiveVerification =
-      !existingVerification?.verificationStatus || Boolean(governmentIdFront);
+      !existingVerification?.verificationStatus ||
+      Boolean(
+        governmentIdFront ||
+        governmentIdBack ||
+        capturedFaceFile ||
+        liveVerificationResult,
+      );
     if (
       requiresFreshLiveVerification &&
       (!liveVerificationResult?.livenessPassed ||
@@ -615,6 +623,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       nextErrors.liveVerification =
         "Complete a successful live camera verification.";
     if (
+      !isEditMode &&
       !requiresFreshLiveVerification &&
       (!existingVerification?.capturedFacePath ||
         !existingVerification.livenessPassed)
@@ -694,7 +703,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
   async function handleSubmit() {
     setError(null);
     if (!validateForm()) return;
-    if (!user) {
+    if (!userId) {
       setError("Your login session has expired. Please sign in again.");
       return;
     }
@@ -726,13 +735,13 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       setLoading(false);
     }
 
-    const verificationKey = `pendingResidentVerification:${user.id}`;
+    const verificationKey = `pendingResidentVerification:${userId}`;
     let pendingVerification: StoredVerification | null = null;
     const pendingVerificationRaw = sessionStorage.getItem(verificationKey);
     if (pendingVerificationRaw) {
       try {
         const parsed = JSON.parse(pendingVerificationRaw) as StoredVerification;
-        if (parsed.userId && parsed.userId !== user.id)
+        if (parsed.userId && parsed.userId !== userId)
           throw new Error("Verification belongs to another account.");
         pendingVerification = parsed;
       } catch {
@@ -754,7 +763,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
 
       const uploadImage = async (bucket: string, file: File, label: string) => {
         const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-        const path = `${user.id}/${crypto.randomUUID()}-${label}.${extension}`;
+        const path = `${userId}/${crypto.randomUUID()}-${label}.${extension}`;
         const { error: uploadError } = await supabase.storage
           .from(bucket)
           .upload(path, file, {
@@ -810,7 +819,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
 
         verification = {
           ...verification,
-          userId: user.id,
+          userId: userId,
           idType: effectiveGovernmentIdType,
           frontImagePath,
           backImagePath,
@@ -849,7 +858,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       } else if (verification) {
         verification = {
           ...verification,
-          userId: user.id,
+          userId: userId,
           idType: effectiveGovernmentIdType || verification.idType,
         };
       }
@@ -887,7 +896,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         citizenship: formData.citizenship.trim(),
         profession_occupation: formData.profession_occupation.trim() || null,
         contact_number: formData.contact_number.trim() || null,
-        email_address: user.email?.toLowerCase() ?? null,
+        email_address: accountEmail?.toLowerCase() ?? null,
         highest_education: formData.highest_education || null,
         education_status: formData.education_status || null,
         vocational_course: formData.vocational_course.trim() || null,
@@ -918,29 +927,37 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         };
       });
 
-      const governmentIdValues = verification
-        ? {
-            id_type: verification.idType,
-            front_image_url: verification.frontImagePath,
-            back_image_url: verification.backImagePath,
-          }
-        : null;
-      const faceVerificationValues = verification
-        ? {
-            captured_face_url: verification.capturedFacePath ?? null,
-            is_matched: verification.isMatched,
-            match_distance: verification.matchDistance,
-            similarity_score: verification.similarityScore ?? null,
-            liveness_passed: verification.livenessPassed ?? false,
-            liveness_actions: verification.livenessActions ?? [],
-            verification_recommendation:
-              verification.recommendation ?? "manual_review",
-            id_quality: verification.idQuality ?? {},
-            verification_status: verification.verificationStatus ?? "skipped",
-            verification_reason: verification.verificationReason ?? null,
-            device_type: verification.deviceType ?? null,
-          }
-        : null;
+      const governmentChanged =
+        !isEditMode ||
+        Boolean(governmentIdFront || governmentIdBack) ||
+        effectiveGovernmentIdType !== existingVerification?.idType;
+      const faceChanged =
+        !isEditMode || Boolean(capturedFaceFile || liveVerificationResult);
+      const governmentIdValues =
+        verification && governmentChanged
+          ? {
+              id_type: verification.idType,
+              front_image_url: verification.frontImagePath,
+              back_image_url: verification.backImagePath,
+            }
+          : null;
+      const faceVerificationValues =
+        verification && faceChanged
+          ? {
+              captured_face_url: verification.capturedFacePath ?? null,
+              is_matched: verification.isMatched,
+              match_distance: verification.matchDistance,
+              similarity_score: verification.similarityScore ?? null,
+              liveness_passed: verification.livenessPassed ?? false,
+              liveness_actions: verification.livenessActions ?? [],
+              verification_recommendation:
+                verification.recommendation ?? "manual_review",
+              id_quality: verification.idQuality ?? {},
+              verification_status: verification.verificationStatus ?? "skipped",
+              verification_reason: verification.verificationReason ?? null,
+              device_type: verification.deviceType ?? null,
+            }
+          : null;
 
       const { data: savedResident, error: saveError } = await supabase.rpc(
         "save_resident_census",

@@ -27,7 +27,8 @@ export default function PaginationControls({
 }: Props) {
   const totalPages = pageCount(totalItems, pageSize);
   if (totalItems <= pageSize) return null;
-  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = Math.max(1, Math.min(safePage - 2, totalPages - 4));
   const pages = Array.from(
     { length: Math.min(5, totalPages) },
     (_, index) => start + index,
@@ -39,8 +40,8 @@ export default function PaginationControls({
     >
       <button
         type="button"
-        disabled={page <= 1}
-        onClick={() => onPageChange(page - 1)}
+        disabled={safePage <= 1}
+        onClick={() => onPageChange(safePage - 1)}
         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <ChevronLeft size={16} />
@@ -50,17 +51,17 @@ export default function PaginationControls({
         <button
           type="button"
           key={number}
-          aria-current={number === page ? "page" : undefined}
+          aria-current={number === safePage ? "page" : undefined}
           onClick={() => onPageChange(number)}
-          className={`min-w-10 rounded-lg px-3 py-2 text-sm font-bold ${number === page ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-blue-50"}`}
+          className={`min-w-10 rounded-lg px-3 py-2 text-sm font-bold ${number === safePage ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-blue-50"}`}
         >
           {number}
         </button>
       ))}
       <button
         type="button"
-        disabled={page >= totalPages}
-        onClick={() => onPageChange(page + 1)}
+        disabled={safePage >= totalPages}
+        onClick={() => onPageChange(safePage + 1)}
         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Next

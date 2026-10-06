@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Archive,
@@ -15,9 +15,9 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import SortControls from "./SortControls";
-import PaginationControls, { pageSlice } from "./PaginationControls";
-import { readAllRows } from "../lib/pagination";
-import { compareValues, type SortDirection } from "../lib/sorting";
+import PaginationControls from "./PaginationControls";
+import { usePagedQuery } from "../hooks/usePagedQuery";
+import { type SortDirection } from "../lib/sorting";
 import type {
   Announcement,
   AnnouncementAudience,
@@ -146,7 +146,6 @@ export default function AdminAnnouncements({
   const [expiresAt, setExpiresAt] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(
     () =>
@@ -168,48 +167,82 @@ export default function AdminAnnouncements({
   } | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
-  const loadAnnouncements = useCallback(async () => {
-    setLoading(true);
-    try {
-      const rows = await readAllRows<Announcement>((from, to) =>
-        supabase
-          .from("announcements")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: true })
-          .range(from, to),
-      );
-      const withImages = await Promise.all(
-        rows.map(async (row) => {
-          if (!row.image_path) return { ...row, imageUrl: null };
-          const { data, error: imageError } = await supabase.storage
-            .from("announcement-images")
-            .createSignedUrl(row.image_path, 3600);
-          return {
-            ...row,
-            imageUrl: imageError ? null : (data?.signedUrl ?? null),
-          };
-        }),
-      );
-      setAnnouncements(withImages);
-      setError(null);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to load announcements.",
-      );
-    } finally {
-      setLoading(false);
-    }
+  const [counts, setCounts] = useState({ active: 0, archived: 0 });
+  const imageRequest = useRef(0);
+  const announcementQuery = useCallback(
+    (from: number, to: number) => {
+      const column =
+        sortField === "priority"
+          ? "priority_label"
+          : sortField === "audience"
+            ? "audience_label"
+            : sortField === "created_at" && tab === "archived"
+              ? "archive_sort"
+              : sortField;
+      return supabase
+        .from("admin_announcement_list")
+        .select("*", { count: "exact" })
+        .eq("archived", tab === "archived")
+        .order(column, {
+          ascending: sortDirection === "asc",
+          nullsFirst: false,
+        })
+        .order("id")
+        .range(from, to);
+    },
+    [sortField, sortDirection, tab],
+  );
+  const {
+    rows,
+    total,
+    loading,
+    error: queryError,
+    reload,
+  } = usePagedQuery<Announcement>({
+    page,
+    pageSize: PAGE_SIZE,
+    onPageChange: setPage,
+    query: announcementQuery,
+    refreshKey,
+  });
+  const loadCounts = useCallback(async () => {
+    const [active, archived] = await Promise.all([
+      supabase
+        .from("announcements")
+        .select("id", { count: "exact", head: true })
+        .eq("archived", false),
+      supabase
+        .from("announcements")
+        .select("id", { count: "exact", head: true })
+        .eq("archived", true),
+    ]);
+    if (!active.error && !archived.error)
+      setCounts({ active: active.count ?? 0, archived: archived.count ?? 0 });
   }, []);
+  const loadAnnouncements = useCallback(async () => {
+    await Promise.all([reload(), loadCounts()]);
+  }, [reload, loadCounts]);
   useEffect(() => {
-    void loadAnnouncements();
-  }, [loadAnnouncements, refreshKey]);
+    void loadCounts();
+  }, [loadCounts, total, refreshKey]);
   useEffect(() => {
-    const timer = window.setInterval(() => void loadAnnouncements(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [loadAnnouncements]);
+    const generation = ++imageRequest.current;
+    setAnnouncements(rows.map((row) => ({ ...row, imageUrl: null })));
+    void Promise.all(
+      rows.map(async (row) => {
+        if (!row.image_path) return { ...row, imageUrl: null };
+        const { data, error: e } = await supabase.storage
+          .from("announcement-images")
+          .createSignedUrl(row.image_path, 3600);
+        return { ...row, imageUrl: e ? null : (data?.signedUrl ?? null) };
+      }),
+    ).then((withImages) => {
+      if (generation === imageRequest.current) setAnnouncements(withImages);
+    });
+    return () => {
+      ++imageRequest.current;
+    };
+  }, [rows]);
   useEffect(() => {
     const timer = window.setInterval(
       () => setCurrentTime(Date.now()),
@@ -227,31 +260,7 @@ export default function AdminAnnouncements({
     [imagePreview],
   );
 
-  const sorted = useMemo(
-    () =>
-      announcements
-        .filter((item) =>
-          tab === "archived" ? Boolean(item.archived) : !item.archived,
-        )
-        .sort((a, b) => {
-          const value = (x: Announcement) =>
-            sortField === "title"
-              ? x.title
-              : sortField === "priority"
-                ? PRIORITY_LABELS[x.priority]
-                : sortField === "audience"
-                  ? AUDIENCE_LABELS[x.audience]
-                  : tab === "archived"
-                    ? (x.archived_at ?? x.updated_at)
-                    : x.created_at;
-          return (
-            compareValues(value(a), value(b), sortDirection) ||
-            compareValues(a.id, b.id)
-          );
-        }),
-    [announcements, sortField, sortDirection, tab],
-  );
-  const visible = pageSlice(sorted, page, PAGE_SIZE);
+  const visible = announcements;
 
   async function chooseImage(file?: File) {
     if (!file) return;
@@ -587,10 +596,10 @@ export default function AdminAnnouncements({
           </button>
         </div>
       </div>
-      {error && (
+      {(error || queryError) && (
         <div className="m-6 flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle size={17} />
-          {error}
+          {error || queryError}
         </div>
       )}
       {success && (
@@ -782,14 +791,14 @@ export default function AdminAnnouncements({
               onClick={() => setTab("active")}
               className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "active" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
             >
-              Active ({announcements.filter((a) => !a.archived).length})
+              Active ({counts.active})
             </button>
             <button
               type="button"
               onClick={() => setTab("archived")}
               className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === "archived" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
             >
-              Archived ({announcements.filter((a) => a.archived).length})
+              Archived ({counts.archived})
             </button>
           </div>
           <div className="mt-4">
@@ -964,7 +973,7 @@ export default function AdminAnnouncements({
               )}
               <PaginationControls
                 page={page}
-                totalItems={sorted.length}
+                totalItems={total}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />

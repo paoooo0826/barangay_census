@@ -129,6 +129,7 @@ function display(value: unknown) {
 
 export default function ResidentDashboard({ onLogout, onEdit }: Props) {
   const { user } = useAuth();
+  const userId = user?.id;
   const [resident, setResident] = useState<Resident | null>(null);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [categories, setCategories] = useState<ResidentCategoryView[]>([]);
@@ -158,7 +159,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
 
   const load = useCallback(
     async (manual = false) => {
-      if (!user) return;
+      if (!userId) return;
       if (manual) setRefreshing(true);
       else setLoading(true);
       setError(null);
@@ -166,7 +167,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
         const { data: residentRow, error: residentError } = await supabase
           .from("residents")
           .select("*")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .maybeSingle();
         if (residentError) throw residentError;
         const current = (residentRow ?? null) as Resident | null;
@@ -287,7 +288,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
         setRefreshing(false);
       }
     },
-    [user],
+    [userId],
   );
 
   useEffect(() => {

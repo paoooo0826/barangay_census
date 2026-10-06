@@ -246,8 +246,16 @@ export interface Database {
       boarder_stays: AnyTable;
       boarder_occupancy_history: AnyTable;
     };
-    Views: { residency_current: AnyTable; residency_history: AnyTable };
+    Views: {
+      residency_current: AnyTable;
+      residency_history: AnyTable;
+      admin_resident_records: AnyTable;
+      admin_service_records: AnyTable;
+      admin_announcement_list: AnyTable;
+    };
     Functions: {
+      admin_dashboard_summary: { Args: { p_mode?: string }; Returns: Json };
+      admin_census_analytics: { Args: Record<string, never>; Returns: Json };
       manage_residency: {
         Args: {
           p_resident_id: string;

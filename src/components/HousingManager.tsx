@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import type { Resident } from "../types/database";
+import { searchPattern } from "../hooks/usePagedQuery";
 import PaginationControls from "./PaginationControls";
 
 interface House {
@@ -46,13 +47,7 @@ const blankHouse = {
   owner_resident_id: "",
   active: true,
 };
-export default function HousingManager({
-  admin = false,
-  residents = [],
-}: {
-  admin?: boolean;
-  residents?: Resident[];
-}) {
+export default function HousingManager({ admin = false }: { admin?: boolean }) {
   const { user } = useAuth();
   const mutationLock = useRef(false);
   const stayRequest = useRef(0);
@@ -71,6 +66,50 @@ export default function HousingManager({
   const [houseForm, setHouseForm] = useState<
     (typeof blankHouse & { id?: string }) | null
   >(null);
+  const [ownerSearch, setOwnerSearch] = useState("");
+  const [residents, setResidents] = useState<Resident[]>([]);
+  const selectedOwnerId = houseForm?.owner_resident_id;
+  const choosingOwner = Boolean(houseForm);
+  useEffect(() => {
+    if (!admin || !choosingOwner) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      let query = supabase
+        .from("admin_resident_records")
+        .select("id,user_id,first_name,last_name,tracking_number")
+        .not("user_id", "is", null);
+      if (ownerSearch.trim())
+        query = query.ilike("search_text", searchPattern(ownerSearch));
+      const [options, selected] = await Promise.all([
+        query.order("last_name").order("id").limit(20),
+        selectedOwnerId
+          ? supabase
+              .from("residents")
+              .select("id,user_id,first_name,last_name,tracking_number")
+              .eq("id", selectedOwnerId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (!active) return;
+      if (options.error || selected.error)
+        setError(
+          options.error?.message ||
+            selected.error?.message ||
+            "Unable to load owners.",
+        );
+      else {
+        const rows = (options.data ?? []) as Resident[];
+        const currentOwner = selected.data;
+        if (currentOwner && !rows.some((r) => r.id === currentOwner.id))
+          rows.unshift(currentOwner as Resident);
+        setResidents(rows);
+      }
+    }, 300);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [admin, choosingOwner, selectedOwnerId, ownerSearch]);
   const [tracking, setTracking] = useState("");
   const [moveIn, setMoveIn] = useState("");
   const [departing, setDeparting] = useState<Stay | null>(null);
@@ -498,6 +537,15 @@ export default function HousingManager({
             </label>
             <label className="label block">
               Assigned landlord/landlady <span className="text-red-600">*</span>
+              <input
+                className="input mt-2"
+                placeholder="Search owner's name or tracking number"
+                value={ownerSearch}
+                onChange={(e) => setOwnerSearch(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                Showing up to 20 matches. Search to find another owner.
+              </span>
               <select
                 required
                 className="input mt-2"

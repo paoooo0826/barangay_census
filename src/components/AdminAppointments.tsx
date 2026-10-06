@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarCheck2,
@@ -21,9 +21,10 @@ import type {
 } from "../types/database";
 import { RESIDENCY_PURPOSES, serviceLabel } from "./ResidentAppointments";
 import SortControls from "./SortControls";
-import { readAllRows } from "../lib/pagination";
-import { compareValues, type SortDirection } from "../lib/sorting";
-import PaginationControls, { pageSlice } from "./PaginationControls";
+import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
+import { EMPTY_ADMIN_SUMMARY, type AdminSummary } from "../lib/adminData";
+import { type SortDirection } from "../lib/sorting";
+import PaginationControls from "./PaginationControls";
 
 interface AdminAppointmentsProps {
   refreshKey: number;
@@ -112,8 +113,8 @@ export default function AdminAppointments({
   const requestedFilters = new URLSearchParams(
     window.location.hash.split("?")[1] ?? "",
   );
-  const [appointments, setAppointments] = useState<AdminAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState(EMPTY_ADMIN_SUMMARY.appointments);
+  const detailRequest = useRef(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | AppointmentStatus>(
@@ -145,125 +146,93 @@ export default function AdminAppointments({
   const [selectedAppointment, setSelectedAppointment] =
     useState<AdminAppointment | null>(null);
 
-  const loadAppointments = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await readAllRows<AdminAppointment>((from, to) =>
-        supabase
-          .from("appointments")
-          .select(
-            `*, residents (first_name, middle_name, last_name, suffix, tracking_number, contact_number, email_address)`,
-          )
-          .in(
-            "status",
-            mode === "active"
-              ? ["pending", "confirmed"]
-              : mode === "history"
-                ? ["completed", "cancelled", "rejected"]
-                : [
-                    "pending",
-                    "confirmed",
-                    "completed",
-                    "cancelled",
-                    "rejected",
-                  ],
-          )
-          .order("appointment_date", { ascending: true })
-          .order("appointment_time", { ascending: true })
-          .order("id", { ascending: true })
-          .range(from, to),
-      );
-      setAppointments(data);
-      const requestedId = new URLSearchParams(
-        window.location.hash.split("?")[1] ?? "",
-      ).get("appointment");
-      if (requestedId)
-        setSelectedAppointment(data.find((a) => a.id === requestedId) ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to load appointments.");
-      setAppointments([]);
-    } finally {
-      setLoading(false);
-    }
+  const appointmentQuery = useCallback(
+    (from: number, to: number) => {
+      let q = supabase
+        .from("admin_service_records")
+        .select("*", { count: "exact" })
+        .in(
+          "status",
+          mode === "active"
+            ? ["pending", "confirmed"]
+            : mode === "history"
+              ? ["completed", "cancelled", "rejected"]
+              : ["pending", "confirmed", "completed", "cancelled", "rejected"],
+        );
+      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      if (dateFilter) q = q.eq("appointment_date", dateFilter);
+      if (searchQuery.trim())
+        q = q.ilike("search_text", searchPattern(searchQuery));
+      const column =
+        sortField === "resident"
+          ? "resident_sort"
+          : sortField === "service"
+            ? "service_label"
+            : sortField;
+      q = q.order(column, {
+        ascending: sortDirection === "asc",
+        nullsFirst: false,
+      });
+      if (column === "appointment_date")
+        q = q.order("appointment_time", { ascending: sortDirection === "asc" });
+      return q.order("id").range(from, to);
+    },
+    [mode, statusFilter, dateFilter, searchQuery, sortField, sortDirection],
+  );
+  const {
+    rows: visible,
+    total,
+    loading,
+    error: queryError,
+    reload: loadAppointments,
+  } = usePagedQuery<AdminAppointment>({
+    page,
+    pageSize: PAGE_SIZE,
+    onPageChange: setPage,
+    query: appointmentQuery,
+    refreshKey,
+  });
+  const loadMetrics = useCallback(async () => {
+    const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
+      p_mode: mode,
+    });
+    if (!e) setMetrics((data as unknown as AdminSummary).appointments);
   }, [mode]);
   useEffect(() => {
-    void loadAppointments();
-    const timer = window.setInterval(() => void loadAppointments(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [loadAppointments, refreshKey]);
-
-  const today = localDateValue();
-  const metrics = useMemo(
-    () => ({
-      total: appointments.length,
-      today: appointments.filter(
-        (a) =>
-          a.appointment_date === today &&
-          !["cancelled", "rejected"].includes(a.status),
-      ).length,
-      completedToday: appointments.filter(
-        (a) =>
-          a.status === "completed" &&
-          a.completed_at &&
-          localDateValue(new Date(a.completed_at)) === today,
-      ).length,
-      pending: appointments.filter((a) => a.status === "pending").length,
-    }),
-    [appointments, today],
-  );
-  const filtered = useMemo(
-    () =>
-      appointments
-        .filter((a) => {
-          const r = residentFrom(a);
-          const q = searchQuery.trim().toLowerCase();
-          const haystack = [
-            fullName(r),
-            r?.tracking_number,
-            r?.contact_number,
-            r?.email_address,
-            serviceLabel(a.service_type as StoredAppointmentService),
-            purposeLabel(a),
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return (
-            (!q || haystack.includes(q)) &&
-            (statusFilter === "all" || a.status === statusFilter) &&
-            (!dateFilter || a.appointment_date === dateFilter)
-          );
-        })
-        .sort((l, r) => {
-          const value = (a: AdminAppointment) => {
-            const resident = residentFrom(a);
-            if (sortField === "resident")
-              return resident
-                ? `${resident.last_name} ${resident.first_name}`
-                : null;
-            if (sortField === "service")
-              return serviceLabel(a.service_type as StoredAppointmentService);
-            if (sortField === "fee") return Number(a.fee);
-            if (sortField === "status") return a.status;
-            if (sortField === "completed_at") return a.completed_at;
-            return `${a.appointment_date}T${a.appointment_time}`;
-          };
-          return (
-            compareValues(value(l), value(r), sortDirection) ||
-            compareValues(l.id, r.id)
-          );
-        }),
-    [
-      appointments,
-      searchQuery,
-      statusFilter,
-      dateFilter,
-      sortField,
-      sortDirection,
-    ],
-  );
-  const visible = pageSlice(filtered, page, PAGE_SIZE);
+    let active = true;
+    const read = async () => {
+      const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
+        p_mode: mode,
+      });
+      if (active && !e)
+        setMetrics((data as unknown as AdminSummary).appointments);
+    };
+    void read();
+    const timer = window.setInterval(() => void read(), 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [mode, refreshKey]);
+  useEffect(() => {
+    const request = ++detailRequest.current;
+    const id = new URLSearchParams(
+      window.location.hash.split("?")[1] ?? "",
+    ).get("appointment");
+    if (id)
+      void supabase
+        .from("admin_service_records")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle()
+        .then(({ data, error: e }) => {
+          if (request === detailRequest.current && !e)
+            setSelectedAppointment(data as AdminAppointment | null);
+        });
+    return () => {
+      ++detailRequest.current;
+    };
+  }, [mode, refreshKey]);
   useEffect(() => {
     setPage(1);
   }, [searchQuery, statusFilter, dateFilter, sortField, sortDirection]);
@@ -310,7 +279,8 @@ export default function AdminAppointments({
     }
     setSuccess(`Appointment marked as ${status}.`);
     onChanged?.();
-    await loadAppointments();
+    await Promise.all([loadAppointments(), loadMetrics()]);
+    if (selectedAppointment?.id === a.id) setSelectedAppointment(null);
   }
 
   const cards = [
@@ -404,10 +374,10 @@ export default function AdminAppointments({
           })}
         </div>
         <div className="p-5 sm:p-6">
-          {error && (
+          {(error || queryError) && (
             <div className="mb-4 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <AlertCircle size={18} />
-              {error}
+              {error || queryError}
             </div>
           )}
           {success && (
@@ -579,14 +549,14 @@ export default function AdminAppointments({
                   </article>
                 );
               })}
-              {!filtered.length && (
+              {!visible.length && (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center text-sm text-slate-500">
                   No matching appointments.
                 </div>
               )}
               <PaginationControls
                 page={page}
-                totalItems={filtered.length}
+                totalItems={total}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />

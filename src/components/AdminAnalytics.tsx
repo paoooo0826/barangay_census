@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   Compass,
@@ -6,10 +6,10 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import type { Resident } from "../types/database";
+import { supabase } from "../lib/supabase";
 
 interface AdminAnalyticsProps {
-  residents: Resident[];
+  refreshKey?: number;
 }
 interface ChartRow {
   label: string;
@@ -17,58 +17,44 @@ interface ChartRow {
   detail?: string;
 }
 
-function safeAge(birthDate: string, offsetYears = 0) {
-  const birth = new Date(birthDate);
-  const now = new Date();
-  if (Number.isNaN(birth.getTime()) || birth > now) return null;
-  let age = now.getFullYear() - birth.getFullYear();
-  const month = now.getMonth() - birth.getMonth();
-  if (month < 0 || (month === 0 && now.getDate() < birth.getDate())) age -= 1;
-  age += offsetYears;
-  return age >= 0 && age <= 130 ? age : null;
+interface AnalyticsData {
+  total: number;
+  excluded: number;
+  age: ChartRow[];
+  gender: ChartRow[];
+  civil: ChartRow[];
+  education: ChartRow[];
 }
-function ageRows(residents: Resident[], offsetYears = 0): ChartRow[] {
-  const rows: ChartRow[] = [
-    { label: "Children (0–17)", count: 0 },
-    { label: "Young adults (18–30)", count: 0 },
-    { label: "Adults (31–59)", count: 0 },
-    { label: "Senior citizens (60+)", count: 0 },
-  ];
-  residents.forEach((resident) => {
-    const age = safeAge(resident.birth_date, offsetYears);
-    if (age == null) return;
-    if (age < 18) rows[0].count += 1;
-    else if (age <= 30) rows[1].count += 1;
-    else if (age < 60) rows[2].count += 1;
-    else rows[3].count += 1;
+export default function AdminAnalytics({ refreshKey }: AdminAnalyticsProps) {
+  const [analytics, setAnalytics] = useState<AnalyticsData>({
+    total: 0,
+    excluded: 0,
+    age: [],
+    gender: [],
+    civil: [],
+    education: [],
   });
-  return rows;
-}
-function distribution(
-  residents: Resident[],
-  field: "sex" | "civil_status" | "highest_education",
-): ChartRow[] {
-  const counts = new Map<string, number>();
-  residents.forEach((r) => {
-    const label = r[field]?.trim() || "Not specified";
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  });
-  return [...counts]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-}
-
-export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
-  const analytics = useMemo(
-    () => ({
-      age: ageRows(residents),
-      gender: distribution(residents, "sex"),
-      civil: distribution(residents, "civil_status"),
-      education: distribution(residents, "highest_education"),
-    }),
-    [residents],
-  );
-
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    const read = async () => {
+      const { data, error: e } = await supabase.rpc("admin_census_analytics");
+      if (!active) return;
+      if (e) setError(e.message);
+      else {
+        setAnalytics(data as unknown as AnalyticsData);
+        setError("");
+      }
+      setLoading(false);
+    };
+    void read();
+    const timer = window.setInterval(() => void read(), 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [refreshKey]);
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -84,27 +70,37 @@ export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
               Barangay Census Analytics
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              All four views are derived from saved resident records. No dummy
-              production values are used.
+              Charts count {analytics.total} approved census records. Pending,
+              rejected, and legacy returned records are excluded (
+              {analytics.excluded}).
             </p>
           </div>
         </div>
       </div>
-      {!residents.length ? (
+      {error && (
+        <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <p className="p-8 text-center text-slate-500">
+          Loading census analytics…
+        </p>
+      ) : !analytics.total ? (
         <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
           <p className="font-bold text-slate-700">No data available yet.</p>
           <p className="mt-1 text-sm text-slate-500">
-            Charts will appear after resident census records are submitted.
+            Charts will appear after census records are approved.
           </p>
         </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard
             title="Age Distribution"
-            subtitle="Current population distribution by age group"
+            subtitle="Approved census records by age group"
             icon={SearchCheck}
             rows={analytics.age}
-            note="Shows what is currently recorded in the census."
+            note="This is the distribution of approved records, not a complete population estimate."
           />
           <ChartCard
             title="Gender Distribution"
@@ -118,7 +114,7 @@ export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
             subtitle="Distribution by recorded civil status"
             icon={TrendingUp}
             rows={analytics.civil}
-            note="Counts represent submitted census records, not a forecast."
+            note="Counts represent approved census records, not a forecast."
           />
           <ChartCard
             title="Education Distribution"

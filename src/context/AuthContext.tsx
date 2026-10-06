@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import type { AuthError, Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -37,77 +44,81 @@ function clearAccountTemporaryData(userId?: string) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadAdminProfile = async (userId: string | null) => {
-    if (!userId) {
-      setAdminProfile(null);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("admin_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (error) {
-      console.warn("Unable to load admin profile:", error.message);
-      setAdminProfile(null);
-      return;
-    }
-
-    setAdminProfile(data);
-  };
+  const [sessionReady, setSessionReady] = useState(false);
+  const [profile, setProfile] = useState<{
+    userId: string | null | undefined;
+    data: AdminProfile | null;
+  }>({ userId: undefined, data: null });
+  const profileRequest = useRef(0);
+  const userId = session?.user.id ?? null;
+  const loading = !sessionReady || profile.userId !== userId;
+  const adminProfile = profile.userId === userId ? profile.data : null;
 
   useEffect(() => {
     let active = true;
-
-    void supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!active) return;
-      const nextSession = error ? null : data.session;
-      setSession(nextSession);
-      await loadAdminProfile(nextSession?.user.id ?? null);
-      if (active) setLoading(false);
-    });
-
+    let receivedEvent = false;
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!active) return;
+      receivedEvent = true;
       if (event === "SIGNED_OUT") clearAccountTemporaryData();
-      setLoading(true);
       setSession(nextSession);
-      void loadAdminProfile(nextSession?.user.id ?? null).finally(() => {
-        if (active) setLoading(false);
-      });
+      setSessionReady(true);
     });
-
+    // A later auth event must win over a slower initial session lookup.
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active || receivedEvent) return;
+        setSession(error ? null : data.session);
+        setSessionReady(true);
+      })
+      .catch(() => {
+        if (active && !receivedEvent) {
+          setSession(null);
+          setSessionReady(true);
+        }
+      });
     return () => {
       active = false;
       subscription.unsubscribe();
     };
   }, []);
 
+  useEffect(() => {
+    const request = ++profileRequest.current;
+    let active = true;
+    if (!userId) {
+      setProfile({ userId: null, data: null });
+      return;
+    }
+    // Outside the auth callback: no Auth lock re-entry, and token refresh
+    // for the same account never replaces the protected page with a loader.
+    void supabase
+      .from("admin_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active || request !== profileRequest.current) return;
+        if (error) console.warn("Unable to load admin profile:", error.message);
+        setProfile({ userId, data: error ? null : data });
+      });
+    return () => {
+      active = false;
+      ++profileRequest.current;
+    };
+  }, [userId]);
+
   const signIn = async (
     email: string,
     password: string,
   ): Promise<AuthResult> => {
-    setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     });
-
-    if (error) {
-      setLoading(false);
-      return { error };
-    }
-
-    setSession(data.session);
-    await loadAdminProfile(data.user?.id ?? null);
-    setLoading(false);
-
     return { error };
   };
 
@@ -146,13 +157,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!error) {
       clearAccountTemporaryData(userId);
       setSession(null);
-      setAdminProfile(null);
+      setProfile({ userId: null, data: null });
     }
     return { error };
   };
 
   const refreshAdminProfile = async () => {
-    await loadAdminProfile(session?.user.id ?? null);
+    if (!userId) return;
+    const request = ++profileRequest.current;
+    const { data, error } = await supabase
+      .from("admin_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (request !== profileRequest.current) return;
+    if (error) console.warn("Unable to refresh admin profile:", error.message);
+    else setProfile({ userId, data });
   };
 
   const value = useMemo<AuthContextValue>(

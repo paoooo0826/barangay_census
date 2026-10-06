@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   BellRing,
@@ -22,18 +22,11 @@ import HousingManager from "../components/HousingManager";
 import RecentServices from "../components/RecentServices";
 import AdminAppointments from "../components/AdminAppointments";
 import SortControls from "../components/SortControls";
-import PaginationControls, {
-  pageSlice,
-} from "../components/PaginationControls";
-import { readAllRows } from "../lib/pagination";
-import { compareValues, type SortDirection } from "../lib/sorting";
-import type {
-  AdminProfile,
-  Appointment,
-  Announcement,
-  Resident,
-  ResidentStatus,
-} from "../types/database";
+import PaginationControls from "../components/PaginationControls";
+import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
+import { EMPTY_ADMIN_SUMMARY, type AdminSummary } from "../lib/adminData";
+import { type SortDirection } from "../lib/sorting";
+import type { Resident, ResidentStatus } from "../types/database";
 
 interface Props {
   tab?: string | null;
@@ -105,14 +98,6 @@ function formatDate(value?: string | null) {
         day: "numeric",
       }).format(date);
 }
-function localDateValue(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
 function AdminNavLinks({
   activeTab,
   onSelect,
@@ -141,13 +126,11 @@ function AdminNavLinks({
 }
 
 export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
-  const { user } = useAuth();
+  const { user, adminProfile } = useAuth();
   const activeTab = normalizeTab(tab);
-  const [residents, setResidents] = useState<Resident[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<AdminSummary>(EMPTY_ADMIN_SUMMARY);
+  const summaryRequest = useRef(0);
+  const [loadingSummary, setLoadingSummary] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -157,94 +140,70 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   const [sortField, setSortField] = useState("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [page, setPage] = useState(1);
-  const [currentTime, setCurrentTime] = useState(0);
 
-  const fetchData = useCallback(
-    async (manual = false) => {
-      if (manual) setRefreshing(true);
-      else setLoading(true);
+  const fetchData = useCallback(async (manual = false) => {
+    const request = ++summaryRequest.current;
+    if (manual) setRefreshing(true);
+    try {
+      const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
+        p_mode: "all",
+      });
+      if (request !== summaryRequest.current) return;
+      if (e) throw e;
+      setSummary(data as unknown as AdminSummary);
       setError(null);
-      try {
-        const [residentRows, appointmentRows, announcementRows, residenceRows] =
-          await Promise.all([
-            readAllRows<Resident>((from, to) =>
-              supabase
-                .from("residents")
-                .select("*")
-                .order("updated_at", { ascending: false, nullsFirst: false })
-                .order("id", { ascending: true })
-                .range(from, to),
-            ),
-            readAllRows<Appointment>((from, to) =>
-              supabase
-                .from("appointments")
-                .select("*")
-                .order("created_at", { ascending: false })
-                .order("id", { ascending: true })
-                .range(from, to),
-            ),
-            readAllRows<Announcement>((from, to) =>
-              supabase
-                .from("announcements")
-                .select("*")
-                .order("created_at", { ascending: false })
-                .order("id", { ascending: true })
-                .range(from, to),
-            ),
-            readAllRows<{
-              resident_id: string;
-              start_date: string;
-              current_classification: "resident" | "temporary";
-            }>((from, to) =>
-              supabase
-                .from("residency_current")
-                .select("resident_id,start_date,current_classification")
-                .is("end_date", null)
-                .order("id")
-                .range(from, to),
-            ),
-          ]);
-        const currentResidencies = new Map(
-          (residenceRows ?? []).map((p) => [p.resident_id, p]),
-        );
-        setResidents(
-          residentRows.map((r) => ({
-            ...r,
-            residence_classification:
-              currentResidencies.get(r.id)?.current_classification ?? null,
-            residence_start_date:
-              currentResidencies.get(r.id)?.start_date ?? null,
-          })),
-        );
-        setAppointments(appointmentRows);
-        setAnnouncements(announcementRows);
-        if (user) {
-          const { data, error: profileError } = await supabase
-            .from("admin_profiles")
-            .select("*")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          if (profileError) throw profileError;
-          setAdminProfile(data as AdminProfile | null);
-        }
-      } catch (caught) {
+    } catch (caught) {
+      if (request === summaryRequest.current)
         setError(
-          caught instanceof Error
-            ? caught.message
+          caught && typeof caught === "object" && "message" in caught
+            ? String(caught.message)
             : "Unable to load administrator data.",
         );
-      } finally {
-        setLoading(false);
+    } finally {
+      if (request === summaryRequest.current) {
+        setLoadingSummary(false);
         setRefreshing(false);
       }
-    },
-    [user],
-  );
+    }
+  }, []);
   useEffect(() => {
     void fetchData();
-    const timer = window.setInterval(() => void fetchData(true), 60_000);
-    return () => window.clearInterval(timer);
-  }, [fetchData]);
+    const timer = window.setInterval(() => void fetchData(), 60_000);
+    return () => {
+      ++summaryRequest.current;
+      window.clearInterval(timer);
+    };
+  }, [fetchData, user?.id]);
+  const recordQuery = useCallback(
+    (from: number, to: number) => {
+      let q = supabase
+        .from("admin_resident_records")
+        .select("*", { count: "exact" });
+      if (status !== "all") q = q.eq("status", status);
+      if (search.trim()) q = q.ilike("search_text", searchPattern(search));
+      q = q.order(sortField, {
+        ascending: sortDirection === "asc",
+        nullsFirst: false,
+      });
+      if (sortField === "last_name")
+        q = q.order("first_name", { ascending: sortDirection === "asc" });
+      return q.order("id").range(from, to);
+    },
+    [status, search, sortField, sortDirection],
+  );
+  const {
+    rows: visibleRecords,
+    total: recordTotal,
+    loading,
+    error: recordError,
+  } = usePagedQuery<Resident>({
+    page,
+    pageSize: PAGE_SIZE,
+    onPageChange: setPage,
+    query: recordQuery,
+    enabled: activeTab === "records",
+    refreshKey,
+  });
   useEffect(() => {
     setMobileOpen(false);
   }, [activeTab]);
@@ -263,80 +222,15 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
     )
       setStatus(requested as ResidentStatus);
   }, [activeTab, tab]);
-  useEffect(() => {
-    setCurrentTime(Date.now());
-    const timer = window.setInterval(
-      () => setCurrentTime(Date.now()),
-      60 * 1000,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
   const refresh = async () => {
     await fetchData(true);
     setRefreshKey((value) => value + 1);
   };
-  const filtered = useMemo(
-    () =>
-      residents
-        .filter((resident) => {
-          const query = search.trim().toLowerCase();
-          const haystack =
-            `${fullName(resident)} ${resident.tracking_number ?? ""} ${resident.residential_address ?? ""}`.toLowerCase();
-          return (
-            (!query || haystack.includes(query)) &&
-            (status === "all" || resident.status === status)
-          );
-        })
-        .sort((a, b) => {
-          const value = (resident: Resident) =>
-            sortField === "last_name"
-              ? `${resident.last_name} ${resident.first_name}`
-              : sortField === "updated_at"
-                ? (resident.updated_at ?? resident.submitted_at)
-                : resident[sortField as keyof Resident];
-          return (
-            compareValues(value(a), value(b), sortDirection) ||
-            compareValues(a.id, b.id)
-          );
-        }),
-    [residents, search, status, sortField, sortDirection],
-  );
-  const visibleRecords = pageSlice(filtered, page, PAGE_SIZE);
-  const stats = useMemo(
-    () => ({
-      total: residents.length,
-      verified: residents.filter((r) => r.status === "verified").length,
-      rejected: residents.filter((r) => r.status === "rejected").length,
-      pending: residents.filter((r) => r.status === "pending_review").length,
-    }),
-    [residents],
-  );
-  const today = localDateValue();
-  const todayAppointments = appointments.filter(
-    (item) =>
-      item.appointment_date === today &&
-      !["cancelled", "rejected"].includes(item.status),
-  ).length;
-  const pendingServices = appointments.filter(
-    (item) => item.status === "pending",
-  ).length;
-  const activeAnnouncements = announcements.filter(
-    (item) =>
-      !item.archived &&
-      item.is_published &&
-      (!item.expires_at || new Date(item.expires_at).getTime() > currentTime),
-  ).length;
-  const recentResidents = useMemo(
-    () =>
-      [...residents]
-        .sort(
-          (a, b) =>
-            new Date(b.updated_at ?? b.submitted_at).getTime() -
-            new Date(a.updated_at ?? a.submitted_at).getTime(),
-        )
-        .slice(0, 5),
-    [residents],
-  );
+  const stats = summary.stats;
+  const todayAppointments = summary.appointments.today;
+  const pendingServices = summary.appointments.pending;
+  const activeAnnouncements = summary.announcements.published;
+  const recentResidents = summary.recentResidents;
   const profileName = adminProfile?.full_name?.trim() || "Administrator";
 
   return (
@@ -460,9 +354,9 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         </div>
       )}
       <main className="space-y-6 px-4 py-8 sm:px-6 lg:ml-72 lg:px-8">
-        {error && (
+        {(error || (activeTab === "records" && recordError)) && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
+            {error || (activeTab === "records" ? recordError : null)}
           </div>
         )}
         {activeTab === "dashboard" && (
@@ -589,7 +483,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     </button>
                   </article>
                 ))}
-                {!recentResidents.length && !loading && (
+                {!recentResidents.length && !loadingSummary && (
                   <p className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">
                     No resident records yet.
                   </p>
@@ -702,14 +596,14 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       </button>
                     </article>
                   ))}
-                  {!filtered.length && (
+                  {!visibleRecords.length && (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center text-sm text-slate-500">
                       No matching resident records.
                     </div>
                   )}
                   <PaginationControls
                     page={page}
-                    totalItems={filtered.length}
+                    totalItems={recordTotal}
                     pageSize={PAGE_SIZE}
                     onPageChange={setPage}
                   />
@@ -718,16 +612,16 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             </div>
           </section>
         )}
-        {activeTab === "analytics" && <AdminAnalytics residents={residents} />}{" "}
+        {activeTab === "analytics" && (
+          <AdminAnalytics refreshKey={refreshKey} />
+        )}{" "}
         {activeTab === "announcements" && (
           <AdminAnnouncements
             adminProfileId={adminProfile?.id}
             refreshKey={refreshKey}
           />
         )}{" "}
-        {activeTab === "housing" && (
-          <HousingManager admin residents={residents} />
-        )}
+        {activeTab === "housing" && <HousingManager admin />}
         {(activeTab === "appointments" ||
           activeTab === "history" ||
           activeTab === "services") && (
