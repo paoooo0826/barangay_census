@@ -697,7 +697,7 @@ export default function ResidentAppointments({
                     className="rounded-2xl border border-slate-200 p-4 shadow-sm sm:p-5"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-bold text-slate-900">
                             {serviceLabel(appointment.service_type)}
@@ -731,7 +731,7 @@ export default function ResidentAppointments({
                           </span>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 lg:shrink-0">
                         <button
                           type="button"
                           onClick={() => setSelectedAppointment(appointment)}
@@ -944,7 +944,7 @@ function CancelAppointmentModal({
       }}
       className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4"
     >
-      <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
+      <div className="dialog-panel w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">

@@ -243,9 +243,9 @@ export default function IdCameraCapture({
           role="dialog"
           aria-modal="true"
           aria-label={`Photograph ID ${side}`}
-          className="fixed inset-0 z-[260] flex flex-col bg-slate-950 p-3 text-white sm:p-5"
+          className="camera-dialog fixed inset-0 z-[260] flex flex-col bg-slate-950 p-3 text-white sm:p-5"
         >
-          <div className="mb-3 flex justify-between gap-4">
+          <div className="mb-3 flex shrink-0 justify-between gap-4">
             <div>
               <p className="font-bold">Photograph ID {side}</p>
               <p className="mt-1 text-xs text-slate-300">
@@ -256,12 +256,12 @@ export default function IdCameraCapture({
               type="button"
               onClick={close}
               aria-label="Close camera"
-              className="rounded-xl bg-white/10 p-3"
+              className="self-start shrink-0 rounded-xl bg-white/10 p-3"
             >
               <X size={20} />
             </button>
           </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
+          <div className="camera-preview relative flex-1 overflow-hidden rounded-2xl bg-black">
             {capturedPreview ? (
               <img
                 src={capturedPreview}
@@ -295,7 +295,7 @@ export default function IdCameraCapture({
           >
             {error || message}
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="flex shrink-0 flex-wrap justify-center gap-3">
             {!capturedPreview && !captureInProgressRef.current && (
               <button
                 type="button"

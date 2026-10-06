@@ -240,7 +240,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   );
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <a
         href="#admin-main"
         onClick={(event) => {
@@ -253,11 +253,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
       </a>
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-slate-50/95 backdrop-blur lg:pl-72">
         <div className="flex min-h-20 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="rounded-xl border border-slate-200 p-2.5 text-slate-700 lg:hidden"
+              className="shrink-0 rounded-xl border border-slate-200 p-2.5 text-slate-700 lg:hidden"
               aria-label="Open navigation"
               aria-expanded={mobileOpen}
               aria-controls="admin-mobile-navigation"
@@ -278,7 +278,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               </p>
             </a>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => void refresh()}
@@ -295,11 +295,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               href="#/admin/dashboard?tab=account"
               className={`hidden items-center gap-3 rounded-xl border px-3 py-2 sm:flex ${activeTab === "account" ? "border-pine-300 bg-pine-50" : "border-slate-200 bg-white"}`}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-pine-700 font-bold text-white">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pine-700 font-bold text-white">
                 {profileName.charAt(0).toUpperCase()}
               </span>
               <span className="text-left">
-                <span className="block text-sm font-bold">{profileName}</span>
+                <span className="block max-w-36 truncate text-sm font-bold xl:max-w-52" title={profileName}>{profileName}</span>
                 <span className="block text-xs text-slate-500">
                   Profile / Account
                 </span>
@@ -309,18 +309,18 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         </div>
       </header>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-72 flex-col border-r border-slate-200 bg-white p-5 lg:flex">
-        <div className="mb-6 border-b border-slate-200 pb-6 pt-1">
+        <div className="mb-6 shrink-0 border-b border-slate-200 pb-6 pt-1">
           <BarangayBrand
             compact
             subtitle="Administrator Portal"
             homeHref="#/admin/dashboard?tab=dashboard"
           />
         </div>
-        <p className="page-eyebrow mb-3 px-4">Workspace</p>
-        <nav className="space-y-1">
+        <p className="page-eyebrow mb-3 shrink-0 px-4">Workspace</p>
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
           <AdminNavLinks activeTab={activeTab} />
         </nav>
-        <div className="mt-auto border-t border-slate-200 pt-4">
+        <div className="mt-4 shrink-0 border-t border-slate-200 pt-4">
           <button
             type="button"
             onClick={onLogout}
@@ -348,7 +348,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             aria-label="Administrator navigation"
             className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
           >
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex shrink-0 items-center justify-between gap-3">
               <BarangayBrand
                 compact
                 subtitle="Administrator Portal"
@@ -364,7 +364,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 <X size={20} />
               </button>
             </div>
-            <nav className="space-y-1">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
               <AdminNavLinks
                 activeTab={activeTab}
                 onSelect={() => setMobileOpen(false)}
@@ -381,7 +381,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             <button
               type="button"
               onClick={onLogout}
-              className="mt-auto flex w-full items-center gap-3 border-t border-slate-200 px-4 py-4 text-sm font-bold text-red-700"
+              className="mt-4 flex w-full shrink-0 items-center gap-3 border-t border-slate-200 px-4 py-4 text-sm font-bold text-red-700"
             >
               <LogOut size={18} />
               Logout
@@ -475,7 +475,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                         {action.label}
                       </span>
                       {action.count !== null && (
-                        <span className="rounded-full bg-pine-700 px-2.5 py-1 text-xs font-bold text-white">
+                        <span className="shrink-0 rounded-full bg-pine-700 px-2.5 py-1 text-xs font-bold text-white">
                           {action.count}
                         </span>
                       )}
@@ -486,7 +486,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             </section>
             <RecentServices refreshKey={refreshKey} />
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-bold">Recent Updates</h2>
                   <p className="mt-1 text-sm text-slate-500">
@@ -506,7 +506,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     key={resident.id}
                     className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-bold">{fullName(resident)}</p>
                         <span
@@ -525,7 +525,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     <button
                       type="button"
                       onClick={() => onReview(resident.id)}
-                      className="rounded-xl bg-pine-700 px-4 py-2 text-sm font-bold text-white"
+                      className="shrink-0 rounded-xl bg-pine-700 px-4 py-2 text-sm font-bold text-white"
                     >
                       View
                     </button>
@@ -554,7 +554,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               </div>
             </div>
             <div className="p-5 sm:p-6">
-              <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
                 <label className="relative">
                   <Search
                     className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -607,7 +607,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       key={resident.id}
                       className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-bold">{fullName(resident)}</h3>
                           <span className="rounded-full bg-pine-50 px-2.5 py-1 text-xs font-bold text-pine-700">
@@ -638,7 +638,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       </div>
                       <button
                         onClick={() => onReview(resident.id)}
-                        className="rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-bold text-white"
+                        className="shrink-0 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-bold text-white"
                       >
                         Open Record
                       </button>

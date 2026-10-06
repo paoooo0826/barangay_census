@@ -147,7 +147,7 @@ export default function ResidentNotifications({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-14 z-[80] w-[min(92vw,24rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="absolute right-0 top-14 z-[80] max-h-[calc(100dvh-7rem)] w-[min(calc(100vw-3rem),24rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
             <div>
               <h2 className="font-bold text-slate-900">Notifications</h2>
@@ -165,7 +165,7 @@ export default function ResidentNotifications({
             </button>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto border-b border-slate-100 p-3">
+          <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
             {FILTERS.map((item) => (
               <button
                 type="button"
@@ -184,7 +184,7 @@ export default function ResidentNotifications({
             </p>
           )}
 
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[50dvh] overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500">
                 <Loader2 className="animate-spin" size={18} /> Loading…

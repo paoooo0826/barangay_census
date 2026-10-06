@@ -25,6 +25,7 @@ import BarangayBrand from "../components/BarangayBrand";
 import ResidencyDetails from "../components/ResidencyDetails";
 import ResidentAppointments from "../components/ResidentAppointments";
 import ResidentNotifications from "../components/ResidentNotifications";
+import AnnouncementSections from "../components/AnnouncementSections";
 import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
 import type {
   Announcement,
@@ -496,7 +497,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             aria-label="Resident navigation"
             className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
           >
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex shrink-0 items-center justify-between gap-3">
               <BarangayBrand
                 compact
                 subtitle="Resident Portal"
@@ -512,7 +513,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 <X size={20} />
               </button>
             </div>
-            <nav className="space-y-1">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
               {[
                 { value: "home" as Tab, label: "Home", icon: Home },
                 { value: "profile" as Tab, label: "Profile", icon: User },
@@ -556,14 +557,14 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 setMobileOpen(false);
                 void load(true);
               }}
-              className="nav-item mt-2 w-full"
+              className="nav-item mt-2 w-full shrink-0"
             >
               <RefreshCw size={18} /> Refresh dashboard
             </button>
             <button
               type="button"
               onClick={onLogout}
-              className="mt-auto flex w-full items-center gap-3 border-t border-slate-200 px-4 py-4 text-sm font-bold text-red-700"
+              className="mt-4 flex w-full shrink-0 items-center gap-3 border-t border-slate-200 px-4 py-4 text-sm font-bold text-red-700"
             >
               <LogOut size={18} />
               Logout
@@ -650,13 +651,14 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                   </div>
                 </div>
                 <div className="space-y-4 p-5 sm:p-6">
-                  {announcements.map((a) => {
+                  <AnnouncementSections items={announcements}>
+                    {(a, recent) => {
                     const long = a.message.length > 240;
                     const open = expanded.has(a.id);
                     return (
                       <article
                         key={a.id}
-                        className={`rounded-2xl border p-5 ${ANNOUNCEMENT_STYLES[a.priority]}`}
+                        className={`min-w-0 rounded-2xl border p-5 ${ANNOUNCEMENT_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
                       >
                         {a.imageUrl && (
                           <button
@@ -676,8 +678,8 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                             />
                           </button>
                         )}
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold uppercase tracking-[0.16em]">
                               {a.priority === "info"
                                 ? "Information"
@@ -687,9 +689,12 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                               {a.title}
                             </h3>
                           </div>
-                          <time className="text-xs font-medium text-slate-500">
-                            {formatDateTime(a.published_at)}
-                          </time>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+                            {recent && <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">Recent</span>}
+                            <time className="text-xs font-medium text-slate-500">
+                              {formatDateTime(a.published_at)}
+                            </time>
+                          </div>
                         </div>
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                           {long && !open
@@ -713,7 +718,8 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                         )}
                       </article>
                     );
-                  })}
+                    }}
+                  </AnnouncementSections>
                 </div>
               </section>
             )}
@@ -736,7 +742,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             ) : (
               <>
                 <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                  <div className="grid gap-5 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div className="grid gap-5 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                     <div>
                       <div className="flex flex-wrap items-center gap-3">
                         <p className="text-sm font-medium text-slate-500">
@@ -783,10 +789,10 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 <button
                   type="button"
                   onClick={() => setTab("record")}
-                  className="flex w-full items-center justify-between rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-pine-300 hover:shadow-md sm:p-8"
+                  className="flex w-full flex-col items-start justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-pine-300 hover:shadow-md sm:flex-row sm:items-center sm:p-8"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
                       <FileText size={24} />
                     </div>
                     <div>
@@ -798,7 +804,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                       </p>
                     </div>
                   </div>
-                  <span className="text-sm font-bold text-pine-700">
+                  <span className="shrink-0 text-sm font-bold text-pine-700">
                     View details →
                   </span>
                 </button>
@@ -811,7 +817,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                           key={r.id}
                           className="rounded-2xl bg-slate-50 p-4"
                         >
-                          <div className="flex justify-between gap-3">
+                          <div className="flex flex-wrap justify-between gap-3">
                             <span className="text-xs font-bold uppercase text-slate-500">
                               {r.status_change.replaceAll("_", " ")}
                             </span>

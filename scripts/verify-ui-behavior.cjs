@@ -247,6 +247,38 @@ async function render(source, api = "export const supabase = {};") {
     "Census section navigation has no React/runtime errors",
   );
   await c.close();
+  const n = await render(
+    `import {createRoot} from 'react-dom/client';import AnnouncementSections from './src/components/AnnouncementSections';import {isRecentAnnouncement} from './src/lib/announcements';const root=createRoot(document.getElementById('root'));window.__isRecent=isRecentAnnouncement;const now=Date.now();const base={is_published:true,archived:false,expires_at:null};const items=[{...base,id:'new',title:'New notice',published_at:new Date(now-86400000).toISOString()},{...base,id:'old',title:'Older notice',published_at:new Date(now-14*86400000).toISOString()},{...base,id:'draft',title:'Draft',is_published:false,published_at:new Date(now).toISOString()}];window.__ungrouped=false;window.__mount=()=>root.render(<AnnouncementSections items={items} groupRecent={!window.__ungrouped}>{(item,recent)=><article key={item.id} data-recent={recent}>{item.title}</article>}</AnnouncementSections>);window.__unmount=()=>root.unmount();`,
+  );
+  const nd = n.w.document;
+  check(
+    nd.querySelector('[aria-label="Recent Announcements"]').querySelectorAll('article').length === 1 &&
+      nd.querySelector('[aria-label="Earlier Announcements"]').querySelectorAll('article').length === 2,
+    "Recent notices are separated; older posts and drafts remain available",
+  );
+  check(
+    nd.querySelector('[data-recent="true"]').textContent === "New notice",
+    "Only the recently published notice receives the highlight",
+  );
+  const now = Date.parse("2026-10-06T12:00:00Z");
+  const baseNotice = { is_published: true, archived: false, expires_at: null, published_at: new Date(now - 86400000).toISOString() };
+  for (const [patch, expected, label] of [
+    [{ published_at: new Date(now).toISOString() }, true, "A just-published announcement is recent"],
+    [{ published_at: new Date(now - 7 * 86400000 + 1).toISOString() }, true, "The recent window includes notices younger than seven days"],
+    [{ published_at: new Date(now - 7 * 86400000).toISOString() }, false, "A notice leaves Recent at the seven-day boundary"],
+    [{ published_at: new Date(now + 60000).toISOString() }, false, "Future publication dates do not receive a recent badge"],
+    [{ published_at: null }, false, "Missing publication dates do not look new"],
+    [{ published_at: "invalid" }, false, "Invalid dates do not look new"],
+    [{ archived: true }, false, "Archived announcements are never highlighted as recent"],
+    [{ is_published: false }, false, "Unpublished announcements are never highlighted as recent"],
+    [{ expires_at: new Date(now).toISOString() }, false, "Expired announcements are no longer highlighted"],
+    [{ expires_at: new Date(now + 86400000).toISOString() }, true, "An unexpired recent notice retains its highlight"],
+  ]) check(n.w.__isRecent({ ...baseNotice, ...patch }, now) === expected, label);
+  await n.tick(() => { n.w.__ungrouped = true; n.w.__mount(); });
+  check(!nd.querySelector('[aria-label="Recent Announcements"]') && nd.querySelectorAll('article').length === 3,
+    "Archive-style lists preserve all records without recent grouping");
+  check(n.errors.length === 0, "Announcement grouping renders without React/runtime errors");
+  await n.close();
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
   process.exit(0);
 })().catch((error) => {

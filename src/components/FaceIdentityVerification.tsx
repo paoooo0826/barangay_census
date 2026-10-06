@@ -841,12 +841,12 @@ export default function FaceIdentityVerification({
         <div
           className={
             cameraReady && !complete
-              ? "fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5"
+              ? "camera-dialog fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5"
               : "mt-4"
           }
         >
           {cameraReady && !complete && (
-            <div className="mb-3 flex items-start justify-between gap-3 text-white">
+            <div className="mb-3 flex shrink-0 items-start justify-between gap-3 text-white">
               <div>
                 <p className="text-sm font-bold sm:text-base">
                   Full-screen identity verification
@@ -874,7 +874,7 @@ export default function FaceIdentityVerification({
           <div
             className={
               cameraReady && !complete
-                ? "relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl"
+                ? "camera-preview relative flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl"
                 : "relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
             }
           >

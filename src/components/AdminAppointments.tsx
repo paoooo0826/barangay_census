@@ -402,7 +402,7 @@ export default function AdminAppointments({
               )}
             </div>
           )}
-          <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_210px_190px]">
+          <div className="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px_190px]">
             <label className="relative">
               <Search
                 className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -509,7 +509,7 @@ export default function AdminAppointments({
                           {formatTime(a.appointment_time)}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 xl:max-w-[45%] xl:justify-end">
                         <button
                           type="button"
                           onClick={() => setSelectedAppointment(a)}

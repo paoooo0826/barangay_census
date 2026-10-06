@@ -16,6 +16,7 @@ import {
 import { supabase } from "../lib/supabase";
 import SortControls from "./SortControls";
 import PaginationControls from "./PaginationControls";
+import AnnouncementSections from "./AnnouncementSections";
 import { usePagedQuery } from "../hooks/usePagedQuery";
 import { type SortDirection } from "../lib/sorting";
 import type {
@@ -828,13 +829,18 @@ export default function AdminAnnouncements({
             </div>
           ) : (
             <div className="mt-5 space-y-4">
-              {visible.map((a) => {
+              <AnnouncementSections
+                items={visible}
+                groupRecent={tab === "active"}
+                earlierLabel="Other Announcements"
+              >
+                {(a, recent) => {
                 const long = a.message.length > 240;
                 const open = expanded.has(a.id);
                 return (
                   <article
                     key={a.id}
-                    className={`overflow-hidden rounded-2xl border ${PRIORITY_STYLES[a.priority]}`}
+                    className={`min-w-0 overflow-hidden rounded-2xl border ${PRIORITY_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
                   >
                     {a.imageUrl && (
                       <button
@@ -855,8 +861,8 @@ export default function AdminAnnouncements({
                       </button>
                     )}
                     <div className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                        <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold uppercase">
                             {PRIORITY_LABELS[a.priority]} ·{" "}
                             {AUDIENCE_LABELS[a.audience]}
@@ -865,6 +871,8 @@ export default function AdminAnnouncements({
                             {a.title}
                           </h4>
                         </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {recent && <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">Recent</span>}
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.archived ? "bg-slate-200 text-slate-700" : a.is_published && (!a.expires_at || new Date(a.expires_at).getTime() > currentTime) ? "bg-sage-100 text-sage-700" : "bg-slate-200 text-slate-600"}`}
                         >
@@ -877,6 +885,7 @@ export default function AdminAnnouncements({
                                 : "Published"
                               : "Hidden"}
                         </span>
+                        </div>
                       </div>
                       <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                         {long && !open
@@ -967,7 +976,8 @@ export default function AdminAnnouncements({
                     </div>
                   </article>
                 );
-              })}
+                }}
+              </AnnouncementSections>
               {!visible.length && (
                 <div className="rounded-2xl border-2 border-dashed border-slate-200 px-5 py-12 text-center text-sm text-slate-500">
                   No {tab} announcements.

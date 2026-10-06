@@ -63,7 +63,7 @@ export default function RecentServices({ refreshKey }: { refreshKey: number }) {
               key={row.id}
               className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center"
             >
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="font-bold">
                   {row.residents
                     ? [
@@ -87,7 +87,7 @@ export default function RecentServices({ refreshKey }: { refreshKey: number }) {
                 </p>
               </div>
               <a
-                className="btn-secondary"
+                className="btn-secondary shrink-0"
                 href={`#/admin/dashboard?tab=services&appointment=${row.id}`}
               >
                 View

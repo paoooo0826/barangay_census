@@ -147,7 +147,7 @@ function ChartCard({
   return (
     <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
           <Icon size={20} />
         </div>
         <div>

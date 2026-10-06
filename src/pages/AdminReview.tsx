@@ -1125,7 +1125,7 @@ export default function AdminReview({
                 <button
                   type="button"
                   onClick={() => openActionModal("approve")}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-sage-600 px-5 text-sm font-semibold text-white transition hover:bg-sage-700"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-sage-600 px-5 text-sm font-semibold text-white transition hover:bg-sage-700"
                 >
                   <CheckCircle2 className="h-5 w-5" /> Approve Record
                 </button>
@@ -1134,7 +1134,7 @@ export default function AdminReview({
                 <button
                   type="button"
                   onClick={() => openActionModal("reject")}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700"
                 >
                   <XCircle className="h-5 w-5" /> Reject Record
                 </button>
@@ -1153,7 +1153,7 @@ export default function AdminReview({
             }
           }}
         >
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl">
+          <div className="dialog-panel w-full max-w-lg rounded-3xl border border-white/20 bg-white shadow-2xl">
             <div className="border-b border-slate-100 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -1230,7 +1230,7 @@ export default function AdminReview({
                   type="button"
                   onClick={closeActionModal}
                   disabled={actionLoading}
-                  className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Cancel
                 </button>
@@ -1239,7 +1239,7 @@ export default function AdminReview({
                   type="button"
                   onClick={handleAction}
                   disabled={actionLoading}
-                  className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedActionConfig.confirmClass}`}
+                  className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedActionConfig.confirmClass}`}
                 >
                   {actionLoading ? (
                     <>

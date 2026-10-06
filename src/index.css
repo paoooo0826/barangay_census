@@ -13,6 +13,8 @@
     margin: 0;
     @apply min-w-0 bg-slate-50 font-sans text-slate-900 antialiased;
     line-height: 1.6;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   h1,
@@ -43,6 +45,13 @@
   select,
   textarea {
     font-size: 1rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Let grid/flex tracks shrink around long names, emails, and addresses. */
+  :where(.grid > *, .flex > *, .inline-flex > *) {
+    min-width: 0;
   }
 
   input[type="checkbox"],
@@ -58,10 +67,16 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pine-800 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pine-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 min-w-0 max-w-full items-center justify-center gap-2 whitespace-normal rounded-xl bg-pine-800 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-pine-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-pine-300 hover:bg-pine-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 min-w-0 max-w-full items-center justify-center gap-2 whitespace-normal rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:border-pine-300 hover:bg-pine-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary > svg,
+  .btn-secondary > svg,
+  .nav-item > svg {
+    flex-shrink: 0;
   }
 
   .label {
@@ -113,6 +128,22 @@
     animation: drawer-enter 180ms ease-out;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  .dialog-panel {
+    min-width: 0;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .camera-dialog {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .camera-preview {
+    min-height: min(40dvh, 200px);
   }
 
   .menu-backdrop {

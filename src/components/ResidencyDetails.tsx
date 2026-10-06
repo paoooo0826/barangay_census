@@ -236,7 +236,7 @@ export default function ResidencyDetails({
           }}
         >
           <form
-            className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
+            className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
             onSubmit={savePeriod}
           >
             <h3 className="text-xl font-bold">

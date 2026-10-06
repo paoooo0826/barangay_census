@@ -577,7 +577,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
               />
               Active boarding house
             </label>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 disabled={busy}
                 type="button"
@@ -604,7 +604,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
           }}
         >
           <form
-            className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
+            className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
             onSubmit={async (e) => {
               e.preventDefault();
               if (
@@ -638,7 +638,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
               This closes the stay, keeps its history, and does not change
               barangay residency.
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 disabled={busy}
