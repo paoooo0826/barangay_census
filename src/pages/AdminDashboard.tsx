@@ -28,7 +28,12 @@ import PaginationControls from "../components/PaginationControls";
 import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
 import { EMPTY_ADMIN_SUMMARY, type AdminSummary } from "../lib/adminData";
 import { type SortDirection } from "../lib/sorting";
-import type { Resident, ResidentStatus } from "../types/database";
+import type {
+  BoardingStatus,
+  Resident,
+  ResidentStatus,
+} from "../types/database";
+import { BOARDING_OPTIONS, boardingStatusLabel } from "../lib/boarding";
 
 interface Props {
   tab?: string | null;
@@ -140,6 +145,9 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | ResidentStatus>("all");
+  const [boardingFilter, setBoardingFilter] = useState<"all" | BoardingStatus>(
+    "all",
+  );
   const [sortField, setSortField] = useState("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [page, setPage] = useState(1);
@@ -183,6 +191,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         .from("admin_resident_records")
         .select("*", { count: "exact" });
       if (status !== "all") q = q.eq("status", status);
+      if (boardingFilter !== "all") q = q.eq("boarding_status", boardingFilter);
       if (search.trim()) q = q.ilike("search_text", searchPattern(search));
       q = q.order(sortField, {
         ascending: sortDirection === "asc",
@@ -192,7 +201,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         q = q.order("first_name", { ascending: sortDirection === "asc" });
       return q.order("id").range(from, to);
     },
-    [status, search, sortField, sortDirection],
+    [status, boardingFilter, search, sortField, sortDirection],
   );
   const {
     rows: visibleRecords,
@@ -212,7 +221,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   }, [activeTab]);
   useEffect(() => {
     setPage(1);
-  }, [search, status, sortField, sortDirection]);
+  }, [search, status, boardingFilter, sortField, sortDirection]);
   useEffect(() => {
     if (activeTab !== "records") return;
     const requested = new URLSearchParams(
@@ -299,7 +308,12 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 {profileName.charAt(0).toUpperCase()}
               </span>
               <span className="text-left">
-                <span className="block max-w-36 truncate text-sm font-bold xl:max-w-52" title={profileName}>{profileName}</span>
+                <span
+                  className="block max-w-36 truncate text-sm font-bold xl:max-w-52"
+                  title={profileName}
+                >
+                  {profileName}
+                </span>
                 <span className="block text-xs text-slate-500">
                   Profile / Account
                 </span>
@@ -516,7 +530,9 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        {resident.tracking_number} · Updated{" "}
+                        {resident.tracking_number} ·{" "}
+                        {boardingStatusLabel(resident.boarding_status)} ·
+                        Updated{" "}
                         {formatDate(
                           resident.updated_at ?? resident.submitted_at,
                         )}
@@ -554,7 +570,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               </div>
             </div>
             <div className="p-5 sm:p-6">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_200px]">
                 <label className="relative">
                   <Search
                     className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -563,11 +579,13 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search name, tracking number, address"
+                    placeholder="Search name, tracking number, address, boarding status"
+                    aria-label="Search resident records"
                     className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm"
                   />
                 </label>
                 <select
+                  aria-label="Census status"
                   value={status}
                   onChange={(event) =>
                     setStatus(event.target.value as "all" | ResidentStatus)
@@ -579,6 +597,27 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                   <option value="pending_review">Pending Review</option>
                   <option value="rejected">Rejected</option>
                   <option value="returned">Legacy Returned</option>
+                </select>
+                <select
+                  aria-label="Boarding status filter"
+                  value={boardingFilter}
+                  onChange={(event) =>
+                    setBoardingFilter(
+                      event.target.value as "all" | BoardingStatus,
+                    )
+                  }
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="all">All Residents</option>
+                  {BOARDING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.value === "boarder"
+                        ? "Boarders"
+                        : option.value === "landlord"
+                          ? "Landlords/Landladies"
+                          : "Neither"}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="mt-4">
@@ -610,6 +649,9 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-bold">{fullName(resident)}</h3>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                            {boardingStatusLabel(resident.boarding_status)}
+                          </span>
                           <span className="rounded-full bg-pine-50 px-2.5 py-1 text-xs font-bold text-pine-700">
                             {resident.residence_classification === "resident"
                               ? "Resident"

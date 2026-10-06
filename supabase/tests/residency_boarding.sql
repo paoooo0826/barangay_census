@@ -4,8 +4,11 @@ create temporary table census_test_accounts(label text primary key, uid uuid, ri
 insert into census_test_accounts(label,uid,rid) select label,gen_random_uuid(),gen_random_uuid() from unnest(array['admin','owner1','owner2','boarder']) label;
 grant select,update on census_test_accounts to authenticated;
 insert into auth.users(id,email) select uid,'census-verification-'||uid||'@example.invalid' from census_test_accounts;
-insert into public.residents(id,user_id,tracking_number,first_name,last_name,birth_date,birth_place,sex,civil_status,residential_address,tenurial_status)
-select rid,uid,'TEST-'||rid,'Test',label,'1990-01-01','Baguio','Male','Single','Test Address','Landlord/Landlady' from census_test_accounts;
+insert into public.residents(id,user_id,tracking_number,first_name,last_name,birth_date,birth_place,sex,civil_status,residential_address,tenurial_status,boarding_status,boarding_house_name,boarding_house_address,boarding_landlord_name,boarding_start_date,boarding_tenant_count)
+select rid,uid,'TEST-'||rid,'Test',label,'1990-01-01','Baguio','Male','Single','Test Address','Landlord/Landlady',
+  case when label='boarder' then 'boarder' when label like 'owner%' then 'landlord' else 'neither' end,
+  'Test boarding house','Test address',case when label='boarder' then 'Test owner' end,
+  case when label='boarder' then current_date-10 end,case when label like 'owner%' then 0 end from census_test_accounts;
 insert into public.admin_profiles(user_id,full_name,is_active) select uid,'Test administrator',true from census_test_accounts where label='admin';
 select set_config('request.jwt.claims',(select jsonb_build_object('sub',uid,'role','authenticated')::text from census_test_accounts where label='admin'),true);
 set local role authenticated;

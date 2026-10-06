@@ -58,6 +58,8 @@ export type Category =
 export type ResidentStatus =
   "pending_review" | "verified" | "returned" | "rejected";
 
+export type BoardingStatus = "boarder" | "landlord" | "neither";
+
 export type AppointmentService =
   "barangay_clearance" | "certificate_of_residency";
 
@@ -109,6 +111,13 @@ export interface Resident {
   vocational_course?: string | null;
   tenurial_status?: string | null;
   monthly_rent?: number | null;
+  boarding_status?: BoardingStatus;
+  boarding_house_name?: string | null;
+  boarding_house_address?: string | null;
+  boarding_landlord_name?: string | null;
+  boarding_start_date?: string | null;
+  boarding_tenant_count?: number | null;
+  boarding_contact?: string | null;
   household_photo_url?: string | null;
   status: ResidentStatus;
   submitted_at: string;

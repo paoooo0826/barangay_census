@@ -5,6 +5,8 @@ import type { Resident } from "../types/database";
 import { searchPattern } from "../hooks/usePagedQuery";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import PaginationControls from "./PaginationControls";
+import CopyableTrackingNumber from "./CopyableTrackingNumber";
+import { canAccessBoarding } from "../lib/boarding";
 
 interface House {
   id: string;
@@ -48,8 +50,20 @@ const blankHouse = {
   owner_resident_id: "",
   active: true,
 };
-export default function HousingManager({ admin = false }: { admin?: boolean }) {
+export default function HousingManager({
+  admin = false,
+  resident,
+}: {
+  admin?: boolean;
+  resident?: Resident;
+}) {
   const { user } = useAuth();
+  const userId = user?.id;
+  const residentId = resident?.id;
+  const boardingStatus = resident?.boarding_status;
+  const authorized = Boolean(
+    userId && (admin || canAccessBoarding(boardingStatus)),
+  );
   const mutationLock = useRef(false);
   const stayRequest = useRef(0);
   const eventRequest = useRef(0);
@@ -78,6 +92,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       let query = supabase
         .from("admin_resident_records")
         .select("id,user_id,first_name,last_name,tracking_number")
+        .eq("boarding_status", "landlord")
         .not("user_id", "is", null);
       if (ownerSearch.trim())
         query = query.ilike("search_text", searchPattern(ownerSearch));
@@ -119,14 +134,17 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
   const [eventStay, setEventStay] = useState<Stay | null>(null);
   const house = houses.find((h) => h.id === houseId);
   const canManage = Boolean(
-    house && (admin || house.owner_user_id === user?.id),
+    house &&
+    (admin ||
+      (resident?.boarding_status === "landlord" &&
+        house.owner_user_id === user?.id)),
   );
   const loadHouses = useCallback(async () => {
-    const { data, error: e } = await supabase
-      .from("boarding_houses")
-      .select("*")
-      .order("name")
-      .limit(500);
+    if (!authorized) return;
+    let query = supabase.from("boarding_houses").select("*");
+    if (!admin && boardingStatus === "landlord")
+      query = query.eq("owner_user_id", userId!);
+    const { data, error: e } = await query.order("name").limit(500);
     if (e) setError(e.message);
     else {
       setHouses((data ?? []) as House[]);
@@ -134,10 +152,10 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
         data?.some((h) => h.id === id) ? id : data?.[0]?.id || "",
       );
     }
-  }, []);
+  }, [authorized, admin, boardingStatus, userId]);
   const loadStays = useCallback(async () => {
     const request = ++stayRequest.current;
-    if (!houseId) {
+    if (!houseId || !authorized) {
       setStays([]);
       setTotal(0);
       return;
@@ -148,6 +166,8 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       .select("*", { count: "exact" })
       .eq("boarding_house_id", houseId)
       .eq("status", status);
+    if (!admin && boardingStatus === "boarder")
+      q = q.eq("resident_id", residentId);
     const clean = search.replace(/[^\p{L}\p{N}\s-]/gu, "").trim();
     if (clean)
       q = q.or(
@@ -168,7 +188,16 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       setTotal(count ?? 0);
     }
     setLoading(false);
-  }, [houseId, status, search, page]);
+  }, [
+    houseId,
+    status,
+    search,
+    page,
+    authorized,
+    admin,
+    residentId,
+    boardingStatus,
+  ]);
   useEffect(() => {
     void loadHouses();
   }, [loadHouses]);
@@ -183,7 +212,8 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
     action: string,
     payload: Record<string, string | boolean>,
   ) {
-    if (mutationLock.current) return false;
+    if (mutationLock.current || !authorized || (!admin && !canManage))
+      return false;
     mutationLock.current = true;
     setBusy(true);
     setError("");
@@ -259,12 +289,17 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
     () => setEventStay(null),
     null,
   );
+  if (!authorized) return null;
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">
-            Boarding Houses and Boarder Records
+            {admin
+              ? "Boarding Houses and Boarder Records"
+              : resident?.boarding_status === "landlord"
+                ? "Boarding House Management"
+                : "My Boarding House"}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             Occupancy records are separate from barangay residency. Only
@@ -330,7 +365,9 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
         <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-600">
           {admin
             ? "No boarding houses have been assigned yet."
-            : "No boarding-house records are linked to your account. Ask the barangay administrator to assign your house if you are its owner."}
+            : boardingStatus === "boarder"
+              ? "Your reported boarding information is shown above. No recorded stay is linked yet; ask your landlord/landlady or the barangay to link your stay."
+              : "No boarding house is assigned to your account yet. Ask the barangay administrator to assign your house before managing its boarders."}
         </p>
       )}
       {house && (
@@ -449,7 +486,14 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
                 <div>
                   <p className="font-bold">{s.resident_name}</p>
                   <p className="text-sm text-slate-600">
-                    {s.tracking_number} · Move-in: {s.move_in_date}
+                    {admin ? (
+                      s.tracking_number
+                    ) : (
+                      <CopyableTrackingNumber
+                        trackingNumber={s.tracking_number}
+                      />
+                    )}{" "}
+                    · Move-in: {s.move_in_date}
                   </p>
                   <p className="text-sm text-slate-600">
                     {s.status === "staying"
@@ -512,7 +556,9 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
           ref={houseDialogRef}
           role="dialog"
           aria-modal="true"
-          aria-label={houseForm.id ? "Edit boarding house" : "Assign boarding house"}
+          aria-label={
+            houseForm.id ? "Edit boarding house" : "Assign boarding house"
+          }
           tabIndex={-1}
           className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
           onClick={(e) => {

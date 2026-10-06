@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
@@ -21,6 +21,9 @@ import { supabase } from "../lib/supabase";
 import { useDismissible } from "../hooks/useDismissible";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import HousingManager from "../components/HousingManager";
+import BoardingDetails from "../components/BoardingDetails";
+import CopyableTrackingNumber from "../components/CopyableTrackingNumber";
+import { boardingStatusLabel, canAccessBoarding } from "../lib/boarding";
 import BarangayBrand from "../components/BarangayBrand";
 import ResidencyDetails from "../components/ResidencyDetails";
 import ResidentAppointments from "../components/ResidentAppointments";
@@ -37,6 +40,7 @@ import type {
 } from "../types/database";
 
 interface Props {
+  tab?: string | null;
   onLogout: () => void;
   onEdit: () => void;
 }
@@ -130,9 +134,14 @@ function display(value: unknown) {
     : String(value);
 }
 
-export default function ResidentDashboard({ onLogout, onEdit }: Props) {
+export default function ResidentDashboard({
+  onLogout,
+  onEdit,
+  tab: requestedTab,
+}: Props) {
   const { user } = useAuth();
   const userId = user?.id;
+  const loadRequest = useRef(0);
   const [resident, setResident] = useState<Resident | null>(null);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [categories, setCategories] = useState<ResidentCategoryView[]>([]);
@@ -149,7 +158,20 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
     title: string;
     url: string;
   } | null>(null);
-  const [tab, setTab] = useState<Tab>("home");
+  const [selectedTab, setTab] = useState<Tab>("home");
+  useEffect(() => {
+    if (requestedTab)
+      setTab(
+        ["home", "appointments", "profile", "record", "housing"].includes(
+          requestedTab,
+        )
+          ? (requestedTab as Tab)
+          : "home",
+      );
+  }, [requestedTab]);
+  const boardingAccess = canAccessBoarding(resident?.boarding_status);
+  const tab =
+    selectedTab === "housing" && !boardingAccess ? "home" : selectedTab;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useDismissible<HTMLDivElement>(profileOpen, () =>
@@ -159,10 +181,15 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!loading && !boardingAccess && selectedTab === "housing")
+      setTab("home");
+  }, [boardingAccess, loading, selectedTab]);
 
   const load = useCallback(
     async (manual = false) => {
       if (!userId) return;
+      const request = ++loadRequest.current;
       if (manual) setRefreshing(true);
       else setLoading(true);
       setError(null);
@@ -172,6 +199,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           .select("*")
           .eq("user_id", userId)
           .maybeSingle();
+        if (request !== loadRequest.current) return;
         if (residentError) throw residentError;
         const current = (residentRow ?? null) as Resident | null;
         setResident(current);
@@ -223,6 +251,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             .eq("resident_id", current.id)
             .maybeSingle(),
         ]);
+        if (request !== loadRequest.current) return;
         if (remarkResult.error) throw remarkResult.error;
         if (categoryResult.error) throw categoryResult.error;
         if (announcementResult.error) throw announcementResult.error;
@@ -262,6 +291,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             };
           }),
         );
+        if (request !== loadRequest.current) return;
         setAnnouncements(signedAnnouncements);
 
         const governmentId = idResult.data as GovernmentId | null;
@@ -279,16 +309,20 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           signed("resident-verification", governmentId?.back_image_url),
           signed("resident-verification", faceResult.data?.captured_face_url),
         ]);
+        if (request !== loadRequest.current) return;
         setImages({ household, idFront, idBack, face });
       } catch (caught) {
+        if (request !== loadRequest.current) return;
         setError(
           caught instanceof Error
             ? caught.message
             : "Unable to load your census record.",
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (request === loadRequest.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [userId],
@@ -301,11 +335,21 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
       sessionStorage.removeItem("residentDashboardNotice");
     }
     void load();
+    return () => {
+      ++loadRequest.current;
+    };
   }, [load]);
 
   useEffect(() => {
     const refreshTimer = window.setInterval(() => void load(true), 60_000);
-    return () => window.clearInterval(refreshTimer);
+    const refreshOnFocus = () => {
+      if (document.visibilityState !== "hidden") void load(true);
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, [load]);
 
   const fullName = useMemo(
@@ -463,7 +507,18 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           {[
             { value: "home" as Tab, label: "Home", icon: Home },
             { value: "profile" as Tab, label: "Profile", icon: User },
-            { value: "housing" as Tab, label: "Boarding Houses", icon: Home },
+            ...(boardingAccess
+              ? [
+                  {
+                    value: "housing" as Tab,
+                    label:
+                      resident?.boarding_status === "landlord"
+                        ? "Boarding House Management"
+                        : "My Boarding House",
+                    icon: Home,
+                  },
+                ]
+              : []),
             {
               value: "appointments" as Tab,
               label: "Appointments",
@@ -522,11 +577,18 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               {[
                 { value: "home" as Tab, label: "Home", icon: Home },
                 { value: "profile" as Tab, label: "Profile", icon: User },
-                {
-                  value: "housing" as Tab,
-                  label: "Boarding Houses",
-                  icon: Home,
-                },
+                ...(boardingAccess
+                  ? [
+                      {
+                        value: "housing" as Tab,
+                        label:
+                          resident?.boarding_status === "landlord"
+                            ? "Boarding House Management"
+                            : "My Boarding House",
+                        icon: Home,
+                      },
+                    ]
+                  : []),
                 {
                   value: "appointments" as Tab,
                   label: "Appointments",
@@ -610,7 +672,15 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           </div>
         )}
 
-        {tab === "housing" && <HousingManager />}
+        {tab === "housing" && boardingAccess && resident && (
+          <>
+            <BoardingDetails resident={resident} />
+            <HousingManager
+              key={resident.boarding_status}
+              resident={resident}
+            />
+          </>
+        )}
         {(tab === "home" || tab === "profile" || tab === "record") &&
           resident && (
             <ResidencyDetails residentId={resident.id} onRecordStart={onEdit} />
@@ -658,71 +728,75 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 <div className="space-y-4 p-5 sm:p-6">
                   <AnnouncementSections items={announcements}>
                     {(a, recent) => {
-                    const long = a.message.length > 240;
-                    const open = expanded.has(a.id);
-                    return (
-                      <article
-                        key={a.id}
-                        className={`min-w-0 rounded-2xl border p-5 ${ANNOUNCEMENT_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
-                      >
-                        {a.imageUrl && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPreviewImage({
-                                title: a.title,
-                                url: a.imageUrl as string,
-                              })
-                            }
-                            className="mb-4 block w-full overflow-hidden rounded-2xl bg-white/70"
-                          >
-                            <img
-                              src={a.imageUrl}
-                              alt={`Attached image for ${a.title}`}
-                              className="aspect-[16/7] w-full object-cover"
-                            />
-                          </button>
-                        )}
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold uppercase tracking-[0.16em]">
-                              {a.priority === "info"
-                                ? "Information"
-                                : a.priority}
-                            </p>
-                            <h3 className="mt-1 text-lg font-bold text-slate-900">
-                              {a.title}
-                            </h3>
+                      const long = a.message.length > 240;
+                      const open = expanded.has(a.id);
+                      return (
+                        <article
+                          key={a.id}
+                          className={`min-w-0 rounded-2xl border p-5 ${ANNOUNCEMENT_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
+                        >
+                          {a.imageUrl && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewImage({
+                                  title: a.title,
+                                  url: a.imageUrl as string,
+                                })
+                              }
+                              className="mb-4 block w-full overflow-hidden rounded-2xl bg-white/70"
+                            >
+                              <img
+                                src={a.imageUrl}
+                                alt={`Attached image for ${a.title}`}
+                                className="aspect-[16/7] w-full object-cover"
+                              />
+                            </button>
+                          )}
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold uppercase tracking-[0.16em]">
+                                {a.priority === "info"
+                                  ? "Information"
+                                  : a.priority}
+                              </p>
+                              <h3 className="mt-1 text-lg font-bold text-slate-900">
+                                {a.title}
+                              </h3>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+                              {recent && (
+                                <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">
+                                  Recent
+                                </span>
+                              )}
+                              <time className="text-xs font-medium text-slate-500">
+                                {formatDateTime(a.published_at)}
+                              </time>
+                            </div>
                           </div>
-                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
-                            {recent && <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">Recent</span>}
-                            <time className="text-xs font-medium text-slate-500">
-                              {formatDateTime(a.published_at)}
-                            </time>
-                          </div>
-                        </div>
-                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                          {long && !open
-                            ? `${a.message.slice(0, 240).trim()}…`
-                            : a.message}
-                        </p>
-                        {long && (
-                          <button
-                            onClick={() =>
-                              setExpanded((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(a.id)) next.delete(a.id);
-                                else next.add(a.id);
-                                return next;
-                              })
-                            }
-                            className="mt-2 text-sm font-bold text-pine-700"
-                          >
-                            {open ? "Show Less" : "See More"}
-                          </button>
-                        )}
-                      </article>
-                    );
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                            {long && !open
+                              ? `${a.message.slice(0, 240).trim()}…`
+                              : a.message}
+                          </p>
+                          {long && (
+                            <button
+                              onClick={() =>
+                                setExpanded((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(a.id)) next.delete(a.id);
+                                  else next.add(a.id);
+                                  return next;
+                                })
+                              }
+                              className="mt-2 text-sm font-bold text-pine-700"
+                            >
+                              {open ? "Show Less" : "See More"}
+                            </button>
+                          )}
+                        </article>
+                      );
                     }}
                   </AnnouncementSections>
                 </div>
@@ -777,9 +851,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                       <p className="text-xs font-semibold uppercase text-slate-500">
                         Tracking Number
                       </p>
-                      <p className="mt-1 text-lg font-bold text-pine-700">
-                        {display(resident.tracking_number)}
-                      </p>
+                      <div className="mt-1 text-lg">
+                        <CopyableTrackingNumber
+                          trackingNumber={resident.tracking_number}
+                        />
+                      </div>
                     </div>
                     <div className="border-t border-slate-200 px-6 py-5 sm:border-l sm:border-t-0 sm:px-8">
                       <p className="text-xs font-semibold uppercase text-slate-500">
@@ -977,7 +1053,12 @@ function Profile({
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Account Email (Locked)" value={accountEmail} />
-        <Info label="Tracking Number" value={resident.tracking_number} />
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">
+            Tracking Number
+          </p>
+          <CopyableTrackingNumber trackingNumber={resident.tracking_number} />
+        </div>
         <Info
           label="Census Status"
           value={STATUS_CONFIG[resident.status].label}
@@ -1029,6 +1110,7 @@ function Profile({
         <SummaryCard
           title="Housing & Resident Classification"
           rows={[
+            ["Boarding Status", boardingStatusLabel(resident.boarding_status)],
             ["Tenurial Status", resident.tenurial_status],
             [
               "Monthly Rent",
@@ -1041,6 +1123,9 @@ function Profile({
           ]}
         />
       </div>
+      {canAccessBoarding(resident.boarding_status) && (
+        <BoardingDetails resident={resident} />
+      )}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1098,6 +1183,10 @@ function RecordSummary({
             ← Back to dashboard
           </button>
           <h2 className="mt-2 text-2xl font-bold">Record Summary</h2>
+          <p className="mt-3 text-xs font-semibold uppercase text-slate-500">
+            Tracking Number
+          </p>
+          <CopyableTrackingNumber trackingNumber={resident.tracking_number} />
           <p className="mt-1 text-sm text-slate-500">
             Complete census information currently stored in Supabase.
           </p>
@@ -1153,6 +1242,7 @@ function RecordSummary({
           title="Housing & Resident Classification"
           rows={[
             ["Tenurial Status", resident.tenurial_status],
+            ["Boarding Status", boardingStatusLabel(resident.boarding_status)],
             [
               "Monthly Rent",
               resident.monthly_rent != null
@@ -1178,6 +1268,9 @@ function RecordSummary({
           ]}
         />
       </div>
+      {canAccessBoarding(resident.boarding_status) && (
+        <BoardingDetails resident={resident} />
+      )}
     </section>
   );
 }

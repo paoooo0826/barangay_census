@@ -263,6 +263,7 @@ export default function App() {
   } else if (path === "/resident/dashboard") {
     page = (
       <ResidentDashboard
+        tab={new URLSearchParams(route.split("?")[1] ?? "").get("tab")}
         onLogout={() => void handleLogout()}
         onEdit={() => navigate("/resident/census?mode=edit")}
       />

@@ -24,6 +24,12 @@ import FaceIdentityVerification, {
 } from "../components/FaceIdentityVerification";
 import IdCameraCapture from "../components/IdCameraCapture";
 import { categoryLabel, EDUCATION_STATUS_OPTIONS } from "../lib/displayLabels";
+import BoardingFormFields from "../components/BoardingFormFields";
+import {
+  EMPTY_BOARDING_FIELDS,
+  validateBoarding,
+  type BoardingFormData,
+} from "../lib/boarding";
 
 type Sex = "Male" | "Female";
 type CivilStatus = "Single" | "Married" | "Widowed" | "Divorced" | "Separated";
@@ -52,7 +58,7 @@ interface CensusFormProps {
   onDashboard: () => void;
   onLogout: () => void;
 }
-interface CensusFormData {
+interface CensusFormData extends BoardingFormData {
   region: string;
   province: string;
   city_municipality: string;
@@ -94,6 +100,8 @@ type CensusValidationField =
 type CensusFieldErrors = Partial<Record<CensusValidationField, string>>;
 
 const initialFormData: CensusFormData = {
+  ...EMPTY_BOARDING_FIELDS,
+  boarding_status: "neither",
   region: "Cordillera Administrative Region (CAR)",
   province: "Benguet",
   city_municipality: "Baguio City",
@@ -384,6 +392,16 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       if (residenceError) throw residenceError;
       setResidenceLocked(Boolean(residencePeriod));
       setFormData({
+        boarding_status: resident.boarding_status ?? "neither",
+        boarding_house_name: resident.boarding_house_name ?? "",
+        boarding_house_address: resident.boarding_house_address ?? "",
+        boarding_landlord_name: resident.boarding_landlord_name ?? "",
+        boarding_start_date: resident.boarding_start_date ?? "",
+        boarding_tenant_count:
+          resident.boarding_tenant_count == null
+            ? ""
+            : String(resident.boarding_tenant_count),
+        boarding_contact: resident.boarding_contact ?? "",
         residence_start_date: residencePeriod?.start_date ?? "",
         residence_classification: residencePeriod?.initial_classification ?? "",
         region: resident.region ?? initialFormData.region,
@@ -647,11 +665,25 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         "Residence start must be between your birth date and today.";
     if (
       formData.tenurial_status === "Renter" &&
+      formData.boarding_status !== "boarder" &&
       (!formData.monthly_rent ||
         !Number.isFinite(Number(formData.monthly_rent)) ||
         Number(formData.monthly_rent) <= 0)
     )
       nextErrors.monthly_rent = "Enter a monthly rent greater than zero.";
+    Object.assign(
+      nextErrors,
+      validateBoarding(
+        formData,
+        formData.birth_date,
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Manila",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date()),
+      ),
+    );
     if (
       isCategorySelected("Indigenous People") &&
       !formData.indigenous_group.trim()
@@ -878,6 +910,31 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       }
 
       const residentValues = {
+        boarding_status: formData.boarding_status,
+        boarding_house_name:
+          formData.boarding_status !== "neither"
+            ? formData.boarding_house_name.trim()
+            : null,
+        boarding_house_address:
+          formData.boarding_status !== "neither"
+            ? formData.boarding_house_address.trim()
+            : null,
+        boarding_landlord_name:
+          formData.boarding_status === "boarder"
+            ? formData.boarding_landlord_name.trim()
+            : null,
+        boarding_start_date:
+          formData.boarding_status === "boarder"
+            ? formData.boarding_start_date
+            : null,
+        boarding_tenant_count:
+          formData.boarding_status === "landlord"
+            ? Number(formData.boarding_tenant_count)
+            : null,
+        boarding_contact:
+          formData.boarding_status === "landlord"
+            ? formData.boarding_contact.trim() || null
+            : null,
         region: formData.region,
         province: formData.province,
         city_municipality: formData.city_municipality,
@@ -904,7 +961,9 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         residence_classification: formData.residence_classification,
         tenurial_status: formData.tenurial_status,
         monthly_rent:
-          formData.tenurial_status === "Renter"
+          (formData.tenurial_status === "Renter" ||
+            formData.boarding_status === "boarder") &&
+          formData.monthly_rent.trim()
             ? Number(formData.monthly_rent)
             : null,
         household_photo_url: householdPhotoPath,
@@ -1470,10 +1529,17 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                         ...current,
                         tenurial_status: status,
                         monthly_rent:
-                          status === "Renter" ? current.monthly_rent : "",
+                          status === "Renter" ||
+                          current.boarding_status === "boarder"
+                            ? current.monthly_rent
+                            : "",
                       }));
                       clearFieldError("tenurial_status");
-                      if (status !== "Renter") clearFieldError("monthly_rent");
+                      if (
+                        status !== "Renter" &&
+                        formData.boarding_status !== "boarder"
+                      )
+                        clearFieldError("monthly_rent");
                     }}
                   />
                   <span className="ml-2">{status}</span>
@@ -1485,29 +1551,54 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 {fieldErrors.tenurial_status}
               </p>
             )}
-            {formData.tenurial_status === "Renter" && (
-              <div className="mt-6 max-w-md rounded-2xl border border-pine-200 bg-pine-50/70 p-5">
-                <label htmlFor="census-monthly_rent" className="label">
-                  Monthly Rent (PHP) <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="census-monthly_rent"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={formData.monthly_rent}
-                  onChange={(e) => updateField("monthly_rent", e.target.value)}
-                  data-field="monthly_rent"
-                  className={fieldInputClass("monthly_rent")}
-                  placeholder="Example: 5000"
-                />
-                {fieldErrors.monthly_rent && (
-                  <p className="mt-2 text-xs font-semibold text-red-600">
-                    {fieldErrors.monthly_rent}
-                  </p>
-                )}
-              </div>
-            )}
+            {formData.tenurial_status === "Renter" &&
+              formData.boarding_status !== "boarder" && (
+                <div className="mt-6 max-w-md rounded-2xl border border-pine-200 bg-pine-50/70 p-5">
+                  <label htmlFor="census-monthly_rent" className="label">
+                    Monthly Rent (PHP) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    id="census-monthly_rent"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={formData.monthly_rent}
+                    onChange={(e) =>
+                      updateField("monthly_rent", e.target.value)
+                    }
+                    data-field="monthly_rent"
+                    className={fieldInputClass("monthly_rent")}
+                    placeholder="Example: 5000"
+                  />
+                  {fieldErrors.monthly_rent && (
+                    <p className="mt-2 text-xs font-semibold text-red-600">
+                      {fieldErrors.monthly_rent}
+                    </p>
+                  )}
+                </div>
+              )}
+            <BoardingFormFields
+              data={formData}
+              errors={fieldErrors}
+              onChange={updateField}
+              onStatusChange={(status) => {
+                setFormData((previous) => ({
+                  ...previous,
+                  ...EMPTY_BOARDING_FIELDS,
+                  boarding_status: status,
+                  monthly_rent:
+                    previous.boarding_status === "boarder"
+                      ? ""
+                      : previous.monthly_rent,
+                }));
+                for (const field of [
+                  "boarding_status",
+                  ...Object.keys(EMPTY_BOARDING_FIELDS),
+                  "monthly_rent",
+                ] as CensusValidationField[])
+                  clearFieldError(field);
+              }}
+            />
           </section>
 
           <section
