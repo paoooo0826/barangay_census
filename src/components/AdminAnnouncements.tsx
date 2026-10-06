@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Archive,
@@ -133,6 +133,11 @@ export default function AdminAnnouncements({
   adminProfileId,
   refreshKey,
 }: Props) {
+  const mutationLock = useRef(false);
+  const imageGeneration = useRef(0);
+  const [preparingImage, setPreparingImage] = useState(false);
+  const [editing, setEditing] = useState<AnnouncementView | null>(null);
+  const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [announcements, setAnnouncements] = useState<AnnouncementView[]>([]);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
@@ -180,8 +185,10 @@ export default function AdminAnnouncements({
           const { data, error: imageError } = await supabase.storage
             .from("announcement-images")
             .createSignedUrl(row.image_path, 3600);
-          if (imageError) throw imageError;
-          return { ...row, imageUrl: data.signedUrl };
+          return {
+            ...row,
+            imageUrl: imageError ? null : (data?.signedUrl ?? null),
+          };
         }),
       );
       setAnnouncements(withImages);
@@ -200,10 +207,7 @@ export default function AdminAnnouncements({
     void loadAnnouncements();
   }, [loadAnnouncements, refreshKey]);
   useEffect(() => {
-    const timer = window.setInterval(
-      () => void loadAnnouncements(),
-      50 * 60 * 1000,
-    );
+    const timer = window.setInterval(() => void loadAnnouncements(), 60_000);
     return () => window.clearInterval(timer);
   }, [loadAnnouncements]);
   useEffect(() => {
@@ -251,10 +255,14 @@ export default function AdminAnnouncements({
 
   async function chooseImage(file?: File) {
     if (!file) return;
+    const generation = ++imageGeneration.current;
+    setPreparingImage(true);
     try {
       const cropped = await cropToBanner(file);
+      if (generation !== imageGeneration.current) return;
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImage(cropped);
+      setRemoveExistingImage(false);
       setImagePreview(URL.createObjectURL(cropped));
       setError(null);
     } catch (caught) {
@@ -263,9 +271,14 @@ export default function AdminAnnouncements({
           ? caught.message
           : "Unable to prepare announcement image.",
       );
+    } finally {
+      if (generation === imageGeneration.current) setPreparingImage(false);
     }
   }
   function clearImage() {
+    imageGeneration.current += 1;
+    setPreparingImage(false);
+    setRemoveExistingImage(true);
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
     setImage(null);
     setImagePreview("");
@@ -278,7 +291,15 @@ export default function AdminAnnouncements({
       next.message = "Enter a complete announcement message.";
     if (!priority) next.priority = "Select a priority.";
     if (!audience) next.audience = "Select an audience.";
-    if (expiresAt && new Date(expiresAt).getTime() <= Date.now())
+    if (
+      expiresAt &&
+      new Date(expiresAt).getTime() <= currentTime &&
+      (!editing?.expires_at ||
+        Math.abs(
+          new Date(expiresAt).getTime() -
+            new Date(editing.expires_at).getTime(),
+        ) >= 60_000)
+    )
       next.expiresAt = "Expiration must be a future date and time.";
     setFieldErrors(next);
     if (Object.keys(next).length) {
@@ -288,17 +309,66 @@ export default function AdminAnnouncements({
     return true;
   }
 
+  function resetForm() {
+    setTitle("");
+    setMessage("");
+    setPriority("info");
+    setAudience("all");
+    setExpiresAt("");
+    setFieldErrors({});
+    clearImage();
+    setEditing(null);
+    setRemoveExistingImage(false);
+    setShowForm(false);
+  }
+  function closeForm() {
+    if (saving || preparingImage) return;
+    if (
+      (title.trim() || message.trim() || image || editing) &&
+      !window.confirm("Discard unsaved announcement changes?")
+    )
+      return;
+    resetForm();
+  }
+  function editAnnouncement(a: AnnouncementView) {
+    if (saving || preparingImage) return;
+    if (
+      showForm &&
+      (title.trim() || message.trim() || image) &&
+      !window.confirm("Discard unsaved announcement changes?")
+    )
+      return;
+    clearImage();
+    setEditing(a);
+    setRemoveExistingImage(false);
+    setTitle(a.title);
+    setMessage(a.message);
+    setPriority(a.priority);
+    setAudience(a.audience);
+    setImagePreview(a.imageUrl ?? "");
+    if (a.expires_at) {
+      const local = new Date(a.expires_at);
+      local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+      setExpiresAt(local.toISOString().slice(0, 16));
+    } else setExpiresAt("");
+    setFieldErrors({});
+    setError(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   async function handlePublish(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mutationLock.current || preparingImage || !validate()) return;
+    mutationLock.current = true;
+    setSaving(true);
     setError(null);
     setSuccess(null);
-    if (!validate()) return;
-    const announcementId = crypto.randomUUID();
-    setSaving(true);
+    const announcementId = editing?.id ?? crypto.randomUUID();
     let uploadedPath: string | null = null;
+    let committed = false;
     try {
       if (image) {
-        uploadedPath = `${adminProfileId ?? "admin"}/${announcementId}.jpg`;
+        uploadedPath = `${adminProfileId ?? "admin"}/${announcementId}-${crypto.randomUUID()}.jpg`;
         const { error: uploadError } = await supabase.storage
           .from("announcement-images")
           .upload(uploadedPath, image, {
@@ -308,44 +378,65 @@ export default function AdminAnnouncements({
           });
         if (uploadError) throw uploadError;
       }
-      const { error: publishError } = await supabase
-        .from("announcements")
-        .insert({
-          id: announcementId,
-          title: title.trim(),
-          message: message.trim(),
-          priority,
-          audience,
-          is_published: true,
-          published_at: new Date().toISOString(),
-          expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-          created_by: adminProfileId ?? null,
-          image_path: uploadedPath,
-          archived: false,
-        });
-      if (publishError) throw publishError;
-      setTitle("");
-      setMessage("");
-      setPriority("info");
-      setAudience("all");
-      setExpiresAt("");
-      setFieldErrors({});
-      clearImage();
-      setShowForm(false);
+      const imagePath =
+        uploadedPath ??
+        (removeExistingImage ? null : (editing?.image_path ?? null));
+      const values = {
+        title: title.trim(),
+        message: message.trim(),
+        priority,
+        audience,
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        image_path: imagePath,
+        updated_at: new Date().toISOString(),
+      };
+      const result = editing
+        ? await supabase
+            .from("announcements")
+            .update(values)
+            .eq("id", editing.id)
+            .eq("updated_at", editing.updated_at)
+            .eq("archived", false)
+            .select("id")
+            .single()
+        : await supabase
+            .from("announcements")
+            .insert({
+              ...values,
+              id: announcementId,
+              is_published: true,
+              published_at: new Date().toISOString(),
+              created_by: adminProfileId ?? null,
+              archived: false,
+            })
+            .select("id")
+            .single();
+      if (result.error) throw result.error;
+      committed = true;
+      if (editing?.image_path && editing.image_path !== imagePath)
+        await supabase.storage
+          .from("announcement-images")
+          .remove([editing.image_path]);
+      const wasEditing = Boolean(editing);
+      resetForm();
       setTab("active");
-      setSuccess("Announcement published successfully.");
+      setSuccess(
+        wasEditing
+          ? "Announcement updated successfully."
+          : "Announcement published successfully.",
+      );
       await loadAnnouncements();
     } catch (caught) {
-      if (uploadedPath)
+      if (uploadedPath && !committed)
         await supabase.storage
           .from("announcement-images")
           .remove([uploadedPath]);
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Announcement could not be published.",
+        (caught as { message?: string })?.message ??
+          "Announcement could not be saved. Refresh if another administrator changed it.",
       );
     } finally {
+      mutationLock.current = false;
       setSaving(false);
     }
   }
@@ -363,7 +454,10 @@ export default function AdminAnnouncements({
         expires_at: next && expired ? null : a.expires_at,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", a.id);
+      .eq("id", a.id)
+      .eq("updated_at", a.updated_at)
+      .select("id")
+      .single();
     if (updateError) setError(updateError.message);
     else {
       setSuccess(next ? "Announcement published." : "Announcement hidden.");
@@ -383,7 +477,10 @@ export default function AdminAnnouncements({
         archived_by: adminProfileId ?? null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", a.id);
+      .eq("id", a.id)
+      .eq("updated_at", a.updated_at)
+      .select("id")
+      .single();
     if (updateError) setError(updateError.message);
     else {
       setSuccess("Announcement archived.");
@@ -399,7 +496,10 @@ export default function AdminAnnouncements({
         archived_by: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", a.id);
+      .eq("id", a.id)
+      .eq("updated_at", a.updated_at)
+      .select("id")
+      .single();
     if (updateError) setError(updateError.message);
     else {
       setSuccess("Announcement restored.");
@@ -416,17 +516,44 @@ export default function AdminAnnouncements({
       .from("announcements")
       .delete()
       .eq("id", a.id)
-      .eq("archived", true);
+      .eq("archived", true)
+      .select("id")
+      .single();
     if (deleteError) {
       setError(deleteError.message);
       return;
     }
-    if (a.image_path)
-      await supabase.storage.from("announcement-images").remove([a.image_path]);
+    if (a.image_path) {
+      const { error: cleanupError } = await supabase.storage
+        .from("announcement-images")
+        .remove([a.image_path]);
+      if (cleanupError)
+        setError(
+          "The archived announcement was deleted, but its image could not be removed from storage.",
+        );
+    }
     setSuccess("Archived announcement permanently deleted.");
     await loadAnnouncements();
   }
 
+  async function runAction(action: () => Promise<void>) {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await action();
+    } catch (caught) {
+      setError(
+        (caught as { message?: string })?.message ??
+          "Announcement action failed.",
+      );
+    } finally {
+      mutationLock.current = false;
+      setSaving(false);
+    }
+  }
   const inputClass = (field: keyof FieldErrors) =>
     `input mt-2 ${fieldErrors[field] ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-100" : ""}`;
   return (
@@ -449,7 +576,10 @@ export default function AdminAnnouncements({
           </div>
           <button
             type="button"
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => {
+              if (showForm) closeForm();
+              else setShowForm(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-blue-800"
           >
             {showForm ? <X size={16} /> : <Plus size={16} />}{" "}
@@ -587,6 +717,7 @@ export default function AdminAnnouncements({
                   Add Photo
                   <input
                     type="file"
+                    disabled={saving || preparingImage}
                     accept="image/jpeg,image/png,image/webp"
                     className="hidden"
                     onChange={(e) => {
@@ -605,6 +736,7 @@ export default function AdminAnnouncements({
                     <button
                       type="button"
                       onClick={clearImage}
+                      disabled={saving || preparingImage}
                       aria-label="Remove image"
                       className="absolute right-2 top-2 rounded-full bg-slate-950/70 p-2 text-white"
                     >
@@ -620,11 +752,17 @@ export default function AdminAnnouncements({
             </div>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || preparingImage}
               className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
             >
               {saving ? <Loader2 className="animate-spin" /> : <Send />}
-              {saving ? "Publishing…" : "Publish announcement"}
+              {preparingImage
+                ? "Preparing image…"
+                : saving
+                  ? "Saving…"
+                  : editing
+                    ? "Save Changes"
+                    : "Publish announcement"}
             </button>
           </form>
         )}
@@ -760,14 +898,28 @@ export default function AdminAnnouncements({
                           <>
                             <button
                               type="button"
-                              onClick={() => void togglePublished(a)}
+                              disabled={saving || preparingImage}
+                              className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700"
+                              onClick={() => editAnnouncement(a)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() =>
+                                void runAction(() => togglePublished(a))
+                              }
                               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
                             >
                               {a.is_published ? "Hide" : "Publish"}
                             </button>
                             <button
                               type="button"
-                              onClick={() => void archiveAnnouncement(a)}
+                              disabled={saving}
+                              onClick={() =>
+                                void runAction(() => archiveAnnouncement(a))
+                              }
                               className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700"
                             >
                               <Archive size={14} />
@@ -778,7 +930,10 @@ export default function AdminAnnouncements({
                           <>
                             <button
                               type="button"
-                              onClick={() => void restoreAnnouncement(a)}
+                              disabled={saving}
+                              onClick={() =>
+                                void runAction(() => restoreAnnouncement(a))
+                              }
                               className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700"
                             >
                               <RotateCcw size={14} />
@@ -786,7 +941,10 @@ export default function AdminAnnouncements({
                             </button>
                             <button
                               type="button"
-                              onClick={() => void permanentlyDelete(a)}
+                              disabled={saving}
+                              onClick={() =>
+                                void runAction(() => permanentlyDelete(a))
+                              }
                               className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"
                             >
                               <Trash2 size={14} />
@@ -817,7 +975,9 @@ export default function AdminAnnouncements({
       {previewImage && (
         <div
           className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 p-4"
-          onClick={() => setPreviewImage(null)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPreviewImage(null);
+          }}
         >
           <button
             type="button"

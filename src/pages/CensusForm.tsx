@@ -27,7 +27,8 @@ import { categoryLabel, EDUCATION_STATUS_OPTIONS } from "../lib/displayLabels";
 
 type Sex = "Male" | "Female";
 type CivilStatus = "Single" | "Married" | "Widowed" | "Divorced" | "Separated";
-type TenurialStatus = "House Owner" | "Sharer" | "Caretaker" | "Renter";
+type TenurialStatus =
+  "House Owner" | "Sharer" | "Caretaker" | "Renter" | "Landlord/Landlady";
 
 interface StoredVerification {
   userId?: string;
@@ -74,6 +75,8 @@ interface CensusFormData {
   highest_education: EducationLevel | "";
   education_status: EducationStatus | "";
   vocational_course: string;
+  residence_start_date: string;
+  residence_classification: "" | "temporary" | "resident";
   tenurial_status: TenurialStatus | "";
   monthly_rent: string;
   categories: number[];
@@ -113,6 +116,8 @@ const initialFormData: CensusFormData = {
   highest_education: "",
   education_status: "",
   vocational_course: "",
+  residence_start_date: "",
+  residence_classification: "",
   tenurial_status: "",
   monthly_rent: "",
   categories: [],
@@ -130,6 +135,8 @@ const REQUIRED_CENSUS_FIELDS: (keyof CensusFormData)[] = [
   "highest_education",
   "education_status",
   "tenurial_status",
+  "residence_start_date",
+  "residence_classification",
 ];
 const SEX_OPTIONS: Sex[] = ["Male", "Female"];
 const CIVIL_STATUS_OPTIONS: CivilStatus[] = [
@@ -154,6 +161,7 @@ const EDUCATION_OPTIONS: EducationLevel[] = [
   "Doctorate",
 ];
 const TENURIAL_STATUS_OPTIONS: TenurialStatus[] = [
+  "Landlord/Landlady",
   "House Owner",
   "Sharer",
   "Caretaker",
@@ -181,6 +189,7 @@ const CATEGORY_CONFIG = {
 export default function CensusForm({ onDashboard }: CensusFormProps) {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const { user } = useAuth();
+  const [residenceLocked, setResidenceLocked] = useState(false);
   const [formData, setFormData] = useState<CensusFormData>(initialFormData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -364,7 +373,17 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           .createSignedUrl(resident.household_photo_url, 3600);
         setHouseholdPhotoPreview(signedPhoto?.signedUrl ?? "");
       }
+      const { data: residencePeriod, error: residenceError } = await supabase
+        .from("residency_periods")
+        .select("start_date, initial_classification")
+        .eq("resident_id", resident.id)
+        .is("end_date", null)
+        .maybeSingle();
+      if (residenceError) throw residenceError;
+      setResidenceLocked(Boolean(residencePeriod));
       setFormData({
+        residence_start_date: residencePeriod?.start_date ?? "",
+        residence_classification: residencePeriod?.initial_classification ?? "",
         region: resident.region ?? initialFormData.region,
         province: resident.province ?? initialFormData.province,
         city_municipality:
@@ -604,6 +623,19 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         "Complete a successful live camera verification.";
     if (!isEditMode && !householdPhoto && !existingHouseholdPhotoPath)
       nextErrors.householdPhoto = "House or household photo is required.";
+    if (
+      formData.residence_start_date &&
+      (formData.residence_start_date >
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Manila",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date()) ||
+        formData.residence_start_date < formData.birth_date)
+    )
+      nextErrors.residence_start_date =
+        "Residence start must be between your birth date and today.";
     if (
       formData.tenurial_status === "Renter" &&
       (!formData.monthly_rent ||
@@ -859,6 +891,8 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         highest_education: formData.highest_education || null,
         education_status: formData.education_status || null,
         vocational_course: formData.vocational_course.trim() || null,
+        residence_start_date: formData.residence_start_date,
+        residence_classification: formData.residence_classification,
         tenurial_status: formData.tenurial_status,
         monthly_rent:
           formData.tenurial_status === "Renter"
@@ -1247,6 +1281,71 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             <h2 className="mb-6 text-xl font-bold">
               4. Tenurial Status <span className="text-red-600">*</span>
             </h2>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
+              <label className="label">
+                Residence start date <span className="text-red-600">*</span>
+                <input
+                  type="date"
+                  required
+                  disabled={residenceLocked}
+                  max={new Intl.DateTimeFormat("en-CA", {
+                    timeZone: "Asia/Manila",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  }).format(new Date())}
+                  value={formData.residence_start_date}
+                  data-field="residence_start_date"
+                  className={`input mt-2 ${fieldErrors.residence_start_date ? "border-red-500 bg-red-50" : ""}`}
+                  onChange={(e) => {
+                    setFormData((p) => ({
+                      ...p,
+                      residence_start_date: e.target.value,
+                    }));
+                    clearFieldError("residence_start_date");
+                  }}
+                />
+                {fieldErrors.residence_start_date && (
+                  <span className="text-xs text-red-600">
+                    {fieldErrors.residence_start_date}
+                  </span>
+                )}
+              </label>
+              <label className="label">
+                Classification when residence started{" "}
+                <span className="text-red-600">*</span>
+                <select
+                  required
+                  disabled={residenceLocked}
+                  data-field="residence_classification"
+                  className={`input mt-2 ${fieldErrors.residence_classification ? "border-red-500 bg-red-50" : ""}`}
+                  value={formData.residence_classification}
+                  onChange={(e) => {
+                    setFormData((p) => ({
+                      ...p,
+                      residence_classification: e.target.value as
+                        "temporary" | "resident",
+                    }));
+                    clearFieldError("residence_classification");
+                  }}
+                >
+                  <option value="">Select classification</option>
+                  <option value="temporary">Temporary resident</option>
+                  <option value="resident">Resident</option>
+                </select>
+                {fieldErrors.residence_classification && (
+                  <span className="text-xs text-red-600">
+                    {fieldErrors.residence_classification}
+                  </span>
+                )}
+              </label>
+              <p className="text-sm text-slate-500 sm:col-span-2">
+                Temporary residents become residents after six calendar months
+                of continuous residence. The recorded start date and original
+                classification are preserved. Boarding-house occupancy is
+                tracked separately.
+              </p>
+            </div>
             <div
               data-field="tenurial_status"
               className={`grid gap-4 rounded-2xl md:grid-cols-2 ${fieldErrors.tenurial_status ? "border border-red-500 bg-red-50 p-3" : ""}`}

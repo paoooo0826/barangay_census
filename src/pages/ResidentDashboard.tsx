@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { useDismissible } from "../hooks/useDismissible";
+import HousingManager from "../components/HousingManager";
+import ResidencyDetails from "../components/ResidencyDetails";
 import ResidentAppointments from "../components/ResidentAppointments";
 import ResidentNotifications from "../components/ResidentNotifications";
 import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
@@ -34,7 +37,7 @@ interface Props {
   onLogout: () => void;
   onEdit: () => void;
 }
-type Tab = "home" | "appointments" | "profile" | "record";
+type Tab = "home" | "appointments" | "profile" | "record" | "housing";
 type AnnouncementView = Announcement & { imageUrl?: string | null };
 interface ResidentCategoryView {
   name: string;
@@ -95,7 +98,9 @@ const ANNOUNCEMENT_STYLES: Record<AnnouncementPriority, string> = {
 };
 function formatDate(value?: string | null) {
   if (!value) return "Not provided";
-  const d = new Date(value);
+  const d = new Date(
+    /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value,
+  );
   return Number.isNaN(d.getTime())
     ? value
     : new Intl.DateTimeFormat("en-PH", {
@@ -143,6 +148,9 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
   const [tab, setTab] = useState<Tab>("home");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useDismissible<HTMLDivElement>(profileOpen, () =>
+    setProfileOpen(false),
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -244,8 +252,10 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             const { data, error: imageError } = await supabase.storage
               .from("announcement-images")
               .createSignedUrl(announcement.image_path, 3600);
-            if (imageError) throw imageError;
-            return { ...announcement, imageUrl: data.signedUrl };
+            return {
+              ...announcement,
+              imageUrl: imageError ? null : (data?.signedUrl ?? null),
+            };
           }),
         );
         setAnnouncements(signedAnnouncements);
@@ -257,8 +267,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           const { data, error: signedError } = await supabase.storage
             .from(bucket)
             .createSignedUrl(path, 3600);
-          if (signedError) throw signedError;
-          return data.signedUrl;
+          return signedError ? null : (data?.signedUrl ?? null);
         };
         const [household, idFront, idBack, face] = await Promise.all([
           signed("household-images", current.household_photo_url),
@@ -291,10 +300,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
   }, [load]);
 
   useEffect(() => {
-    const refreshTimer = window.setInterval(
-      () => void load(true),
-      50 * 60 * 1000,
-    );
+    const refreshTimer = window.setInterval(() => void load(true), 60_000);
     return () => window.clearInterval(refreshTimer);
   }, [load]);
 
@@ -362,36 +368,39 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               onOpenAppointments={() => setTab("appointments")}
               onOpenRecord={() => setTab(resident ? "record" : "home")}
             />
-            <button
-              type="button"
-              onClick={() => setProfileOpen((open) => !open)}
-              className={`hidden items-center gap-2 rounded-xl border px-3 py-2 md:flex ${tab === "profile" ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"}`}
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 font-bold text-white">
-                {fullName.charAt(0).toUpperCase()}
-              </span>
-              <span className="max-w-40 truncate text-sm font-bold">
-                {fullName}
-              </span>
-            </button>
-            {profileOpen && (
-              <div className="absolute right-0 top-14 hidden w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:block">
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
-                >
-                  <LogOut size={18} />
-                  Logout
-                </button>
-              </div>
-            )}
+            <div className="relative" ref={profileRef}>
+              <button
+                type="button"
+                onClick={() => setProfileOpen((open) => !open)}
+                className={`hidden items-center gap-2 rounded-xl border px-3 py-2 md:flex ${tab === "profile" ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"}`}
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 font-bold text-white">
+                  {fullName.charAt(0).toUpperCase()}
+                </span>
+                <span className="max-w-40 truncate text-sm font-bold">
+                  {fullName}
+                </span>
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 top-14 hidden w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:block">
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
+                  >
+                    <LogOut size={18} />
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <nav className="mx-auto hidden max-w-6xl gap-2 border-t border-slate-100 px-4 py-3 md:flex sm:px-6">
           {[
             { value: "home" as Tab, label: "Home", icon: Home },
             { value: "profile" as Tab, label: "Profile", icon: User },
+            { value: "housing" as Tab, label: "Boarding Houses", icon: Home },
             {
               value: "appointments" as Tab,
               label: "Appointments",
@@ -440,6 +449,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               {[
                 { value: "home" as Tab, label: "Home", icon: Home },
                 { value: "profile" as Tab, label: "Profile", icon: User },
+                {
+                  value: "housing" as Tab,
+                  label: "Boarding Houses",
+                  icon: Home,
+                },
                 {
                   value: "appointments" as Tab,
                   label: "Appointments",
@@ -496,6 +510,9 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           </div>
         )}
 
+        {tab === "housing" && <HousingManager />}
+        {(tab === "home" || tab === "profile" || tab === "record") &&
+          resident && <ResidencyDetails residentId={resident.id} />}
         {tab === "appointments" && <ResidentAppointments resident={resident} />}
         {tab === "profile" && (
           <Profile
@@ -760,8 +777,18 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
       {previewImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4"
-          onClick={() => setPreviewImage(null)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setPreviewImage(null);
+          }}
         >
+          <button
+            type="button"
+            aria-label="Close image preview"
+            onClick={() => setPreviewImage(null)}
+            className="absolute right-5 top-5 rounded-full bg-white p-2 text-slate-900"
+          >
+            <X size={20} />
+          </button>
           <img
             src={previewImage.url}
             alt={previewImage.title}

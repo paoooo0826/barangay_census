@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useDismissible } from "../hooks/useDismissible";
 import { supabase } from "../lib/supabase";
 import type {
   NotificationCategory,
@@ -54,9 +55,12 @@ export default function ResidentNotifications({
   onOpenAppointments,
   onOpenRecord,
 }: Props) {
-  const [notifications, setNotifications] = useState<ResidentNotification[]>([]);
+  const [notifications, setNotifications] = useState<ResidentNotification[]>(
+    [],
+  );
   const [filter, setFilter] = useState<NotificationFilter>("all");
   const [open, setOpen] = useState(false);
+  const panelRef = useDismissible<HTMLDivElement>(open, () => setOpen(false));
   const [loading, setLoading] = useState(false);
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +130,7 @@ export default function ResidentNotifications({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={panelRef}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

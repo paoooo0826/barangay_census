@@ -6,7 +6,6 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import { educationStatusLabel } from "../lib/displayLabels";
 import type { Resident } from "../types/database";
 
 interface AdminAnalyticsProps {
@@ -45,63 +44,30 @@ function ageRows(residents: Resident[], offsetYears = 0): ChartRow[] {
   });
   return rows;
 }
-function hasOccupation(value?: string | null) {
-  return Boolean(
-    value?.trim() &&
-    !/^(none|n\/a|unemployed|not applicable)$/i.test(value.trim()),
-  );
+function distribution(
+  residents: Resident[],
+  field: "sex" | "civil_status" | "highest_education",
+): ChartRow[] {
+  const counts = new Map<string, number>();
+  residents.forEach((r) => {
+    const label = r[field]?.trim() || "Not specified";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+  return [...counts]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
 export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
-  const analytics = useMemo(() => {
-    const diagnosticMap = new Map<string, number>();
-    residents.forEach((resident) => {
-      const status =
-        educationStatusLabel(resident.education_status) ||
-        "Education not specified";
-      const key = `${status} — ${hasOccupation(resident.profession_occupation) ? "occupation recorded" : "no occupation recorded"}`;
-      diagnosticMap.set(key, (diagnosticMap.get(key) ?? 0) + 1);
-    });
-    const diagnostic = [...diagnosticMap]
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8);
-    const serviceFocus: ChartRow[] = [
-      {
-        label: "Senior support indicator",
-        count: residents.filter((r) => (safeAge(r.birth_date) ?? -1) >= 60)
-          .length,
-        detail: "Residents currently aged 60 or older.",
-      },
-      {
-        label: "Youth/minor support indicator",
-        count: residents.filter((r) => {
-          const age = safeAge(r.birth_date);
-          return age != null && age < 18;
-        }).length,
-        detail: "Residents currently below 18.",
-      },
-      {
-        label: "Housing support indicator",
-        count: residents.filter((r) =>
-          /renter|rented/i.test(r.tenurial_status ?? ""),
-        ).length,
-        detail: "Residents whose recorded tenure indicates renting.",
-      },
-      {
-        label: "Livelihood follow-up indicator",
-        count: residents.filter((r) => !hasOccupation(r.profession_occupation))
-          .length,
-        detail: "Residents with no recorded occupation; verify before acting.",
-      },
-    ];
-    return {
-      descriptive: ageRows(residents),
-      diagnostic,
-      predictive: ageRows(residents, 1),
-      prescriptive: serviceFocus,
-    };
-  }, [residents]);
+  const analytics = useMemo(
+    () => ({
+      age: ageRows(residents),
+      gender: distribution(residents, "sex"),
+      civil: distribution(residents, "civil_status"),
+      education: distribution(residents, "highest_education"),
+    }),
+    [residents],
+  );
 
   return (
     <section className="space-y-6">
@@ -134,32 +100,32 @@ export default function AdminAnalytics({ residents }: AdminAnalyticsProps) {
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard
-            title="Descriptive Analytics"
+            title="Age Distribution"
             subtitle="Current population distribution by age group"
             icon={SearchCheck}
-            rows={analytics.descriptive}
+            rows={analytics.age}
             note="Shows what is currently recorded in the census."
           />
           <ChartCard
-            title="Diagnostic Analytics"
-            subtitle="Education status compared with whether an occupation is recorded"
+            title="Gender Distribution"
+            subtitle="Distribution by the census sex field"
             icon={Sparkles}
-            rows={analytics.diagnostic}
-            note="This shows associations in recorded data only; it does not establish causation."
+            rows={analytics.gender}
+            note="Counts use the sex value provided in each saved census record."
           />
           <ChartCard
-            title="Predictive Analytics"
-            subtitle="Estimated age-group distribution one year from now"
+            title="Civil Status Distribution"
+            subtitle="Distribution by recorded civil status"
             icon={TrendingUp}
-            rows={analytics.predictive}
-            note="Projection only: each valid recorded age is advanced by one year. Births, deaths, and migration are not modeled."
+            rows={analytics.civil}
+            note="Counts represent submitted census records, not a forecast."
           />
           <ChartCard
-            title="Prescriptive Analytics"
-            subtitle="Data-supported groups that may merit administrative review"
+            title="Education Distribution"
+            subtitle="Highest educational level reported by residents"
             icon={Compass}
-            rows={analytics.prescriptive}
-            note="Planning indicators, not authoritative eligibility decisions. Verify individual records before taking action."
+            rows={analytics.education}
+            note="Missing education values are shown as Not specified."
           />
         </div>
       )}

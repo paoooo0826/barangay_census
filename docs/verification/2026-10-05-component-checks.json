@@ -1,0 +1,34 @@
+{
+  "passed": 25,
+  "checks": [
+    "Admin dashboard renders Recent Services",
+    "View All Services link is present",
+    "Active appointment screen renders",
+    "Active appointment controls render",
+    "Active query requests only pending and confirmed",
+    "Active appointments omit cancelled details",
+    "History has Completed and Cancelled tabs",
+    "Cancelled details include reason and date",
+    "Clicking inside details does not dismiss",
+    "Clicking outside details dismisses",
+    "Four analytics use clear demographic titles",
+    "Assigned house and occupancy render",
+    "Departure form requires a date",
+    "Empty departure panel dismisses without submitting",
+    "Resident dashboard shows saved residence start",
+    "Resident profile shows full classification and landlord tenure",
+    "Notifications open",
+    "Outside pointer closes notifications",
+    "Existing residence start is locked in census form",
+    "Census form offers Landlord/Landlady",
+    "Announcement editing loads existing title",
+    "Announcement edit uses Save Changes",
+    "Announcement editing reports confirmed save",
+    "Announcement edit performs update rather than duplicate insert",
+    "No runtime exception in checked component flows"
+  ],
+  "limitations": [
+    "JSDOM component checks with isolated fixtures; not real-browser visual/mobile tests",
+    "No live Auth login or Storage file transfer tested"
+  ]
+}

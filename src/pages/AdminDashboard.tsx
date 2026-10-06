@@ -5,6 +5,7 @@ import {
   CalendarDays,
   FileSearch,
   LayoutDashboard,
+  Home,
   LogOut,
   Menu,
   RefreshCw,
@@ -17,6 +18,8 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import AdminAnalytics from "../components/AdminAnalytics";
 import AdminAnnouncements from "../components/AdminAnnouncements";
+import HousingManager from "../components/HousingManager";
+import RecentServices from "../components/RecentServices";
 import AdminAppointments from "../components/AdminAppointments";
 import SortControls from "../components/SortControls";
 import PaginationControls, {
@@ -43,6 +46,9 @@ type AdminTab =
   | "analytics"
   | "announcements"
   | "appointments"
+  | "history"
+  | "services"
+  | "housing"
   | "account";
 const PAGE_SIZE = 8;
 const PRIMARY_TABS: Array<{
@@ -55,6 +61,9 @@ const PRIMARY_TABS: Array<{
   { value: "analytics", label: "Analytics", icon: Activity },
   { value: "announcements", label: "Announcements", icon: BellRing },
   { value: "appointments", label: "Appointments", icon: CalendarDays },
+  { value: "history", label: "Appointment History", icon: CalendarDays },
+  { value: "services", label: "Services", icon: FileSearch },
+  { value: "housing", label: "Boarding Houses", icon: Home },
 ];
 const STATUS_STYLES: Record<ResidentStatus, string> = {
   pending_review: "bg-amber-100 text-amber-800",
@@ -97,9 +106,12 @@ function formatDate(value?: string | null) {
       }).format(date);
 }
 function localDateValue(date = new Date()) {
-  const local = new Date(date);
-  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
-  return local.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 function AdminNavLinks({
   activeTab,
@@ -153,7 +165,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
       else setLoading(true);
       setError(null);
       try {
-        const [residentRows, appointmentRows, announcementRows] =
+        const [residentRows, appointmentRows, announcementRows, residenceRows] =
           await Promise.all([
             readAllRows<Resident>((from, to) =>
               supabase
@@ -179,8 +191,31 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 .order("id", { ascending: true })
                 .range(from, to),
             ),
+            readAllRows<{
+              resident_id: string;
+              start_date: string;
+              current_classification: "resident" | "temporary";
+            }>((from, to) =>
+              supabase
+                .from("residency_current")
+                .select("resident_id,start_date,current_classification")
+                .is("end_date", null)
+                .order("id")
+                .range(from, to),
+            ),
           ]);
-        setResidents(residentRows);
+        const currentResidencies = new Map(
+          (residenceRows ?? []).map((p) => [p.resident_id, p]),
+        );
+        setResidents(
+          residentRows.map((r) => ({
+            ...r,
+            residence_classification:
+              currentResidencies.get(r.id)?.current_classification ?? null,
+            residence_start_date:
+              currentResidencies.get(r.id)?.start_date ?? null,
+          })),
+        );
         setAppointments(appointmentRows);
         setAnnouncements(announcementRows);
         if (user) {
@@ -207,6 +242,8 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   );
   useEffect(() => {
     void fetchData();
+    const timer = window.setInterval(() => void fetchData(true), 60_000);
+    return () => window.clearInterval(timer);
   }, [fetchData]);
   useEffect(() => {
     setMobileOpen(false);
@@ -505,6 +542,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 })}
               </div>
             </section>
+            <RecentServices refreshKey={refreshKey} />
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -630,6 +668,14 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-bold">{fullName(resident)}</h3>
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                            {resident.residence_classification === "resident"
+                              ? "Resident"
+                              : resident.residence_classification ===
+                                  "temporary"
+                                ? "Temporary resident"
+                                : "Residence date not recorded"}
+                          </span>
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLES[resident.status]}`}
                           >
@@ -679,8 +725,24 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             refreshKey={refreshKey}
           />
         )}{" "}
-        {activeTab === "appointments" && (
-          <AdminAppointments refreshKey={refreshKey} />
+        {activeTab === "housing" && (
+          <HousingManager admin residents={residents} />
+        )}
+        {(activeTab === "appointments" ||
+          activeTab === "history" ||
+          activeTab === "services") && (
+          <AdminAppointments
+            key={activeTab}
+            onChanged={() => void fetchData(true)}
+            refreshKey={refreshKey}
+            mode={
+              activeTab === "history"
+                ? "history"
+                : activeTab === "services"
+                  ? "services"
+                  : "active"
+            }
+          />
         )}{" "}
         {activeTab === "account" && (
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">

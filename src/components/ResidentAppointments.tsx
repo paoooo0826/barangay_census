@@ -54,11 +54,7 @@ interface BookingResult {
 }
 
 type AppointmentCategory =
-  | "upcoming"
-  | "completed"
-  | "rejected"
-  | "cancelled"
-  | "all";
+  "upcoming" | "completed" | "rejected" | "cancelled" | "all";
 
 const PAGE_SIZE = 5;
 
@@ -222,8 +218,7 @@ export default function ResidentAppointments({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [category, setCategory] =
-    useState<AppointmentCategory>("upcoming");
+  const [category, setCategory] = useState<AppointmentCategory>("upcoming");
   const [page, setPage] = useState(1);
   const [selectedAppointment, setSelectedAppointment] =
     useState<Appointment | null>(null);
@@ -327,11 +322,7 @@ export default function ResidentAppointments({
       }),
     [appointments, category],
   );
-  const visibleAppointments = pageSlice(
-    filteredAppointments,
-    page,
-    PAGE_SIZE,
-  );
+  const visibleAppointments = pageSlice(filteredAppointments, page, PAGE_SIZE);
 
   useEffect(() => {
     setPage(1);
@@ -821,7 +812,14 @@ function AppointmentDetailsModal({
 }) {
   const purpose = purposeLabel(appointment.service_purpose);
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
+    >
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
           <div>
@@ -931,7 +929,20 @@ function CancelAppointmentModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          !saving &&
+          (!reason.trim() ||
+            window.confirm("Discard the unsaved cancellation reason?"))
+        )
+          onClose();
+      }}
+      className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4"
+    >
       <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>

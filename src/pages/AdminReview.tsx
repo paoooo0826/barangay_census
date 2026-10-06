@@ -1,3 +1,4 @@
+import ResidencyDetails from "../components/ResidencyDetails";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -372,6 +373,11 @@ export default function AdminReview({
       return;
     }
 
+    if (
+      remarkText.trim() &&
+      !window.confirm("Discard the unsaved review remark?")
+    )
+      return;
     setShowRemarksModal(false);
     setSelectedAction(null);
     setRemarkText("");
@@ -619,6 +625,7 @@ export default function AdminReview({
           </div>
         </section>
 
+        <ResidencyDetails residentId={resident.id} admin />
         <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>

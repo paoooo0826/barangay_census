@@ -32,6 +32,7 @@ export type EducationStatus =
   | "No Formal Education";
 
 export type TenurialStatus =
+  | "Landlord/Landlady"
   | "House Owner"
   | "Sharer"
   | "Caretaker"
@@ -82,6 +83,8 @@ export interface Resident {
   id: string;
   user_id?: string;
   tracking_number: string;
+  residence_start_date?: string | null;
+  residence_classification?: "temporary" | "resident" | null;
   region?: string;
   province: string;
   city_municipality: string;
@@ -238,9 +241,26 @@ export interface Database {
       admin_profiles: AnyTable;
       announcements: AnyTable;
       appointments: AnyTable;
+      residency_periods: AnyTable;
+      boarding_houses: AnyTable;
+      boarder_stays: AnyTable;
+      boarder_occupancy_history: AnyTable;
     };
-    Views: Record<string, never>;
+    Views: { residency_current: AnyTable; residency_history: AnyTable };
     Functions: {
+      manage_residency: {
+        Args: {
+          p_resident_id: string;
+          p_action: string;
+          p_date: string;
+          p_classification?: string | null;
+        };
+        Returns: Json;
+      };
+      manage_boarding: {
+        Args: { p_action: string; p_payload: Json };
+        Returns: Json;
+      };
       review_resident: {
         Args: {
           p_resident_id: string;
