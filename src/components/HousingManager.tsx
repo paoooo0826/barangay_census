@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import type { Resident } from "../types/database";
 import { searchPattern } from "../hooks/usePagedQuery";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import PaginationControls from "./PaginationControls";
 
 interface House {
@@ -239,6 +240,25 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       setDeparture("");
     }
   }
+  function closeHouse() {
+    if (!busy && window.confirm("Discard unsaved boarding-house changes?"))
+      setHouseForm(null);
+  }
+  const houseDialogRef = useDialogFocus<HTMLDivElement>(
+    Boolean(houseForm),
+    closeHouse,
+    null,
+  );
+  const departureDialogRef = useDialogFocus<HTMLDivElement>(
+    Boolean(departing),
+    closeDeparture,
+    null,
+  );
+  const historyDialogRef = useDialogFocus<HTMLDivElement>(
+    Boolean(eventStay),
+    () => setEventStay(null),
+    null,
+  );
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -489,18 +509,18 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       )}
       {houseForm && (
         <div
+          ref={houseDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={houseForm.id ? "Edit boarding house" : "Assign boarding house"}
+          tabIndex={-1}
           className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
           onClick={(e) => {
-            if (
-              e.target === e.currentTarget &&
-              !busy &&
-              window.confirm("Discard unsaved boarding-house changes?")
-            )
-              setHouseForm(null);
+            if (e.target === e.currentTarget) closeHouse();
           }}
         >
           <form
-            className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-3xl bg-white p-6"
+            className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
             onSubmit={async (e) => {
               e.preventDefault();
               if (await mutate("save_house", houseForm)) setHouseForm(null);
@@ -582,10 +602,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
                 disabled={busy}
                 type="button"
                 className="btn-secondary"
-                onClick={() => {
-                  if (window.confirm("Discard unsaved boarding-house changes?"))
-                    setHouseForm(null);
-                }}
+                onClick={closeHouse}
               >
                 Close
               </button>
@@ -598,6 +615,11 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       )}
       {departing && (
         <div
+          ref={departureDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Record departure"
+          tabIndex={-1}
           className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDeparture();
@@ -656,12 +678,17 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       )}
       {eventStay && (
         <div
+          ref={historyDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Stay history"
+          tabIndex={-1}
           className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/60 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setEventStay(null);
           }}
         >
-          <div className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-3xl bg-white p-6">
+          <div className="dialog-panel w-full max-w-lg space-y-3 rounded-3xl bg-white p-6">
             <h3 className="text-xl font-bold">
               Stay History — {eventStay.resident_name}
             </h3>

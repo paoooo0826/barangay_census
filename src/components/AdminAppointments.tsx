@@ -22,6 +22,7 @@ import type {
 import { RESIDENCY_PURPOSES, serviceLabel } from "./ResidentAppointments";
 import SortControls from "./SortControls";
 import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import { EMPTY_ADMIN_SUMMARY, type AdminSummary } from "../lib/adminData";
 import { type SortDirection } from "../lib/sorting";
 import PaginationControls from "./PaginationControls";
@@ -581,18 +582,22 @@ export function AdminAppointmentDetails({
   appointment: AdminAppointment;
   onClose: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(true, onClose, null);
   const resident = residentFrom(appointment);
   const purpose = purposeLabel(appointment);
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
+      aria-label="Appointment details"
+      tabIndex={-1}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
       className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
     >
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+      <div className="dialog-panel w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-pine-700">
@@ -608,7 +613,7 @@ export function AdminAppointmentDetails({
             type="button"
             onClick={onClose}
             aria-label="Close appointment details"
-            className="rounded-xl border border-slate-200 p-2 text-slate-500"
+            className="icon-button"
           >
             <X size={18} />
           </button>

@@ -327,6 +327,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
     () => setMobileOpen(false),
     768,
   );
+  const imagePreviewRef = useDialogFocus<HTMLDivElement>(
+    Boolean(previewImage),
+    () => setPreviewImage(null),
+    null,
+  );
   const goHome = () => {
     setTab("home");
     setMobileOpen(false);
@@ -878,6 +883,11 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
       </main>
       {previewImage && (
         <div
+          ref={imagePreviewRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${previewImage.title} image preview`}
+          tabIndex={-1}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) setPreviewImage(null);
@@ -887,14 +897,14 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             type="button"
             aria-label="Close image preview"
             onClick={() => setPreviewImage(null)}
-            className="absolute right-5 top-5 rounded-full bg-white p-2 text-slate-900"
+            className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-900"
           >
             <X size={20} />
           </button>
           <img
             src={previewImage.url}
             alt={previewImage.title}
-            className="max-h-[90vh] max-w-full rounded-2xl object-contain"
+            className="max-h-[calc(100dvh-9rem)] max-w-full rounded-2xl object-contain"
           />
         </div>
       )}

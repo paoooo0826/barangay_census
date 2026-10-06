@@ -26,6 +26,7 @@ import {
 
 import { supabase } from "../lib/supabase";
 import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 import type {
   FaceVerification,
@@ -216,6 +217,11 @@ export default function AdminReview({
   const [remarkText, setRemarkText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
+  const imagePreviewRef = useDialogFocus<HTMLDivElement>(
+    Boolean(previewImage),
+    () => setPreviewImage(null),
+    null,
+  );
 
   useEffect(() => {
     void fetchResidentData();
@@ -1261,6 +1267,11 @@ export default function AdminReview({
 
       {previewImage && (
         <div
+          ref={imagePreviewRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${previewImage.title} image preview`}
+          tabIndex={-1}
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
@@ -1268,8 +1279,8 @@ export default function AdminReview({
             }
           }}
         >
-          <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 text-white">
+          <div className="dialog-panel flex w-full max-w-5xl flex-col rounded-3xl border border-white/10 bg-slate-900 shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-4 text-white">
               <div className="flex items-center gap-3">
                 <Eye className="h-5 w-5 text-pine-300" />
                 <h2 className="font-semibold">{previewImage.title}</h2>
@@ -1277,8 +1288,9 @@ export default function AdminReview({
 
               <button
                 type="button"
+                aria-label="Close image preview"
                 onClick={() => setPreviewImage(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1288,7 +1300,7 @@ export default function AdminReview({
               <img
                 src={previewImage.url}
                 alt={previewImage.title}
-                className="max-h-[80vh] max-w-full rounded-2xl object-contain"
+                className="max-h-[80dvh] max-w-full rounded-2xl object-contain"
               />
             </div>
           </div>

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 export function useDialogFocus<T extends HTMLElement>(
   open: boolean,
   onClose: () => void,
-  desktopWidth = 1024,
+  desktopWidth: number | null = 1024,
 ) {
   const ref = useRef<T>(null);
   const closeRef = useRef(onClose);
@@ -58,15 +58,18 @@ export function useDialogFocus<T extends HTMLElement>(
       }
     };
     document.addEventListener("keydown", onKey);
-    const desktop = window.matchMedia(`(min-width: ${desktopWidth}px)`);
+    const desktop =
+      desktopWidth === null
+        ? null
+        : window.matchMedia(`(min-width: ${desktopWidth}px)`);
     const onResize = () => {
-      if (desktop.matches) closeRef.current();
+      if (desktop?.matches) closeRef.current();
     };
-    desktop.addEventListener("change", onResize);
+    desktop?.addEventListener("change", onResize);
     onResize();
     return () => {
       document.removeEventListener("keydown", onKey);
-      desktop.removeEventListener("change", onResize);
+      desktop?.removeEventListener("change", onResize);
       document.body.style.overflow = previousOverflow;
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus();

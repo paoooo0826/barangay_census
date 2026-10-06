@@ -18,6 +18,7 @@ import SortControls from "./SortControls";
 import PaginationControls from "./PaginationControls";
 import AnnouncementSections from "./AnnouncementSections";
 import { usePagedQuery } from "../hooks/usePagedQuery";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import { type SortDirection } from "../lib/sorting";
 import type {
   Announcement,
@@ -167,6 +168,11 @@ export default function AdminAnnouncements({
     url: string;
   } | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const imagePreviewRef = useDialogFocus<HTMLDivElement>(
+    Boolean(previewImage),
+    () => setPreviewImage(null),
+    null,
+  );
 
   const [counts, setCounts] = useState({ active: 0, archived: 0 });
   const imageRequest = useRef(0);
@@ -618,7 +624,9 @@ export default function AdminAnnouncements({
             noValidate
             className="border-b border-slate-200 p-6 xl:border-b-0 xl:border-r"
           >
-            <h3 className="font-bold text-slate-900">Create announcement</h3>
+            <h3 className="font-bold text-slate-900">
+              {editing ? "Edit announcement" : "Create announcement"}
+            </h3>
             <p className="mt-1 text-xs text-slate-500">
               <span className="text-red-600">*</span> Required fields
             </p>
@@ -995,6 +1003,11 @@ export default function AdminAnnouncements({
       </div>
       {previewImage && (
         <div
+          ref={imagePreviewRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${previewImage.title} image preview`}
+          tabIndex={-1}
           className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) setPreviewImage(null);
@@ -1002,15 +1015,16 @@ export default function AdminAnnouncements({
         >
           <button
             type="button"
+            aria-label="Close image preview"
             onClick={() => setPreviewImage(null)}
-            className="absolute right-5 top-5 rounded-full bg-white p-2 text-slate-900"
+            className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-900"
           >
             <X size={20} />
           </button>
           <img
             src={previewImage.url}
             alt={previewImage.title}
-            className="max-h-[90vh] max-w-full rounded-2xl object-contain"
+            className="max-h-[calc(100dvh-9rem)] max-w-full rounded-2xl object-contain"
           />
         </div>
       )}

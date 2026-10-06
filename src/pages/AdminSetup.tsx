@@ -295,7 +295,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
 
         <div className="
-        card
+        auth-surface
         p-8
         max-w-md
         w-full
@@ -372,7 +372,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
       ">
 
         <div className="
-        card
+        auth-surface
         p-8
         max-w-md
         text-center
@@ -440,7 +440,7 @@ export default function AdminSetup({ onNavigate }: AdminSetupProps) {
 
 
       <div className="
-      card
+      auth-surface
       p-8
       max-w-md
       w-full

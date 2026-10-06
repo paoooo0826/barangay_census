@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 interface Period {
   id: string;
@@ -117,6 +118,7 @@ export default function ResidencyDetails({
       setDate("");
     }
   }
+  const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(action), close, null);
   return (
     <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <h2 className="text-lg font-bold text-slate-900">Barangay Residency</h2>
@@ -228,8 +230,11 @@ export default function ResidencyDetails({
       )}
       {action && (
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
+          aria-label={action === "start" ? "Record residence start" : "End barangay residence"}
+          tabIndex={-1}
           className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/60 p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) close();
@@ -286,7 +291,7 @@ export default function ResidencyDetails({
                 {error}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 disabled={saving}

@@ -248,7 +248,7 @@ async function render(source, api = "export const supabase = {};") {
   );
   await c.close();
   const n = await render(
-    `import {createRoot} from 'react-dom/client';import AnnouncementSections from './src/components/AnnouncementSections';import {isRecentAnnouncement} from './src/lib/announcements';const root=createRoot(document.getElementById('root'));window.__isRecent=isRecentAnnouncement;const now=Date.now();const base={is_published:true,archived:false,expires_at:null};const items=[{...base,id:'new',title:'New notice',published_at:new Date(now-86400000).toISOString()},{...base,id:'old',title:'Older notice',published_at:new Date(now-14*86400000).toISOString()},{...base,id:'draft',title:'Draft',is_published:false,published_at:new Date(now).toISOString()}];window.__ungrouped=false;window.__mount=()=>root.render(<AnnouncementSections items={items} groupRecent={!window.__ungrouped}>{(item,recent)=><article key={item.id} data-recent={recent}>{item.title}</article>}</AnnouncementSections>);window.__unmount=()=>root.unmount();`,
+    `import {createRoot} from 'react-dom/client';import AnnouncementSections from './src/components/AnnouncementSections';import {isRecentAnnouncement} from './src/lib/announcements';const root=createRoot(document.getElementById('root'));window.__isRecent=isRecentAnnouncement;const now=Date.now();const base={is_published:true,archived:false,expires_at:null};window.__items=[{...base,id:'new',title:'New notice',published_at:new Date(now-86400000).toISOString()},{...base,id:'old',title:'Older notice',published_at:new Date(now-14*86400000).toISOString()},{...base,id:'draft',title:'Draft',is_published:false,published_at:new Date(now).toISOString()}];window.__ungrouped=false;window.__mount=()=>root.render(<AnnouncementSections items={window.__items} groupRecent={!window.__ungrouped}>{(item,recent)=><article key={item.id} data-recent={recent}>{item.title}</article>}</AnnouncementSections>);window.__unmount=()=>root.unmount();`,
   );
   const nd = n.w.document;
   check(
@@ -278,7 +278,115 @@ async function render(source, api = "export const supabase = {};") {
   check(!nd.querySelector('[aria-label="Recent Announcements"]') && nd.querySelectorAll('article').length === 3,
     "Archive-style lists preserve all records without recent grouping");
   check(n.errors.length === 0, "Announcement grouping renders without React/runtime errors");
+  const later = n.w.Date.now() + 120_000;
+  n.w.Date.now = () => later;
+  await n.tick(() => {
+    n.w.__ungrouped = false;
+    n.w.__items = [...n.w.__items, {
+      is_published: true,
+      archived: false,
+      expires_at: null,
+      id: "just-posted",
+      title: "Just published",
+      published_at: new n.w.Date(later).toISOString(),
+    }];
+    n.w.__mount();
+  });
+  check(
+    [...nd.querySelectorAll('[aria-label="Recent Announcements"] article')]
+      .some((el) => el.textContent === "Just published"),
+    "Newly received announcements are highlighted immediately without waiting for the clock timer",
+  );
+  n.w.Date.now = () => later + 7 * 86_400_000;
+  await n.tick(() => {
+    n.w.__items = [...n.w.__items];
+    n.w.__mount();
+  });
+  check(
+    !nd.querySelector('[aria-label="Recent Announcements"]') &&
+      nd.querySelectorAll("article").length === 4,
+    "Refreshing the list after seven days moves posts to Earlier without losing them",
+  );
   await n.close();
+  const preview = await render(
+    `import {createRoot} from 'react-dom/client';import AdminAnnouncements from './src/components/AdminAnnouncements';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<AdminAnnouncements adminProfileId="profile"/>);window.__unmount=()=>root.unmount();`,
+    api,
+  );
+  const pd = preview.w.document;
+  const photoButton = pd.querySelector("article button");
+  preview.w.__desktop = true;
+  photoButton.focus();
+  await preview.tick(() => photoButton.click());
+  const photoDialog = pd.querySelector('[role="dialog"]');
+  check(
+    photoDialog?.contains(pd.activeElement) && pd.body.style.overflow === "hidden",
+    "Announcement image preview opens and retains keyboard focus on desktop",
+  );
+  await preview.tick(() => photoDialog.querySelector("img").click());
+  check(Boolean(pd.querySelector('[role="dialog"]')),
+    "Clicking inside the image preview does not dismiss it");
+  const closePhoto = photoDialog.querySelector('[aria-label="Close image preview"]');
+  await preview.tick(() => pd.dispatchEvent(new preview.w.KeyboardEvent("keydown", {
+    key: "Tab", bubbles: true, cancelable: true,
+  })));
+  check(pd.activeElement === closePhoto,
+    "Tab stays within the image preview rather than reaching background controls");
+  await preview.tick(() => pd.dispatchEvent(new preview.w.KeyboardEvent("keydown", {
+    key: "Escape", bubbles: true, cancelable: true,
+  })));
+  check(!pd.querySelector('[role="dialog"]') && pd.body.style.overflow === "" && pd.activeElement === photoButton,
+    "Escape closes the preview, releases scrolling, and returns focus to its photo button");
+  await preview.tick(() => photoButton.click());
+  await preview.tick(() => pd.querySelector('[role="dialog"]').click());
+  check(!pd.querySelector('[role="dialog"]') && pd.body.style.overflow === "",
+    "Clicking outside a preview dismisses it without a mutation");
+  await preview.tick(() => photoButton.click());
+  await preview.tick(() => pd.querySelector('[aria-label="Close image preview"]').click());
+  check(!pd.querySelector('[role="dialog"]'), "The image preview Close button remains functional");
+  check(preview.w.__requests.every((request) => request.operation === "select"),
+    "Preview interactions never archive, delete, or update an announcement");
+  check(preview.errors.length === 0, "Image preview interactions have no React/runtime errors");
+  await preview.close();
+  const appointment = await render(
+    `import {useState} from 'react';import {createRoot} from 'react-dom/client';import {AdminAppointmentDetails} from './src/components/AdminAppointments';const root=createRoot(document.getElementById('root'));const record={id:'a0',service_type:'certificate_of_residency',service_purpose:'low_income',status:'pending',fee:30,purpose:'Test request',appointment_date:'2026-10-07',appointment_time:'09:00:00',created_at:'2026-10-01T00:00:00Z',updated_at:'2026-10-01T00:00:00Z',residents:{first_name:'Test',last_name:'Resident'}};function App(){const [open,setOpen]=useState(false);return <><button id="open-details" onClick={()=>setOpen(true)}>View appointment</button>{open&&<AdminAppointmentDetails appointment={record} onClose={()=>setOpen(false)}/>}</>}window.__mount=()=>root.render(<App/>);window.__unmount=()=>root.unmount();`,
+    api,
+  );
+  const ad = appointment.w.document;
+  const detailsButton = ad.querySelector("#open-details");
+  detailsButton.focus();
+  await appointment.tick(() => detailsButton.click());
+  check(ad.querySelector('[aria-label="Appointment details"]')?.contains(ad.activeElement) && ad.body.style.overflow === "hidden",
+    "Appointment details receive focus and stop background scrolling");
+  await appointment.tick(() => ad.dispatchEvent(new appointment.w.KeyboardEvent("keydown", {key:"Escape",bubbles:true,cancelable:true})));
+  check(!ad.querySelector('[role="dialog"]') && ad.activeElement === detailsButton && ad.body.style.overflow === "",
+    "Escape dismisses appointment details and restores the opening control");
+  check(appointment.errors.length === 0, "Appointment detail dialogs have no React/runtime errors");
+  await appointment.close();
+  const residence = await render(
+    `import {createRoot} from 'react-dom/client';import ResidencyDetails from './src/components/ResidencyDetails';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<ResidencyDetails residentId="r0" admin/>);window.__unmount=()=>root.unmount();`,
+    emptyApi,
+  );
+  const rd = residence.w.document;
+  const startResidence = [...rd.querySelectorAll("button")].find((button) => button.textContent === "Record Residence Start");
+  startResidence.focus();
+  await residence.tick(() => startResidence.click());
+  check(rd.querySelector('[role="dialog"]')?.contains(rd.activeElement) && rd.body.style.overflow === "hidden",
+    "Residence date entry receives focus and stops background scrolling");
+  const residenceDate = rd.querySelector('input[type="date"]');
+  await residence.tick(() => {
+    Object.getOwnPropertyDescriptor(residence.w.HTMLInputElement.prototype, "value").set.call(residenceDate, "2026-01-01");
+    residenceDate.dispatchEvent(new residence.w.Event("input", {bubbles:true}));
+  });
+  residence.w.confirm = () => false;
+  await residence.tick(() => rd.dispatchEvent(new residence.w.KeyboardEvent("keydown", {key:"Escape",bubbles:true,cancelable:true})));
+  check(rd.querySelector('[role="dialog"]') && residenceDate.value === "2026-01-01",
+    "Cancelling the unsaved-changes confirmation keeps the entered residence date");
+  residence.w.confirm = () => true;
+  await residence.tick(() => rd.dispatchEvent(new residence.w.KeyboardEvent("keydown", {key:"Escape",bubbles:true,cancelable:true})));
+  check(!rd.querySelector('[role="dialog"]') && rd.body.style.overflow === "" && rd.activeElement === startResidence,
+    "Confirming dismissal releases the residence dialog and restores focus");
+  check(residence.errors.length === 0, "Residence dialog interactions have no React/runtime errors");
+  await residence.close();
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
   process.exit(0);
 })().catch((error) => {

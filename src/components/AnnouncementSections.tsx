@@ -18,6 +18,9 @@ export default function AnnouncementSections<T extends Announcement>({
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    setNow(Date.now());
+  }, [items]);
+  useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
