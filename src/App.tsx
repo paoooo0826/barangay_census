@@ -187,7 +187,7 @@ export default function App() {
   ) {
     page = (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-700" />
+        <Loader2 className="h-8 w-8 animate-spin text-pine-700" />
       </div>
     );
   } else if (residentProtected && !user) {

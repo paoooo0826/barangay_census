@@ -42,7 +42,7 @@ export default function PaginationControls({
         type="button"
         disabled={safePage <= 1}
         onClick={() => onPageChange(safePage - 1)}
-        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <ChevronLeft size={16} />
         Previous
@@ -53,7 +53,7 @@ export default function PaginationControls({
           key={number}
           aria-current={number === safePage ? "page" : undefined}
           onClick={() => onPageChange(number)}
-          className={`min-w-10 rounded-lg px-3 py-2 text-sm font-bold ${number === safePage ? "bg-blue-700 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-blue-50"}`}
+          className={`min-h-11 min-w-11 rounded-lg px-3 py-2 text-sm font-bold ${number === safePage ? "bg-pine-800 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-pine-50"}`}
         >
           {number}
         </button>
@@ -62,7 +62,7 @@ export default function PaginationControls({
         type="button"
         disabled={safePage >= totalPages}
         onClick={() => onPageChange(safePage + 1)}
-        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Next
         <ChevronRight size={16} />

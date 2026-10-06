@@ -1,13 +1,13 @@
 import {
   ArrowRight,
-  CalendarCheck2,
+  CalendarDays,
   FileCheck2,
-  LockKeyhole,
   Megaphone,
   ShieldCheck,
   Users,
 } from "lucide-react";
-import barangaySeal from "../assets/barangay-old-lucban-seal.png";
+import BarangayBrand from "../components/BarangayBrand";
+import PineLandscape from "../components/PineLandscape";
 
 interface UserTypeSelectionProps {
   onResident: () => void;
@@ -15,9 +15,21 @@ interface UserTypeSelectionProps {
 }
 
 const services = [
-  { icon: FileCheck2, label: "Census registration" },
-  { icon: CalendarCheck2, label: "Online appointments" },
-  { icon: Megaphone, label: "Barangay announcements" },
+  {
+    icon: FileCheck2,
+    label: "Census records",
+    detail: "Register and keep your information current.",
+  },
+  {
+    icon: CalendarDays,
+    label: "Appointments",
+    detail: "Request services and track your appointments.",
+  },
+  {
+    icon: Megaphone,
+    label: "Community updates",
+    detail: "Stay informed about barangay announcements.",
+  },
 ];
 
 export default function UserTypeSelection({
@@ -25,118 +37,121 @@ export default function UserTypeSelection({
   onAdmin,
 }: UserTypeSelectionProps) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 -top-48 h-[34rem] w-[34rem] rounded-full bg-blue-600/30 blur-3xl" />
-        <div className="absolute -bottom-56 right-[-10rem] h-[38rem] w-[38rem] rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.22),transparent_38%)]" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-12">
-        <header className="flex items-center justify-between border-b border-white/10 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full">
-              <img
-                src={barangaySeal}
-                alt="Barangay Happy Homes–Old Lucban seal"
-                className="block h-full w-full object-contain object-center"
-              />
-            </div>
-            <div className="flex h-14 flex-col justify-center">
-              <p className="font-bold tracking-tight">Barangay Old Lucban</p>
-              <p className="text-xs text-slate-400">Resident Information & Service Portal</p>
-            </div>
-          </div>
-          <div className="hidden items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 sm:flex">
-            <LockKeyhole size={14} />
-            Secure online access
-          </div>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-5 sm:px-8 lg:px-12">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 py-6">
+          <BarangayBrand />
+          <p className="hidden text-xs font-semibold tracking-wide text-slate-500 sm:block">
+            Old Lucban · Baguio City
+          </p>
         </header>
 
-        <div className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20 lg:py-16">
-          <section>
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-sm font-semibold text-blue-100">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Official Digital Service Portal
-            </div>
-
-            <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl lg:text-7xl">
-              Barangay services,
-              <span className="block bg-gradient-to-r from-blue-300 via-cyan-200 to-emerald-300 bg-clip-text text-transparent">
-                made simpler.
-              </span>
+        <div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-20 lg:py-16">
+          <section className="relative">
+            <p className="page-eyebrow">A service portal for our community</p>
+            <h1 className="mt-5 max-w-2xl font-display text-4xl font-normal leading-[1.1] text-pine-900 sm:text-5xl lg:text-6xl">
+              A connected barangay.
+              <br />
+              <span className="text-pine-600">A simpler everyday.</span>
             </h1>
-
-            <p className="mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-              Register your census record, book appointments, receive announcements,
-              and track barangay services from one secure portal.
+            <p className="mt-6 max-w-lg text-base leading-7 text-slate-600">
+              Your census record, appointments, and community updates—together
+              in one place.
             </p>
-
-            <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
-              {services.map(({ icon: Icon, label }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-4 backdrop-blur"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-200">
-                    <Icon size={18} />
-                  </div>
-                  <span className="text-sm font-semibold text-slate-200">{label}</span>
-                </div>
-              ))}
+            <div className="mt-7 flex items-center gap-3 text-sm text-slate-500">
+              <span className="h-px w-8 bg-earth-300" />
+              Made for the residents of Barangay Old Lucban
             </div>
+            <PineLandscape className="mt-3 hidden w-full max-w-xl text-pine-700 sm:block" />
           </section>
 
-          <section className="rounded-[2rem] border border-white/15 bg-white p-6 text-slate-900 shadow-2xl shadow-black/30 sm:p-8">
-            <div className="mb-7">
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-600">Welcome</p>
-              <h2 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Choose your portal</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Select how you want to access the Barangay Old Lucban system.
-              </p>
-            </div>
-
-            <div className="space-y-4">
+          <section
+            aria-labelledby="portal-heading"
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8"
+          >
+            <p className="page-eyebrow">Welcome</p>
+            <h2
+              id="portal-heading"
+              className="mt-3 text-3xl font-normal text-pine-900"
+            >
+              Choose your portal
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Continue as a resident or an authorized administrator.
+            </p>
+            <div className="mt-7 space-y-3">
               <button
                 type="button"
                 onClick={onResident}
-                className="group flex w-full items-center gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-left transition hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-100 hover:shadow-lg hover:shadow-blue-100"
+                className="group flex min-h-28 w-full items-center gap-4 rounded-xl border border-pine-200 bg-pine-50 p-5 text-left transition hover:border-pine-400 hover:bg-pine-100"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200">
-                  <Users size={25} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-bold text-slate-900">Resident Portal</p>
-                  <p className="mt-0.5 text-sm text-slate-600">Register, sign in, and request services</p>
-                </div>
-                <ArrowRight className="text-blue-600 transition group-hover:translate-x-1" size={21} />
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-pine-800 text-white">
+                  <Users size={24} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-bold text-pine-900">
+                    Resident Portal
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-slate-600">
+                    Sign in, register, and request services
+                  </span>
+                </span>
+                <ArrowRight
+                  className="shrink-0 text-pine-600 transition group-hover:translate-x-1"
+                  size={19}
+                />
               </button>
-
               <button
                 type="button"
                 onClick={onAdmin}
-                className="group flex w-full items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:-translate-y-0.5 hover:border-emerald-400 hover:bg-emerald-100 hover:shadow-lg hover:shadow-emerald-100"
+                className="group flex min-h-28 w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left transition hover:border-pine-300 hover:bg-slate-50"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-200">
-                  <ShieldCheck size={25} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-bold text-slate-900">Administrator Portal</p>
-                  <p className="mt-0.5 text-sm text-slate-600">Review records and manage services</p>
-                </div>
-                <ArrowRight className="text-emerald-600 transition group-hover:translate-x-1" size={21} />
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-slate-100 text-pine-700">
+                  <ShieldCheck size={24} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-bold text-pine-900">
+                    Administrator Portal
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-slate-600">
+                    Manage records and barangay services
+                  </span>
+                </span>
+                <ArrowRight
+                  className="shrink-0 text-slate-500 transition group-hover:translate-x-1"
+                  size={19}
+                />
               </button>
             </div>
-
-            <div className="mt-6 flex items-start gap-3 rounded-2xl bg-slate-100 p-4 text-xs leading-5 text-slate-600">
-              <LockKeyhole className="mt-0.5 shrink-0 text-slate-500" size={16} />
-              Personal information is protected by account authentication and database access policies.
-            </div>
+            <p className="mt-6 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500">
+              Use your own account to access your personal records.
+              Administrator access is reserved for authorized barangay
+              personnel.
+            </p>
           </section>
         </div>
 
-        <footer className="border-t border-white/10 py-5 text-center text-xs text-slate-500 sm:text-left">
-          Barangay Old Lucban · Baguio City · Resident Information Management System
+        <section
+          aria-label="Portal services"
+          className="grid gap-5 border-t border-slate-200 py-7 sm:grid-cols-3"
+        >
+          {services.map(({ icon: Icon, label, detail }) => (
+            <div key={label} className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-pine-100 text-pine-700">
+                <Icon size={19} />
+              </span>
+              <div>
+                <p className="text-sm font-bold text-pine-900">{label}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {detail}
+                </p>
+              </div>
+            </div>
+          ))}
+        </section>
+        <footer className="border-t border-slate-200 py-5 text-xs text-slate-500">
+          Barangay Old Lucban · Baguio City · Resident Information Management
+          System
         </footer>
       </div>
     </main>

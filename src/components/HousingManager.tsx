@@ -273,7 +273,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       {success && (
         <p
           role="status"
-          className="my-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"
+          className="my-4 rounded-xl bg-sage-50 p-3 text-sm text-sage-800"
         >
           {success}
         </p>
@@ -315,7 +315,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
       )}
       {house && (
         <>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-blue-50 p-4 text-sm">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-pine-50 p-4 text-sm">
             <div>
               <strong>{house.name}</strong>
               <p>{house.address}</p>
@@ -397,7 +397,7 @@ export default function HousingManager({ admin = false }: { admin?: boolean }) {
                   setStatus(v);
                   setPage(1);
                 }}
-                className={`rounded-xl px-4 py-2 text-sm font-bold ${status === v ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
+                className={`rounded-xl px-4 py-2 text-sm font-bold ${status === v ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-700"}`}
               >
                 {v === "staying" ? "Currently Staying" : "Departure History"}
               </button>

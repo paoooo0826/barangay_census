@@ -84,9 +84,9 @@ const STATUS_CONFIG: Record<ResidentStatus, StatusConfig> = {
   },
   verified: {
     label: "Approved",
-    badgeClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    dotClass: "bg-emerald-500",
-    panelClass: "border-emerald-200 bg-emerald-50",
+    badgeClass: "bg-sage-50 text-sage-700 ring-sage-200",
+    dotClass: "bg-sage-500",
+    panelClass: "border-sage-200 bg-sage-50",
   },
   returned: {
     label: "Returned",
@@ -117,7 +117,7 @@ const ACTION_CONFIG: Record<
     description:
       "This resident record will be marked as verified and approved.",
     confirmLabel: "Approve Record",
-    confirmClass: "bg-emerald-600 hover:bg-emerald-700",
+    confirmClass: "bg-sage-600 hover:bg-sage-700",
     icon: CheckCircle2,
   },
   reject: {
@@ -440,10 +440,10 @@ export default function AdminReview({
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-4">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-pine-50 to-pine-50 px-4">
         <div className="w-full max-w-sm rounded-3xl border border-white/70 bg-white/90 p-8 text-center shadow-xl shadow-slate-200/60 backdrop-blur">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-700" />
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-pine-100">
+            <Loader2 className="h-8 w-8 animate-spin text-pine-700" />
           </div>
 
           <h2 className="text-xl font-bold text-slate-900">
@@ -460,7 +460,7 @@ export default function AdminReview({
 
   if (!data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-4">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-pine-50 to-pine-50 px-4">
         <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 text-red-600">
             <AlertCircle className="h-8 w-8" />
@@ -483,7 +483,7 @@ export default function AdminReview({
           <button
             type="button"
             onClick={onBack}
-            className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-semibold text-white transition hover:bg-blue-800"
+            className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-pine-700 px-5 text-sm font-semibold text-white transition hover:bg-pine-800"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
@@ -528,13 +528,13 @@ export default function AdminReview({
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/60 to-indigo-50">
-      <header className="sticky top-0 z-30 border-b border-blue-100 bg-white/90 shadow-sm backdrop-blur">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-pine-50/60 to-pine-50">
+      <header className="sticky top-0 z-30 border-b border-pine-100 bg-white/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-pine-200 hover:bg-pine-50 hover:text-pine-700"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline">Back to Dashboard</span>
@@ -562,8 +562,8 @@ export default function AdminReview({
           </div>
         )}
 
-        <section className="mb-8 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
-          <div className="bg-gradient-to-r from-blue-700 via-blue-700 to-indigo-700 px-6 py-7 text-white sm:px-8">
+        <section className="mb-8 overflow-hidden rounded-3xl border border-pine-100 bg-white shadow-sm">
+          <div className="bg-gradient-to-r from-pine-700 via-pine-700 to-pine-700 px-6 py-7 text-white sm:px-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold ring-1 ring-white/20 backdrop-blur">
@@ -572,7 +572,7 @@ export default function AdminReview({
                 </div>
 
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-pine-100">
                     Resident census review
                   </p>
 
@@ -580,7 +580,7 @@ export default function AdminReview({
                     {residentName}
                   </h1>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-blue-100">
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-pine-100">
                     <span className="inline-flex items-center gap-2">
                       <FileCheck className="h-4 w-4" />
                       {resident.tracking_number}
@@ -596,12 +596,12 @@ export default function AdminReview({
 
               <div className="grid grid-cols-2 gap-3 sm:flex">
                 <div className="rounded-2xl bg-white/10 px-5 py-4 ring-1 ring-white/15 backdrop-blur">
-                  <p className="text-xs font-medium text-blue-100">Age</p>
+                  <p className="text-xs font-medium text-pine-100">Age</p>
                   <p className="mt-1 text-xl font-bold">{age}</p>
                 </div>
 
                 <div className="rounded-2xl bg-white/10 px-5 py-4 ring-1 ring-white/15 backdrop-blur">
-                  <p className="text-xs font-medium text-blue-100">Sex</p>
+                  <p className="text-xs font-medium text-pine-100">Sex</p>
                   <p className="mt-1 text-xl font-bold">
                     {formatLabel(resident.sex)}
                   </p>
@@ -629,7 +629,7 @@ export default function AdminReview({
         <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-blue-700">
+              <p className="text-sm font-semibold text-pine-700">
                 Identity verification
               </p>
 
@@ -643,13 +643,13 @@ export default function AdminReview({
               </p>
             </div>
 
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
               <FileCheck className="h-5 w-5" />
             </div>
           </div>
 
-          <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
+          <div className="mb-5 rounded-2xl border border-pine-200 bg-pine-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-pine-700">
               Submitted ID Type
             </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
@@ -719,7 +719,7 @@ export default function AdminReview({
           {data.faceVerification && (
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-indigo-100 p-2 text-indigo-700">
+                <div className="rounded-xl bg-pine-100 p-2 text-pine-700">
                   <ShieldCheck size={20} />
                 </div>
                 <div>
@@ -774,14 +774,14 @@ export default function AdminReview({
                   </p>
                 </div>
               </div>
-              <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                <p className="text-sm font-semibold text-indigo-900">
+              <div className="mt-4 rounded-2xl border border-pine-200 bg-pine-50 p-4">
+                <p className="text-sm font-semibold text-pine-900">
                   Recommendation:{" "}
                   {formatLabel(
                     data.faceVerification.verification_recommendation,
                   )}
                 </p>
-                <p className="mt-1 text-xs text-indigo-700">
+                <p className="mt-1 text-xs text-pine-700">
                   Liveness actions:{" "}
                   {(data.faceVerification.liveness_actions ?? [])
                     .map(formatLabel)
@@ -795,12 +795,12 @@ export default function AdminReview({
         <section className="mb-8 grid gap-6 lg:grid-cols-2">
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
                 <User className="h-5 w-5" />
               </div>
 
               <div>
-                <p className="text-sm font-semibold text-blue-700">
+                <p className="text-sm font-semibold text-pine-700">
                   Resident details
                 </p>
                 <h2 className="text-lg font-bold text-slate-900">
@@ -876,12 +876,12 @@ export default function AdminReview({
 
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sage-100 text-sage-700">
                 <Phone className="h-5 w-5" />
               </div>
 
               <div>
-                <p className="text-sm font-semibold text-emerald-700">
+                <p className="text-sm font-semibold text-sage-700">
                   Communication
                 </p>
                 <h2 className="text-lg font-bold text-slate-900">
@@ -942,12 +942,12 @@ export default function AdminReview({
         <section className="mb-8 grid gap-6 lg:grid-cols-2">
           <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
                 <GraduationCap className="h-5 w-5" />
               </div>
 
               <div>
-                <p className="text-sm font-semibold text-violet-700">
+                <p className="text-sm font-semibold text-pine-700">
                   Education record
                 </p>
                 <h2 className="text-lg font-bold text-slate-900">
@@ -1061,7 +1061,7 @@ export default function AdminReview({
           <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6 flex items-start justify-between">
               <div>
-                <p className="text-sm font-semibold text-blue-700">
+                <p className="text-sm font-semibold text-pine-700">
                   Review history
                 </p>
 
@@ -1074,7 +1074,7 @@ export default function AdminReview({
                 </p>
               </div>
 
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
                 <MessageSquare className="h-5 w-5" />
               </div>
             </div>
@@ -1107,7 +1107,7 @@ export default function AdminReview({
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-blue-700">
+              <p className="text-sm font-semibold text-pine-700">
                 Administrator checking
               </p>
               <h2 className="mt-1 text-xl font-bold text-slate-900">
@@ -1125,7 +1125,7 @@ export default function AdminReview({
                 <button
                   type="button"
                   onClick={() => openActionModal("approve")}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-sage-600 px-5 text-sm font-semibold text-white transition hover:bg-sage-700"
                 >
                   <CheckCircle2 className="h-5 w-5" /> Approve Record
                 </button>
@@ -1160,7 +1160,7 @@ export default function AdminReview({
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
                       selectedAction === "approve"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-sage-100 text-sage-700"
                         : "bg-red-100 text-red-700"
                     }`}
                   >
@@ -1222,7 +1222,7 @@ export default function AdminReview({
                     ? "Optional approval message"
                     : "Enter clear remarks for the resident"
                 }
-                className="mt-3 min-h-[150px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="mt-3 min-h-[150px] w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-pine-500 focus:bg-white focus:ring-4 focus:ring-pine-100"
               />
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -1271,7 +1271,7 @@ export default function AdminReview({
           <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 text-white">
               <div className="flex items-center gap-3">
-                <Eye className="h-5 w-5 text-blue-300" />
+                <Eye className="h-5 w-5 text-pine-300" />
                 <h2 className="font-semibold">{previewImage.title}</h2>
               </div>
 

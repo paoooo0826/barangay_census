@@ -19,7 +19,7 @@ export default function SortControls({
         id={`${id}-field`}
         value={field}
         onChange={(event) => onFieldChange(event.target.value)}
-        className="h-11 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="h-11 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-pine-500 focus:ring-2 focus:ring-pine-100"
       >
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -27,7 +27,7 @@ export default function SortControls({
         aria-label={`${id} sort direction`}
         value={direction}
         onChange={(event) => onDirectionChange(event.target.value as SortDirection)}
-        className="h-11 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="h-11 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-pine-500 focus:ring-2 focus:ring-pine-100"
       >
         <option value="asc">Ascending (A–Z / lowest first)</option>
         <option value="desc">Descending (Z–A / highest first)</option>

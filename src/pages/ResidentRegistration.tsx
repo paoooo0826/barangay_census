@@ -371,7 +371,7 @@ export default function ResidentRegistration({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 px-4 py-8 sm:px-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-pine-50 px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-4xl">
         <button
           type="button"
@@ -386,7 +386,7 @@ export default function ResidentRegistration({
           Back
         </button>
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
-          <div className="bg-gradient-to-r from-blue-800 to-blue-600 px-6 py-7 text-white sm:px-8">
+          <div className="bg-gradient-to-r from-pine-800 to-pine-600 px-6 py-7 text-white sm:px-8">
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-white/15 p-3">
                 <ShieldCheck size={28} />
@@ -395,7 +395,7 @@ export default function ResidentRegistration({
                 <h1 className="text-2xl font-bold">
                   Resident identity verification
                 </h1>
-                <p className="mt-1 text-sm text-blue-100">
+                <p className="mt-1 text-sm text-pine-100">
                   Securely verify your government ID and live identity before
                   the census form.
                 </p>
@@ -406,7 +406,7 @@ export default function ResidentRegistration({
                 (label, index) => (
                   <div
                     key={label}
-                    className={`rounded-xl px-2 py-2 ${step >= index + 1 ? "bg-white text-blue-800" : "bg-white/10 text-blue-100"}`}
+                    className={`rounded-xl px-2 py-2 ${step >= index + 1 ? "bg-white text-pine-800" : "bg-white/10 text-pine-100"}`}
                   >
                     {index + 1}. {label}
                   </div>
@@ -436,7 +436,7 @@ export default function ResidentRegistration({
                         idType: undefined,
                       }));
                     }}
-                    className={`w-full rounded-xl border px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.idType ? "border-red-500 bg-red-50" : "border-slate-300"}`}
+                    className={`w-full rounded-xl border px-4 py-3 outline-none focus:ring-2 focus:ring-pine-500 ${fieldErrors.idType ? "border-red-500 bg-red-50" : "border-slate-300"}`}
                   >
                     <option value="">Select ID type</option>
                     {ID_TYPES.map((item) => (
@@ -470,7 +470,7 @@ export default function ResidentRegistration({
                 <button
                   type="button"
                   onClick={goToVerification}
-                  className="ml-auto flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white hover:bg-blue-800"
+                  className="ml-auto flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white hover:bg-pine-800"
                 >
                   Continue to live verification
                   <ArrowRight size={18} />
@@ -491,7 +491,7 @@ export default function ResidentRegistration({
                   onReset={resetSavedVerification}
                 />
                 {loading && (
-                  <div className="flex items-center justify-center gap-2 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-800">
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-pine-50 p-4 text-sm font-semibold text-pine-800">
                     <Loader2 className="animate-spin" size={18} />
                     Saving captured verification…
                   </div>
@@ -500,7 +500,7 @@ export default function ResidentRegistration({
             )}
             {step === 3 && complete && (
               <div className="py-8 text-center">
-                <CheckCircle2 className="mx-auto text-emerald-600" size={64} />
+                <CheckCircle2 className="mx-auto text-sage-600" size={64} />
                 <h2 className="mt-4 text-2xl font-bold text-slate-900">
                   Identity files saved
                 </h2>
@@ -512,7 +512,7 @@ export default function ResidentRegistration({
                 <button
                   type="button"
                   onClick={onDashboard}
-                  className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-bold text-white hover:bg-emerald-700"
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl bg-sage-600 px-6 py-3 font-bold text-white hover:bg-sage-700"
                 >
                   Continue to census form
                   <ArrowRight size={18} />

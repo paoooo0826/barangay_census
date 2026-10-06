@@ -3,18 +3,65 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    @apply bg-slate-50;
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
+  }
+
   body {
     margin: 0;
-    font-family: Arial, Helvetica, sans-serif;
+    @apply min-w-[320px] bg-slate-50 font-sans text-slate-900 antialiased;
+    line-height: 1.6;
+  }
+
+  h1,
+  h2 {
+    @apply font-display tracking-tight;
+    line-height: 1.2;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  a {
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    outline: 2px solid #34694f;
+    outline-offset: 3px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: #21513e;
+  }
+
+  ::selection {
+    background: #d0e1c6;
+    color: #12352e;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex min-h-10 items-center justify-center rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-pine-800 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pine-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
-    @apply inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-pine-300 hover:bg-pine-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pine-700 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .label {
@@ -22,7 +69,7 @@
   }
 
   .input {
-    @apply block min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100;
+    @apply block min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-pine-500 focus:ring-4 focus:ring-pine-100 disabled:cursor-not-allowed disabled:bg-slate-100;
   }
 
   textarea.input {
@@ -31,5 +78,78 @@
 
   input.input[readonly] {
     @apply bg-slate-100 text-slate-600;
+  }
+
+  .page-card {
+    @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7;
+  }
+
+  .page-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.16em] text-earth-600;
+  }
+
+  .page-title {
+    @apply font-display text-3xl font-normal text-pine-900 sm:text-4xl;
+  }
+
+  .nav-item {
+    @apply flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-pine-50 hover:text-pine-800;
+  }
+
+  .nav-item-active {
+    @apply bg-pine-100 text-pine-900;
+    box-shadow: inset 3px 0 #34694f;
+  }
+
+  .icon-button {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-pine-300 hover:bg-pine-50 hover:text-pine-800 disabled:opacity-50;
+  }
+
+  .form-section {
+    scroll-margin-top: 7rem;
+  }
+
+  .mobile-drawer {
+    animation: drawer-enter 180ms ease-out;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .menu-backdrop {
+    animation: backdrop-enter 180ms ease-out;
+  }
+
+  .auth-surface {
+    @apply rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-9;
+  }
+}
+
+@keyframes drawer-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

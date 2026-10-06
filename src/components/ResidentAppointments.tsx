@@ -77,7 +77,7 @@ export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
       "Request a clearance for employment, business, or other legal purposes.",
     feeLabel: "₱130 student / ₱230 non-student",
     icon: FileCheck2,
-    iconClass: "bg-blue-100 text-blue-700",
+    iconClass: "bg-pine-100 text-pine-700",
   },
   {
     value: "certificate_of_residency",
@@ -102,8 +102,8 @@ export const RESIDENCY_PURPOSES: Array<{
 
 const STATUS_STYLES: Record<AppointmentStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
-  confirmed: "bg-blue-100 text-blue-800",
-  completed: "bg-emerald-100 text-emerald-800",
+  confirmed: "bg-pine-100 text-pine-800",
+  completed: "bg-sage-100 text-sage-800",
   cancelled: "bg-slate-100 text-slate-700",
   rejected: "bg-red-100 text-red-800",
 };
@@ -455,7 +455,7 @@ export default function ResidentAppointments({
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-pine-700">
             Barangay services
           </p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">
@@ -479,7 +479,7 @@ export default function ResidentAppointments({
           <button
             type="button"
             onClick={() => setShowBooking((value) => !value)}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
+            className="inline-flex items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-pine-800"
           >
             {showBooking ? <X size={17} /> : <CalendarPlus size={17} />}
             {showBooking ? "Close Booking" : "Book New"}
@@ -494,7 +494,7 @@ export default function ResidentAppointments({
         {showBooking && (
           <form
             onSubmit={submitAppointment}
-            className="mb-8 rounded-3xl border border-blue-100 bg-blue-50/40 p-5 sm:p-6"
+            className="mb-8 rounded-3xl border border-pine-100 bg-pine-50/40 p-5 sm:p-6"
           >
             <div className="mb-5">
               <h3 className="text-xl font-bold text-slate-900">
@@ -514,7 +514,7 @@ export default function ResidentAppointments({
                     key={service.value}
                     type="button"
                     onClick={() => setSelectedService(service.value)}
-                    className={`rounded-2xl border p-4 text-left transition ${active ? "border-blue-600 bg-white ring-2 ring-blue-100" : "border-slate-200 bg-white hover:border-blue-300"}`}
+                    className={`rounded-2xl border p-4 text-left transition ${active ? "border-pine-600 bg-white ring-2 ring-pine-100" : "border-slate-200 bg-white hover:border-pine-300"}`}
                   >
                     <div className="flex items-start gap-3">
                       <div
@@ -529,7 +529,7 @@ export default function ResidentAppointments({
                         <p className="mt-1 text-xs leading-5 text-slate-500">
                           {service.description}
                         </p>
-                        <p className="mt-2 text-sm font-bold text-blue-700">
+                        <p className="mt-2 text-sm font-bold text-pine-700">
                           {service.feeLabel}
                         </p>
                       </div>
@@ -547,7 +547,7 @@ export default function ResidentAppointments({
                   onChange={(event) =>
                     setSelectedPurpose(event.target.value as AppointmentPurpose)
                   }
-                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
                 >
                   {RESIDENCY_PURPOSES.map((purpose) => (
                     <option key={purpose.value} value={purpose.value}>
@@ -567,7 +567,7 @@ export default function ResidentAppointments({
                   min={todayInputValue()}
                   onChange={(event) => setAppointmentDate(event.target.value)}
                   required
-                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
                 />
               </label>
               <label className="block text-sm font-bold text-slate-800">
@@ -576,7 +576,7 @@ export default function ResidentAppointments({
                   value={appointmentTime}
                   onChange={(event) => setAppointmentTime(event.target.value)}
                   required
-                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                  className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 font-normal outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
                 >
                   <option value="">Select a time</option>
                   {TIME_SLOTS.map(([value, label]) => (
@@ -602,16 +602,16 @@ export default function ResidentAppointments({
                 rows={4}
                 required
                 placeholder="Briefly explain why you need the document."
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-4 font-normal outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-4 font-normal outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
               />
             </label>
 
-            <div className="mt-6 flex flex-col gap-4 border-t border-blue-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-6 flex flex-col gap-4 border-t border-pine-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm text-slate-500">
                   Fee before confirmation
                 </p>
-                <p className="mt-1 text-2xl font-bold text-blue-800">
+                <p className="mt-1 text-2xl font-bold text-pine-800">
                   {feeLoading
                     ? "Checking…"
                     : feePreview == null
@@ -621,7 +621,7 @@ export default function ResidentAppointments({
                 {selectedService === "certificate_of_residency" &&
                   selectedPurpose === "low_income" &&
                   feePreview === 0 && (
-                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                    <p className="mt-1 text-xs font-semibold text-sage-700">
                       First Low Income request benefit applied.
                     </p>
                   )}
@@ -631,7 +631,7 @@ export default function ResidentAppointments({
                 disabled={
                   saving || feeLoading || feePreview == null || !resident
                 }
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-amber-400 px-6 font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-pine-800 px-6 font-bold text-white transition hover:bg-pine-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? (
                   <Loader2 className="animate-spin" size={19} />
@@ -656,7 +656,7 @@ export default function ResidentAppointments({
 
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Filter size={18} className="text-blue-700" />
+            <Filter size={18} className="text-pine-700" />
             <h3 className="font-bold text-slate-900">Appointment category</h3>
           </div>
           <select
@@ -664,7 +664,7 @@ export default function ResidentAppointments({
             onChange={(event) =>
               setCategory(event.target.value as AppointmentCategory)
             }
-            className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+            className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
           >
             {CATEGORY_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -677,7 +677,7 @@ export default function ResidentAppointments({
         <div className="mt-4">
           {loading ? (
             <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 py-10 text-sm text-slate-500">
-              <Loader2 className="animate-spin text-blue-700" /> Loading
+              <Loader2 className="animate-spin text-pine-700" /> Loading
               appointments…
             </div>
           ) : visibleAppointments.length === 0 ? (
@@ -703,7 +703,7 @@ export default function ResidentAppointments({
                             {serviceLabel(appointment.service_type)}
                           </h4>
                           {purpose && (
-                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
+                            <span className="rounded-full bg-pine-50 px-2.5 py-1 text-xs font-bold text-pine-700">
                               {purpose}
                             </span>
                           )}
@@ -726,7 +726,7 @@ export default function ResidentAppointments({
                               appointment.appointment_time,
                             )}
                           </span>
-                          <span className="font-bold text-blue-700">
+                          <span className="font-bold text-pine-700">
                             {formatFee(appointment.fee)}
                           </span>
                         </div>
@@ -735,7 +735,7 @@ export default function ResidentAppointments({
                         <button
                           type="button"
                           onClick={() => setSelectedAppointment(appointment)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-pine-200 px-4 py-2.5 text-sm font-semibold text-pine-700 hover:bg-pine-50"
                         >
                           <Eye size={17} /> View Details
                         </button>
@@ -824,7 +824,7 @@ function AppointmentDetailsModal({
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-pine-700">
               Appointment details
             </p>
             <h3 className="mt-1 text-xl font-bold text-slate-900">
@@ -848,7 +848,7 @@ function AppointmentDetailsModal({
               {appointment.status}
             </span>
             {purpose && (
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
+              <span className="rounded-full bg-pine-50 px-3 py-1 text-xs font-bold text-pine-700">
                 {purpose}
               </span>
             )}
@@ -867,7 +867,7 @@ function AppointmentDetailsModal({
           </dl>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-              <MessageSquareText size={17} className="text-blue-700" />
+              <MessageSquareText size={17} className="text-pine-700" />
               Request details
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
@@ -979,7 +979,7 @@ function CancelAppointmentModal({
             required
             autoFocus
             placeholder="Explain why you need to cancel this appointment."
-            className={`mt-2 w-full rounded-xl border p-4 font-normal outline-none focus:ring-4 ${reason.length > 0 && reason.trim().length < 3 ? "border-red-500 bg-red-50 focus:ring-red-100" : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"}`}
+            className={`mt-2 w-full rounded-xl border p-4 font-normal outline-none focus:ring-4 ${reason.length > 0 && reason.trim().length < 3 ? "border-red-500 bg-red-50 focus:ring-red-100" : "border-slate-300 focus:border-pine-600 focus:ring-pine-100"}`}
           />
         </label>
         <p className="mt-1 text-right text-xs text-slate-400">
@@ -1033,7 +1033,7 @@ function Message({ tone, text }: { tone: "error" | "success"; text: string }) {
   const success = tone === "success";
   return (
     <div
-      className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${success ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}
+      className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${success ? "border-sage-200 bg-sage-50 text-sage-800" : "border-red-200 bg-red-50 text-red-700"}`}
     >
       {success ? (
         <CheckCircle2 className="mt-0.5 shrink-0" size={19} />

@@ -59,11 +59,11 @@ export default function AdminAnalytics({ refreshKey }: AdminAnalyticsProps) {
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
             <BarChart3 size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-pine-700">
               Live Supabase census data
             </p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">
@@ -147,7 +147,7 @@ function ChartCard({
   return (
     <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
           <Icon size={20} />
         </div>
         <div>
@@ -175,7 +175,7 @@ function ChartCard({
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full bg-blue-700 transition-all"
+                  className="h-full rounded-full bg-pine-700 transition-all"
                   style={{ width: `${(row.count / max) * 100}%` }}
                 />
               </div>
@@ -190,7 +190,7 @@ function ChartCard({
           </p>
         )}
       </div>
-      <p className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+      <p className="mt-5 rounded-xl border border-pine-100 bg-pine-50 p-3 text-xs leading-5 text-pine-900">
         {note}
       </p>
     </article>

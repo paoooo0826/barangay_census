@@ -19,7 +19,9 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { useDismissible } from "../hooks/useDismissible";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import HousingManager from "../components/HousingManager";
+import BarangayBrand from "../components/BarangayBrand";
 import ResidencyDetails from "../components/ResidencyDetails";
 import ResidentAppointments from "../components/ResidentAppointments";
 import ResidentNotifications from "../components/ResidentNotifications";
@@ -71,16 +73,16 @@ const STATUS_CONFIG: Record<
   verified: {
     label: "Approved",
     description: "Your census record is approved and active.",
-    badgeClass: "bg-emerald-100 text-emerald-800",
-    iconClass: "text-emerald-700",
-    backgroundClass: "bg-emerald-100",
+    badgeClass: "bg-sage-100 text-sage-800",
+    iconClass: "text-sage-700",
+    backgroundClass: "bg-sage-100",
   },
   returned: {
     label: "Needs Update",
     description: "This legacy record requires changes before approval.",
-    badgeClass: "bg-blue-100 text-blue-800",
-    iconClass: "text-blue-700",
-    backgroundClass: "bg-blue-100",
+    badgeClass: "bg-pine-100 text-pine-800",
+    iconClass: "text-pine-700",
+    backgroundClass: "bg-pine-100",
   },
   rejected: {
     label: "Rejected",
@@ -92,7 +94,7 @@ const STATUS_CONFIG: Record<
   },
 };
 const ANNOUNCEMENT_STYLES: Record<AnnouncementPriority, string> = {
-  info: "border-blue-200 bg-blue-50",
+  info: "border-pine-200 bg-pine-50",
   important: "border-amber-200 bg-amber-50",
   urgent: "border-red-200 bg-red-50",
 };
@@ -319,45 +321,53 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
         : "Resident",
     [resident],
   );
+  const mobileRef = useDialogFocus<HTMLElement>(
+    mobileOpen,
+    () => setMobileOpen(false),
+    768,
+  );
   if (loading)
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <RefreshCw className="animate-spin text-blue-700" />
+        <RefreshCw className="animate-spin text-pine-700" />
       </div>
     );
   const status = resident?.status ?? "pending_review";
   const statusConfig = STATUS_CONFIG[status];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <a
+        href="#resident-main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("resident-main")?.focus();
+        }}
+        className="sr-only z-[150] rounded-xl bg-pine-800 p-3 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to main content
+      </a>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
               aria-label="Open navigation"
+              aria-expanded={mobileOpen}
+              aria-controls="resident-mobile-navigation"
               className="shrink-0 rounded-xl border border-slate-200 p-2.5 text-slate-700 md:hidden"
             >
               <Menu size={20} />
             </button>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600">
-                Barangay Old Lucban
-              </p>
-              <h1 className="mt-1 truncate text-xl font-bold sm:text-2xl">
-                Resident Dashboard
-              </h1>
-              <p className="mt-1 hidden text-sm text-slate-500 sm:block">
-                Manage your census information and barangay services.
-              </p>
-            </div>
+            <BarangayBrand compact subtitle="Resident Portal" />
           </div>
           <div className="relative flex gap-2">
             <button
               onClick={() => void load(true)}
               disabled={refreshing}
-              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600"
+              aria-label="Refresh dashboard"
+              className="icon-button"
             >
               <RefreshCw
                 className={refreshing ? "animate-spin" : ""}
@@ -373,9 +383,12 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               <button
                 type="button"
                 onClick={() => setProfileOpen((open) => !open)}
-                className={`hidden items-center gap-2 rounded-xl border px-3 py-2 md:flex ${tab === "profile" ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"}`}
+                aria-label="Open account menu"
+                aria-expanded={profileOpen}
+                aria-controls="resident-account-menu"
+                className={`hidden items-center gap-2 rounded-xl border px-3 py-2 md:flex ${tab === "profile" ? "border-pine-300 bg-pine-50" : "border-slate-200 bg-white"}`}
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 font-bold text-white">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-pine-700 font-bold text-white">
                   {fullName.charAt(0).toUpperCase()}
                 </span>
                 <span className="max-w-40 truncate text-sm font-bold">
@@ -383,11 +396,44 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 </span>
               </button>
               {profileOpen && (
-                <div className="absolute right-0 top-14 hidden w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:block">
+                <div
+                  id="resident-account-menu"
+                  className="absolute right-0 top-14 hidden w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl md:block"
+                >
+                  <div className="border-b border-slate-200 px-4 py-3">
+                    <p className="truncate text-sm font-bold text-pine-900">
+                      {fullName}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-slate-500">
+                      {user?.email}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("profile");
+                      setProfileOpen(false);
+                    }}
+                    className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-700 hover:bg-pine-50"
+                  >
+                    <User size={17} /> View profile
+                  </button>
+                  {resident && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab("record");
+                        setProfileOpen(false);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-700 hover:bg-pine-50"
+                    >
+                      <FileText size={17} /> Census record
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
+                    className="flex w-full items-center gap-3 border-t border-slate-200 px-4 py-3 text-left text-sm font-bold text-red-700 hover:bg-red-50"
                   >
                     <LogOut size={18} />
                     Logout
@@ -413,7 +459,8 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               <button
                 key={item.value}
                 onClick={() => setTab(item.value)}
-                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold ${tab === item.value ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"}`}
+                aria-current={tab === item.value ? "page" : undefined}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === item.value ? "bg-pine-100 text-pine-900" : "text-slate-600 hover:bg-pine-50 hover:text-pine-700"}`}
               >
                 <Icon size={17} />
                 {item.label}
@@ -428,20 +475,24 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
             type="button"
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
-            className="absolute inset-0 bg-slate-950/50"
+            className="menu-backdrop absolute inset-0 bg-slate-950/50"
           />
-          <aside className="relative flex h-full w-[min(88vw,320px)] flex-col bg-white p-5 shadow-2xl">
+          <aside
+            ref={mobileRef}
+            tabIndex={-1}
+            id="resident-mobile-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Resident navigation"
+            className="mobile-drawer relative flex h-full w-[min(88vw,320px)] flex-col bg-slate-50 p-5 shadow-2xl"
+          >
             <div className="mb-6 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">
-                  Barangay Old Lucban
-                </p>
-                <p className="font-bold">Resident Navigation</p>
-              </div>
+              <BarangayBrand compact subtitle="Resident Portal" />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-xl border border-slate-200 p-2"
+                aria-label="Close resident menu"
+                className="icon-button"
               >
                 <X size={20} />
               </button>
@@ -475,7 +526,8 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                       setTab(item.value);
                       setMobileOpen(false);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold ${tab === item.value ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-blue-50"}`}
+                    aria-current={tab === item.value ? "page" : undefined}
+                    className={`nav-item w-full ${tab === item.value ? "nav-item-active" : ""}`}
                   >
                     <Icon size={18} />
                     {item.label}
@@ -494,12 +546,28 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
           </aside>
         </div>
       )}
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+      <main
+        id="resident-main"
+        tabIndex={-1}
+        className="mx-auto min-w-0 max-w-6xl space-y-6 px-4 py-8 outline-none sm:px-6"
+      >
+        {tab === "home" && (
+          <div className="pb-1">
+            <p className="page-eyebrow">Your community, in one place</p>
+            <h1 className="page-title mt-2">
+              Welcome, {resident?.first_name || "Resident"}.
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Keep your information current, manage appointments, and follow
+              barangay updates.
+            </p>
+          </div>
+        )}
         {notice && (
-          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="flex items-start gap-3 rounded-2xl border border-sage-200 bg-sage-50 p-4 text-sm text-sage-800">
             <CheckCircle2 size={19} />
             <div className="flex-1">{notice}</div>
-            <button onClick={() => setNotice(null)}>
+            <button aria-label="Dismiss notice" onClick={() => setNotice(null)}>
               <XCircle size={18} />
             </button>
           </div>
@@ -543,7 +611,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
               <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-100 px-6 py-5 sm:px-8">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
                       <Megaphone size={20} />
                     </div>
                     <div>
@@ -613,7 +681,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                                 return next;
                               })
                             }
-                            className="mt-2 text-sm font-bold text-blue-700"
+                            className="mt-2 text-sm font-bold text-pine-700"
                           >
                             {open ? "Show Less" : "See More"}
                           </button>
@@ -634,7 +702,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 </p>
                 <button
                   onClick={onEdit}
-                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white"
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
                 >
                   <Edit3 size={18} />
                   Complete Census Form
@@ -662,7 +730,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                     </div>
                     <button
                       onClick={onEdit}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-pine-600 px-5 py-3 font-semibold text-white"
                     >
                       <Edit3 size={18} />
                       Update Census
@@ -673,7 +741,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                       <p className="text-xs font-semibold uppercase text-slate-500">
                         Tracking Number
                       </p>
-                      <p className="mt-1 text-lg font-bold text-blue-700">
+                      <p className="mt-1 text-lg font-bold text-pine-700">
                         {display(resident.tracking_number)}
                       </p>
                     </div>
@@ -690,10 +758,10 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 <button
                   type="button"
                   onClick={() => setTab("record")}
-                  className="flex w-full items-center justify-between rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md sm:p-8"
+                  className="flex w-full items-center justify-between rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-pine-300 hover:shadow-md sm:p-8"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
                       <FileText size={24} />
                     </div>
                     <div>
@@ -705,7 +773,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                       </p>
                     </div>
                   </div>
-                  <span className="text-sm font-bold text-blue-700">
+                  <span className="text-sm font-bold text-pine-700">
                     View details →
                   </span>
                 </button>
@@ -737,7 +805,7 @@ export default function ResidentDashboard({ onLogout, onEdit }: Props) {
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-lg font-bold">Submitted Photos</h2>
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                    <span className="rounded-full bg-pine-50 px-3 py-1 text-xs font-bold text-pine-700">
                       ID type: {display(governmentIdType)}
                     </span>
                   </div>
@@ -829,7 +897,7 @@ function Profile({
         </p>
         <button
           onClick={onEdit}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
         >
           <Edit3 size={18} />
           Complete Census Form
@@ -849,7 +917,7 @@ function Profile({
     <section className="space-y-6">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div>
-          <p className="text-sm font-semibold text-blue-700">
+          <p className="text-sm font-semibold text-pine-700">
             Account & Census Record
           </p>
           <h2 className="mt-1 text-2xl font-bold">Resident Profile</h2>
@@ -860,7 +928,7 @@ function Profile({
         </div>
         <button
           onClick={onEdit}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white"
+          className="inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
         >
           <Edit3 size={18} />
           Update Information
@@ -940,7 +1008,7 @@ function Profile({
               The identification and household photos connected to your record.
             </p>
           </div>
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+          <span className="rounded-full bg-pine-50 px-3 py-1 text-xs font-bold text-pine-700">
             ID type: {display(governmentIdType)}
           </span>
         </div>
@@ -985,7 +1053,7 @@ function RecordSummary({
     <section className="space-y-6">
       <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div>
-          <button onClick={onBack} className="text-sm font-bold text-blue-700">
+          <button onClick={onBack} className="text-sm font-bold text-pine-700">
             ← Back to dashboard
           </button>
           <h2 className="mt-2 text-2xl font-bold">Record Summary</h2>
@@ -995,7 +1063,7 @@ function RecordSummary({
         </div>
         <button
           onClick={onEdit}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white"
+          className="inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
         >
           <Edit3 size={18} />
           Update Record

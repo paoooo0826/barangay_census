@@ -136,7 +136,7 @@ export default function ResidentNotifications({
         onClick={() => setOpen((value) => !value)}
         aria-label="Open notifications"
         aria-expanded={open}
-        className={`relative rounded-xl border p-2.5 ${open ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"}`}
+        className={`relative rounded-xl border p-2.5 ${open ? "border-pine-300 bg-pine-50 text-pine-700" : "border-slate-200 bg-white text-slate-600"}`}
       >
         <Bell size={18} />
         {unreadCount > 0 && (
@@ -171,7 +171,7 @@ export default function ResidentNotifications({
                 type="button"
                 key={item.value}
                 onClick={() => setFilter(item.value)}
-                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${filter === item.value ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${filter === item.value ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-600"}`}
               >
                 {item.label}
               </button>
@@ -199,9 +199,9 @@ export default function ResidentNotifications({
                   type="button"
                   key={notification.id}
                   onClick={() => openRelatedPage(notification)}
-                  className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left hover:bg-blue-50 ${notification.is_read ? "bg-white" : "bg-blue-50/60"}`}
+                  className={`flex w-full gap-3 border-b border-slate-100 p-4 text-left hover:bg-pine-50 ${notification.is_read ? "bg-white" : "bg-pine-50/60"}`}
                 >
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
                     <NotificationIcon category={notification.category} />
                   </span>
                   <span className="min-w-0">

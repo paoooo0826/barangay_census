@@ -28,5 +28,5 @@ export default function VideoGuide({ videoRef, kind, ready = false }: {
     update();
     return () => { observer.disconnect(); video.removeEventListener('loadedmetadata', update); };
   }, [videoRef, kind]);
-  return style && <div aria-hidden="true" style={style} className={`pointer-events-none absolute border-[3px] shadow-[0_0_0_9999px_rgba(0,0,0,0.25)] ${kind === 'face' ? 'rounded-[45%]' : 'rounded-xl'} ${ready ? 'border-emerald-400' : 'border-white/90'}`} />;
+  return style && <div aria-hidden="true" style={style} className={`pointer-events-none absolute border-[3px] shadow-[0_0_0_9999px_rgba(0,0,0,0.25)] ${kind === 'face' ? 'rounded-[45%]' : 'rounded-xl'} ${ready ? 'border-sage-400' : 'border-white/90'}`} />;
 }
