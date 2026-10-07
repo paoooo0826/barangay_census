@@ -95,6 +95,20 @@
     @apply bg-slate-100 text-slate-600;
   }
 
+  /* Safari's native date control must fit inside its grid column. */
+  .boarding-move-in input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .boarding-move-in input[type="date"]::-webkit-date-and-time-value {
+    min-height: 1.5em;
+    text-align: left;
+  }
+
   .page-card {
     @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7;
   }

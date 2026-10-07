@@ -398,7 +398,8 @@ export default function HousingManager({
           </div>
           {canManage && house.active && (
             <form
-              className="mt-5 grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"
+              aria-label="Record a boarder move-in"
+              className="boarding-move-in mt-5 grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (
@@ -415,7 +416,7 @@ export default function HousingManager({
                 }
               }}
             >
-              <label className="label">
+              <label className="label min-w-0">
                 Resident tracking number <span className="text-red-600">*</span>
                 <input
                   className="input mt-2"
@@ -425,7 +426,7 @@ export default function HousingManager({
                   placeholder="BC-2026-…"
                 />
               </label>
-              <label className="label">
+              <label className="label min-w-0">
                 Move-in date <span className="text-red-600">*</span>
                 <input
                   className="input mt-2"
@@ -438,7 +439,7 @@ export default function HousingManager({
               </label>
               <button
                 disabled={busy}
-                className="btn-primary self-end"
+                className="btn-primary min-h-12 w-full self-end sm:col-span-2 xl:col-span-1"
                 type="submit"
               >
                 {busy ? "Saving…" : "Record Move-in"}
