@@ -1,3 +1,7 @@
+import {
+  RESIDENT_IMAGE_ACCEPT,
+  validateResidentImage,
+} from "../lib/imageValidation";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -57,15 +61,6 @@ function fileExtension(file: File) {
   const fromName = file.name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{2,5}$/.test(fromName)) return fromName;
   return file.type === "image/png" ? "png" : "jpg";
-}
-
-function validateImage(file: File) {
-  if (!file.type.startsWith("image/"))
-    throw new Error("Select a valid image file.");
-  if (file.size === 0)
-    throw new Error("The selected image is empty. Choose or capture it again.");
-  if (file.size > 8 * 1024 * 1024)
-    throw new Error("Each image must be 8 MB or smaller.");
 }
 
 export default function ResidentRegistration({
@@ -139,7 +134,7 @@ export default function ResidentRegistration({
     field: RegistrationField,
   ) {
     try {
-      validateImage(file);
+      validateResidentImage(file);
       if (currentPreview.startsWith("blob:"))
         URL.revokeObjectURL(currentPreview);
       setFile(file);
@@ -180,7 +175,7 @@ export default function ResidentRegistration({
   }
 
   async function uploadFile(file: File, path: string, uploadedPaths: string[]) {
-    validateImage(file);
+    validateResidentImage(file);
     const { error: uploadError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, file, {
@@ -339,7 +334,7 @@ export default function ResidentRegistration({
             Upload image
             <input
               type="file"
-              accept="image/*"
+              accept={RESIDENT_IMAGE_ACCEPT}
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];

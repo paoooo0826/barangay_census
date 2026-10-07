@@ -77,7 +77,7 @@ begin
     raise exception 'FAIL: resident can access admin aggregates';
   exception when insufficient_privilege then null; end;
   perform set_config('request.jwt.claim.sub',admin_actor::text,true);
-  perform public.review_resident(record_id,'reject','Security regression fixture');
+  perform public.review_resident(record_id,'reject','Security regression fixture', (select updated_at from public.residents where id=record_id));
   perform set_config('request.jwt.claim.sub',actor::text,true);
   result:=public.save_resident_census(payload||'{"contact_number":"09123456789"}'::jsonb,'[]',null,null);
   if result->>'status'<>'rejected' then raise exception 'FAIL: edit resets rejection'; end if;
@@ -89,7 +89,7 @@ begin
   perform set_config('request.jwt.claim.sub',other_actor::text,true);
   if exists(select 1 from public.admin_resident_records where id=record_id) then raise exception 'FAIL: view bypasses ownership'; end if;
   perform set_config('request.jwt.claim.sub',admin_actor::text,true);
-  perform public.review_resident(record_id,'approve','Security regression approval');
+  perform public.review_resident(record_id,'approve','Security regression approval', (select updated_at from public.residents where id=record_id));
   result:=public.admin_dashboard_summary('active');
   if jsonb_array_length(result->'recentResidents')>5 then raise exception 'FAIL: recent list not bounded'; end if;
   result:=public.admin_census_analytics();

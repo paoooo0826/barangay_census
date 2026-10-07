@@ -809,6 +809,291 @@ async function render(source, api = "export const supabase = {};") {
     "Copy success, fallback, and failure have no React/runtime errors",
   );
   await copied.close();
+
+  const routeTest = await render(
+    `import {createRoot} from 'react-dom/client';import {useHashRoute,navigateHash,updateHashQuery} from './src/hooks/useHashRoute';import {validateResidentImage} from './src/lib/imageValidation';const root=createRoot(document.getElementById('root'));window.__navigate=navigateHash;window.__query=updateHashQuery;window.__image=validateResidentImage;function Probe(){return <p>{useHashRoute()}</p>}window.__mount=()=>root.render(<Probe/>);window.__unmount=()=>root.unmount();`,
+  );
+  await routeTest.tick(() =>
+    routeTest.w.__navigate("/resident/dashboard?tab=profile"),
+  );
+  check(
+    routeTest.w.document.body.textContent.includes(
+      "/resident/dashboard?tab=profile",
+    ),
+    "Resident navigation stores the selected section in the URL",
+  );
+  await routeTest.tick(() =>
+    routeTest.w.__navigate("/resident/dashboard?tab=appointments"),
+  );
+  await routeTest.tick(() => routeTest.w.history.back());
+  await routeTest.tick();
+  check(
+    routeTest.w.location.hash.endsWith("tab=profile"),
+    "Browser Back restores the previous section",
+  );
+  await routeTest.tick(() => routeTest.w.history.forward());
+  await routeTest.tick();
+  check(
+    routeTest.w.location.hash.endsWith("tab=appointments"),
+    "Browser Forward restores the next section",
+  );
+  await routeTest.tick(() =>
+    routeTest.w.__query({ q: "Resident & Name", status: "pending" }, true),
+  );
+  check(
+    new URLSearchParams(routeTest.w.location.hash.split("?")[1]).get("q") ===
+      "Resident & Name",
+    "Search query safely preserves special characters",
+  );
+  await routeTest.tick(() => routeTest.w.__query({ status: null }));
+  check(
+    !routeTest.w.location.hash.includes("status="),
+    "Clearing a filter removes its URL parameter",
+  );
+  for (const type of ["image/jpeg", "image/png", "image/webp"]) {
+    routeTest.w.__image(new routeTest.w.File(["photo"], "photo", { type }));
+    check(true, `Storage-supported ${type} passes validation`);
+  }
+  for (const type of ["image/gif", "image/svg+xml", "image/heic", ""]) {
+    assert.throws(
+      () =>
+        routeTest.w.__image(new routeTest.w.File(["photo"], "photo", { type })),
+      /JPEG, PNG, or WebP/,
+    );
+    check(
+      true,
+      `Unsupported ${type || "unknown"} image is rejected before upload`,
+    );
+  }
+  assert.throws(
+    () =>
+      routeTest.w.__image(
+        new routeTest.w.File([], "photo.jpg", { type: "image/jpeg" }),
+      ),
+    /empty/,
+  );
+  check(true, "Empty image is rejected before upload");
+  check(
+    routeTest.errors.length === 0,
+    "Navigation and image validation have no React errors",
+  );
+  await routeTest.close();
+
+  const filterTest = await render(
+    `import {createRoot} from 'react-dom/client';import AdminDashboard from './src/pages/AdminDashboard';window.location.hash='/admin/dashboard?tab=records&status=pending_review';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<AdminDashboard onLogout={()=>{}} onReview={()=>{}}/>);window.__unmount=()=>root.unmount();`,
+    api,
+  );
+  check(
+    filterTest.w.document.querySelector('[aria-label="Census status"]')
+      .value === "pending_review",
+    "Pending-review shortcut applies its status filter",
+  );
+  await filterTest.tick(() => {
+    filterTest.w.location.hash = "/admin/dashboard?tab=records";
+  });
+  await filterTest.tick();
+  check(
+    filterTest.w.document.querySelector('[aria-label="Census status"]')
+      .value === "all",
+    "View All Records clears an earlier shortcut filter",
+  );
+  await filterTest.tick(() => filterTest.w.history.back());
+  await filterTest.tick();
+  check(
+    filterTest.w.document.querySelector('[aria-label="Census status"]')
+      .value === "pending_review",
+    "Back restores the resident record filter",
+  );
+  check(
+    filterTest.errors.length === 0,
+    "URL-driven record filters have no React errors",
+  );
+  await filterTest.close();
+
+  const appointmentTest = await render(
+    `import {createRoot} from 'react-dom/client';import AdminAppointments from './src/components/AdminAppointments';window.location.hash='/admin/dashboard?tab=appointments&date=today';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<AdminAppointments refreshKey={0} mode="active"/>);window.__unmount=()=>root.unmount();`,
+    api,
+  );
+  check(
+    Boolean(
+      appointmentTest.w.document.querySelector(
+        '[aria-label="Appointment date"]',
+      ).value,
+    ),
+    "Today shortcut applies an appointment date",
+  );
+  await appointmentTest.tick(() => {
+    appointmentTest.w.location.hash =
+      "/admin/dashboard?tab=appointments&status=pending";
+  });
+  await appointmentTest.tick();
+  check(
+    appointmentTest.w.document.querySelector('[aria-label="Appointment date"]')
+      .value === "" &&
+      appointmentTest.w.document.querySelector(
+        '[aria-label="Appointment status"]',
+      ).value === "pending",
+    "Changing shortcuts synchronizes date and status without remounting",
+  );
+  await appointmentTest.tick(() => {
+    appointmentTest.w.location.hash =
+      "/admin/dashboard?tab=appointments&appointment=a0";
+  });
+  await appointmentTest.tick();
+  check(
+    appointmentTest.w.document
+      .querySelector("[role=dialog]")
+      .textContent.includes("Resident0"),
+    "Appointment deep link opens the requested details",
+  );
+  await appointmentTest.tick(() => {
+    appointmentTest.w.location.hash =
+      "/admin/dashboard?tab=appointments&appointment=a1";
+  });
+  await appointmentTest.tick();
+  check(
+    appointmentTest.w.document
+      .querySelector("[role=dialog]")
+      .textContent.includes("Resident1"),
+    "Changing the appointment ID replaces the detail panel",
+  );
+  await appointmentTest.tick(() => {
+    appointmentTest.w.location.hash =
+      "/admin/dashboard?tab=appointments&date=2026-02-30&status=completed";
+  });
+  await appointmentTest.tick();
+  check(
+    !appointmentTest.w.document.querySelector("[role=dialog]") &&
+      appointmentTest.w.document.querySelector(
+        '[aria-label="Appointment date"]',
+      ).value === "" &&
+      appointmentTest.w.document.querySelector(
+        '[aria-label="Appointment status"]',
+      ).value === "all",
+    "Removing details closes the panel and invalid active filters are ignored",
+  );
+  check(
+    appointmentTest.errors.length === 0,
+    "Appointment filters and details have no React errors",
+  );
+  await appointmentTest.close();
+
+  const notificationTest = await render(
+    `import {createRoot} from 'react-dom/client';import ResidentNotifications from './src/components/ResidentNotifications';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<ResidentNotifications residentId="r0" onOpenAppointments={()=>{}} onOpenRecord={()=>{}}/>);window.__unmount=()=>root.unmount();`,
+    `Object.defineProperty(document,'hidden',{configurable:true,value:false});window.__timers=new Map();window.setInterval=(fn)=>{window.__timers.set(1,fn);return 1};window.clearInterval=(id)=>window.__timers.delete(id);window.__notices=[];window.__reads=0;window.__pending=[];window.__defer=false;export const supabase={from:()=>{const q={select:()=>q,eq:()=>q,order:()=>q,limit:()=>{window.__reads++;const data=[...window.__notices];return window.__defer?new Promise(resolve=>window.__pending.push(()=>resolve({data,error:null}))):Promise.resolve({data,error:null})}};return q}};`,
+  );
+  notificationTest.w.__notices = [
+    {
+      id: "n1",
+      resident_id: "r0",
+      title: "Fresh notice",
+      message: "Current update",
+      category: "census",
+      is_read: false,
+      created_at: "2026-10-07T12:00:00Z",
+    },
+  ];
+  await notificationTest.tick(() => notificationTest.w.__timers.get(1)());
+  check(
+    notificationTest.w.document.querySelector(
+      '[aria-label="Open notifications"]',
+    ).textContent === "1",
+    "Unread badge refreshes while the panel is closed",
+  );
+  const reads = notificationTest.w.__reads;
+  await notificationTest.tick(() =>
+    notificationTest.w.document
+      .querySelector('[aria-label="Open notifications"]')
+      .click(),
+  );
+  check(
+    notificationTest.w.__reads > reads &&
+      notificationTest.w.document.body.textContent.includes("Fresh notice"),
+    "Opening notifications immediately fetches fresh content",
+  );
+  Object.defineProperty(notificationTest.w.document, "hidden", {
+    configurable: true,
+    value: true,
+  });
+  const hiddenReads = notificationTest.w.__reads;
+  await notificationTest.tick(() => notificationTest.w.__timers.get(1)());
+  check(
+    notificationTest.w.__reads === hiddenReads,
+    "Background polling pauses while the document is hidden",
+  );
+  Object.defineProperty(notificationTest.w.document, "hidden", {
+    configurable: true,
+    value: false,
+  });
+  notificationTest.w.__defer = true;
+  notificationTest.w.__notices[0].title = "Old response";
+  await notificationTest.tick(() =>
+    notificationTest.w.dispatchEvent(new notificationTest.w.Event("focus")),
+  );
+  notificationTest.w.__notices[0] = {
+    ...notificationTest.w.__notices[0],
+    title: "Latest response",
+  };
+  await notificationTest.tick(() =>
+    notificationTest.w.dispatchEvent(new notificationTest.w.Event("focus")),
+  );
+  await notificationTest.tick(() => notificationTest.w.__pending[1]());
+  await notificationTest.tick(() => notificationTest.w.__pending[0]());
+  check(
+    notificationTest.w.document.body.textContent.includes("Latest response") &&
+      !notificationTest.w.document.body.textContent.includes("Old response"),
+    "A late notification response cannot overwrite newer data",
+  );
+  check(
+    notificationTest.errors.length === 0,
+    "Notification refresh has no React errors",
+  );
+  await notificationTest.close();
+  check(
+    notificationTest.w.__timers.size === 0,
+    "Notification timer is cleared on unmount",
+  );
+
+  const reviewTest = await render(
+    `import {createRoot} from 'react-dom/client';import AdminReview from './src/pages/AdminReview';const root=createRoot(document.getElementById('root'));window.__decisions=0;window.__mount=()=>root.render(<AdminReview residentId="r0" onBack={()=>{}} onDecisionComplete={()=>{window.__decisions++}}/>);window.__unmount=()=>root.unmount();`,
+    api +
+      `
+window.__reviewCalls=[];window.__conflict=true;const originalRpc=supabase.rpc;supabase.rpc=async(name,args)=>{if(name!=='review_resident')return originalRpc(name,args);window.__reviewCalls.push(args);if(window.__conflict){residents[0].first_name='FreshRecord';residents[0].updated_at='2026-10-07T08:00:00.123456+00:00';return{data:null,error:{code:'40001',message:'Concurrent review'}}}return{data:{status:'verified'},error:null}};`,
+  );
+  const approve = () =>
+    [...reviewTest.w.document.querySelectorAll("button")]
+      .filter((b) => b.textContent.includes("Approve Record"))
+      .at(-1);
+  await reviewTest.tick(() => approve().click());
+  await reviewTest.tick(() => approve().click());
+  check(
+    reviewTest.w.__reviewCalls[0].p_expected_updated_at ===
+      "2026-10-01T00:00:00Z",
+    "Review sends the original database version without losing timestamp precision",
+  );
+  check(
+    reviewTest.w.__decisions === 0 &&
+      reviewTest.w.document.body.textContent.includes("FreshRecord") &&
+      reviewTest.w.document.body.textContent.includes(
+        "changed in another session",
+      ),
+    "Conflicting review refreshes the record and asks the admin to review again",
+  );
+  reviewTest.w.__conflict = false;
+  await reviewTest.tick(() => approve().click());
+  await reviewTest.tick(() => approve().click());
+  check(
+    reviewTest.w.__decisions === 1 &&
+      reviewTest.w.__reviewCalls[1].p_expected_updated_at ===
+        "2026-10-07T08:00:00.123456+00:00",
+    "Retry uses the latest full-precision version and completes successfully",
+  );
+  check(
+    reviewTest.errors.length === 0,
+    "Conflict recovery has no React errors",
+  );
+  await reviewTest.close();
+
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
   process.exit(0);
 })().catch((error) => {

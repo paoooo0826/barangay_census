@@ -9,6 +9,7 @@ declare
   saved_tracking text;
   saved_submitted timestamptz;
   saved_created timestamptz;
+  expected_version timestamptz;
   before_fingerprint text;
   after_fingerprint text;
   row_data public.residents%rowtype;
@@ -65,24 +66,25 @@ begin
 
   perform set_config('request.jwt.claim.sub', resident_user::text, true);
   begin
-    perform public.review_resident(record_id, 'reject', 'Unauthorized test');
+    perform public.review_resident(record_id, 'reject', 'Unauthorized test', (select updated_at from public.residents where id=record_id));
     raise exception 'FAIL: resident can call administrator review';
   exception when insufficient_privilege then null;
   end;
 
   perform set_config('request.jwt.claim.sub', admin_user::text, true);
   begin
-    perform public.review_resident(record_id, 'return', 'Removed action test');
+    perform public.review_resident(record_id, 'return', 'Removed action test', (select updated_at from public.residents where id=record_id));
     raise exception 'FAIL: removed return action was accepted';
   exception when invalid_parameter_value then null;
   end;
   begin
-    perform public.review_resident(record_id, 'reject', ' ');
+    perform public.review_resident(record_id, 'reject', ' ', (select updated_at from public.residents where id=record_id));
     raise exception 'FAIL: rejection without a reason was accepted';
   exception when invalid_parameter_value then null;
   end;
 
-  perform public.review_resident(record_id, 'reject', 'Temporary test rejection');
+  select updated_at into expected_version from public.residents where id=record_id;
+  perform public.review_resident(record_id, 'reject', 'Temporary test rejection', (select updated_at from public.residents where id=record_id));
   select * into strict row_data from public.residents where id = record_id;
   if row_data.status <> 'rejected' or row_data.verified_at is not null then
     raise exception 'FAIL: administrator could not reject an approved record';
@@ -93,6 +95,29 @@ begin
     raise exception 'FAIL: review did not save its remark, notification and audit together';
   end if;
 
+  if row_data.updated_at <= expected_version then
+    raise exception 'FAIL: review did not advance its version';
+  end if;
+  begin
+    perform public.review_resident(record_id, 'approve', 'Stale review', expected_version);
+    raise exception 'FAIL: stale review overwrote the record';
+  exception when serialization_failure then null;
+  end;
+  begin
+    perform public.review_resident(record_id, 'approve', 'Outdated client');
+    raise exception 'FAIL: legacy review bypassed version protection';
+  exception when serialization_failure then null;
+  end;
+  begin
+    perform public.review_resident(record_id, 'approve', 'Missing version', null);
+    raise exception 'FAIL: missing version bypassed protection';
+  exception when serialization_failure then null;
+  end;
+  if (select status from public.residents where id=record_id) <> 'rejected'
+    or (select count(*) from public.notifications where resident_id=record_id) <> 1
+    or (select count(*) from public.audit_logs where entity_id=record_id) <> 1 then
+    raise exception 'FAIL: conflicting reviews changed status or created duplicate history';
+  end if;
   perform set_config('request.jwt.claim.sub', resident_user::text, true);
   update public.residents set
     first_name = 'Updated temporary',
@@ -111,7 +136,7 @@ begin
   end if;
 
   perform set_config('request.jwt.claim.sub', admin_user::text, true);
-  perform public.review_resident(record_id, 'approve', 'Temporary test approval');
+  perform public.review_resident(record_id, 'approve', 'Temporary test approval', (select updated_at from public.residents where id=record_id));
   if not exists (select 1 from public.residents where id = record_id
       and status = 'verified' and verified_at is not null) then
     raise exception 'FAIL: administrator could not approve after checking';
@@ -120,7 +145,7 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
   execute 'set local role anon';
   begin
-    perform public.review_resident(record_id, 'approve', '');
+    perform public.review_resident(record_id, 'approve', '', (select updated_at from public.residents where id=record_id));
     raise exception 'FAIL: anonymous caller can review records';
   exception when insufficient_privilege then null;
   end;
@@ -133,6 +158,9 @@ begin
   end if;
 
   perform set_config('census_test.result', jsonb_build_object(
+    'stale_review_and_duplicate_history_blocked', 'pass',
+    'legacy_client_and_missing_version_blocked', 'pass',
+    'monotonic_review_version', 'pass',
     'auto_approval', 'pass',
     'cross_resident_isolation', 'pass',
     'administrator_only_review', 'pass',

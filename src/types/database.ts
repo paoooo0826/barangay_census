@@ -282,6 +282,7 @@ export interface Database {
         Args: {
           p_resident_id: string;
           p_action: "approve" | "reject";
+          p_expected_updated_at: string;
           p_remark: string;
         };
         Returns: Json;

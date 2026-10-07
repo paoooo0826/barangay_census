@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   CalendarDays,
@@ -65,32 +65,58 @@ export default function ResidentNotifications({
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const request = useRef(0);
   const loadNotifications = useCallback(async () => {
+    const generation = ++request.current;
     if (!residentId) {
       setNotifications([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    const { data, error: notificationError } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("resident_id", residentId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (notificationError) setError(notificationError.message);
-    else setNotifications((data ?? []) as ResidentNotification[]);
-    setLoading(false);
+    try {
+      const { data, error: notificationError } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("resident_id", residentId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (generation !== request.current) return;
+      if (notificationError) throw notificationError;
+      setNotifications((data ?? []) as ResidentNotification[]);
+    } catch (caught) {
+      if (generation === request.current)
+        setError(
+          caught && typeof caught === "object" && "message" in caught
+            ? String(caught.message)
+            : "Unable to load notifications.",
+        );
+    } finally {
+      if (generation === request.current) setLoading(false);
+    }
   }, [residentId]);
-
   useEffect(() => {
+    setNotifications([]);
+    setOpen(false);
     void loadNotifications();
-  }, [loadNotifications]);
-
+    const refreshVisible = () => {
+      if (!document.hidden) void loadNotifications();
+    };
+    const timer = residentId
+      ? window.setInterval(refreshVisible, 60_000)
+      : null;
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      ++request.current;
+      if (timer !== null) window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [loadNotifications, residentId]);
   useEffect(() => {
-    if (!open) return;
-    const timer = window.setInterval(() => void loadNotifications(), 60_000);
-    return () => window.clearInterval(timer);
+    if (open) void loadNotifications();
   }, [loadNotifications, open]);
 
   const unreadCount = notifications.filter((item) => !item.is_read).length;
@@ -109,18 +135,30 @@ export default function ResidentNotifications({
     if (!ids.length) return;
     setMarking(true);
     setError(null);
-    const { error: markError } = await supabase.rpc(
-      "mark_resident_notifications_read",
-      { p_notification_ids: ids },
-    );
-    setMarking(false);
-    if (markError) {
-      setError(markError.message);
-      return;
+    try {
+      const { error: markError } = await supabase.rpc(
+        "mark_resident_notifications_read",
+        { p_notification_ids: ids },
+      );
+      if (markError) throw markError;
+      const marked = new Set(ids);
+      setNotifications((current) =>
+        current.map((notification) =>
+          marked.has(notification.id)
+            ? { ...notification, is_read: true }
+            : notification,
+        ),
+      );
+      await loadNotifications();
+    } catch (caught) {
+      setError(
+        caught && typeof caught === "object" && "message" in caught
+          ? String(caught.message)
+          : "Unable to mark notifications as read.",
+      );
+    } finally {
+      setMarking(false);
     }
-    setNotifications((current) =>
-      current.map((notification) => ({ ...notification, is_read: true })),
-    );
   };
 
   const openRelatedPage = (notification: ResidentNotification) => {

@@ -35,6 +35,8 @@ import type {
 } from "../types/database";
 import { BOARDING_OPTIONS, boardingStatusLabel } from "../lib/boarding";
 
+import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
+
 interface Props {
   tab?: string | null;
   onLogout: () => void;
@@ -135,7 +137,12 @@ function AdminNavLinks({
 
 export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   const { user, adminProfile } = useAuth();
-  const activeTab = normalizeTab(tab);
+  const route = useHashRoute();
+  const activeTab = normalizeTab(
+    route.split("?")[0] === "/admin/dashboard"
+      ? new URLSearchParams(route.split("?")[1] ?? "").get("tab")
+      : tab,
+  );
   const [summary, setSummary] = useState<AdminSummary>(EMPTY_ADMIN_SUMMARY);
   const summaryRequest = useRef(0);
   const [loadingSummary, setLoadingSummary] = useState(true);
@@ -224,16 +231,24 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   }, [search, status, boardingFilter, sortField, sortDirection]);
   useEffect(() => {
     if (activeTab !== "records") return;
-    const requested = new URLSearchParams(
-      window.location.hash.split("?")[1] ?? "",
-    ).get("status");
-    if (
+    const params = new URLSearchParams(route.split("?")[1] ?? "");
+    const requested = params.get("status");
+    setStatus(
       ["pending_review", "verified", "rejected", "returned"].includes(
         requested ?? "",
       )
-    )
-      setStatus(requested as ResidentStatus);
-  }, [activeTab, tab]);
+        ? (requested as ResidentStatus)
+        : "all",
+    );
+    setSearch(params.get("q") ?? "");
+    const boarding = params.get("boarding");
+    setBoardingFilter(
+      ["boarder", "landlord", "neither"].includes(boarding ?? "")
+        ? (boarding as BoardingStatus)
+        : "all",
+    );
+    setPage(1);
+  }, [activeTab, route]);
   const refresh = async () => {
     await fetchData(true);
     setRefreshKey((value) => value + 1);
@@ -578,7 +593,10 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                   />
                   <input
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      updateHashQuery({ q: event.target.value }, true);
+                    }}
                     placeholder="Search name, tracking number, address, boarding status"
                     aria-label="Search resident records"
                     className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm"
@@ -587,9 +605,15 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 <select
                   aria-label="Census status"
                   value={status}
-                  onChange={(event) =>
-                    setStatus(event.target.value as "all" | ResidentStatus)
-                  }
+                  onChange={(event) => {
+                    setStatus(event.target.value as "all" | ResidentStatus);
+                    updateHashQuery({
+                      status:
+                        event.target.value === "all"
+                          ? null
+                          : event.target.value,
+                    });
+                  }}
                   className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
                 >
                   <option value="all">All statuses</option>
@@ -601,11 +625,17 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                 <select
                   aria-label="Boarding status filter"
                   value={boardingFilter}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setBoardingFilter(
                       event.target.value as "all" | BoardingStatus,
-                    )
-                  }
+                    );
+                    updateHashQuery({
+                      boarding:
+                        event.target.value === "all"
+                          ? null
+                          : event.target.value,
+                    });
+                  }}
                   className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
                 >
                   <option value="all">All Residents</option>

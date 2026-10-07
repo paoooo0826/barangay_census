@@ -39,6 +39,8 @@ import type {
   ResidentStatus,
 } from "../types/database";
 
+import { navigateHash, useHashRoute } from "../hooks/useHashRoute";
+
 interface Props {
   tab?: string | null;
   onLogout: () => void;
@@ -158,17 +160,24 @@ export default function ResidentDashboard({
     title: string;
     url: string;
   } | null>(null);
-  const [selectedTab, setTab] = useState<Tab>("home");
-  useEffect(() => {
-    if (requestedTab)
-      setTab(
-        ["home", "appointments", "profile", "record", "housing"].includes(
-          requestedTab,
-        )
-          ? (requestedTab as Tab)
-          : "home",
-      );
-  }, [requestedTab]);
+  const route = useHashRoute();
+  const requested =
+    route.split("?")[0] === "/resident/dashboard"
+      ? new URLSearchParams(route.split("?")[1] ?? "").get("tab")
+      : requestedTab;
+  const selectedTab: Tab = [
+    "home",
+    "appointments",
+    "profile",
+    "record",
+    "housing",
+  ].includes(requested ?? "")
+    ? (requested as Tab)
+    : "home";
+  const navigateToTab = (value: Tab) =>
+    navigateHash(
+      `/resident/dashboard${value === "home" ? "" : `?tab=${value}`}`,
+    );
   const boardingAccess = canAccessBoarding(resident?.boarding_status);
   const tab =
     selectedTab === "housing" && !boardingAccess ? "home" : selectedTab;
@@ -183,7 +192,7 @@ export default function ResidentDashboard({
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!loading && !boardingAccess && selectedTab === "housing")
-      setTab("home");
+      navigateHash("/resident/dashboard", true);
   }, [boardingAccess, loading, selectedTab]);
 
   const load = useCallback(
@@ -377,7 +386,7 @@ export default function ResidentDashboard({
     null,
   );
   const goHome = () => {
-    setTab("home");
+    navigateToTab("home");
     setMobileOpen(false);
     setProfileOpen(false);
   };
@@ -436,8 +445,8 @@ export default function ResidentDashboard({
             </button>
             <ResidentNotifications
               residentId={resident?.id}
-              onOpenAppointments={() => setTab("appointments")}
-              onOpenRecord={() => setTab(resident ? "record" : "home")}
+              onOpenAppointments={() => navigateToTab("appointments")}
+              onOpenRecord={() => navigateToTab(resident ? "record" : "home")}
             />
             <div className="relative" ref={profileRef}>
               <button
@@ -471,7 +480,7 @@ export default function ResidentDashboard({
                   <button
                     type="button"
                     onClick={() => {
-                      setTab("profile");
+                      navigateToTab("profile");
                       setProfileOpen(false);
                     }}
                     className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-700 hover:bg-pine-50"
@@ -482,7 +491,7 @@ export default function ResidentDashboard({
                     <button
                       type="button"
                       onClick={() => {
-                        setTab("record");
+                        navigateToTab("record");
                         setProfileOpen(false);
                       }}
                       className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-700 hover:bg-pine-50"
@@ -529,7 +538,7 @@ export default function ResidentDashboard({
             return (
               <button
                 key={item.value}
-                onClick={() => setTab(item.value)}
+                onClick={() => navigateToTab(item.value)}
                 aria-current={tab === item.value ? "page" : undefined}
                 className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === item.value ? "bg-pine-100 text-pine-900" : "text-slate-600 hover:bg-pine-50 hover:text-pine-700"}`}
               >
@@ -606,7 +615,7 @@ export default function ResidentDashboard({
                     type="button"
                     key={item.value}
                     onClick={() => {
-                      setTab(item.value);
+                      navigateToTab(item.value);
                       setMobileOpen(false);
                     }}
                     aria-current={tab === item.value ? "page" : undefined}
@@ -702,7 +711,7 @@ export default function ResidentDashboard({
             resident={resident}
             categories={categories}
             onEdit={onEdit}
-            onBack={() => setTab("home")}
+            onBack={() => navigateToTab("home")}
           />
         )}
 
@@ -869,7 +878,7 @@ export default function ResidentDashboard({
                 </section>
                 <button
                   type="button"
-                  onClick={() => setTab("record")}
+                  onClick={() => navigateToTab("record")}
                   className="flex w-full flex-col items-start justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-pine-300 hover:shadow-md sm:flex-row sm:items-center sm:p-8"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-4">

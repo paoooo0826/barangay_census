@@ -1,3 +1,7 @@
+import {
+  RESIDENT_IMAGE_ACCEPT,
+  validateResidentImage,
+} from "../lib/imageValidation";
 import { useState, useEffect, useCallback } from "react";
 import {
   Send,
@@ -538,16 +542,10 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
     kind: "front" | "back" | "face",
   ) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please select a valid image file.");
-      return;
-    }
-    if (file.size === 0) {
-      setError("The selected image is empty. Choose or capture it again.");
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      setError("Each verification image must be smaller than 8 MB.");
+    try {
+      validateResidentImage(file);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Invalid image.");
       return;
     }
     setError(null);
@@ -574,12 +572,10 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
   }
   function handleHouseholdPhotoChange(file?: File) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please select a valid image for the house or household.");
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      setError("The household photo must be smaller than 8 MB.");
+    try {
+      validateResidentImage(file);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Invalid image.");
       return;
     }
     if (householdPhotoPreview.startsWith("blob:"))
@@ -1706,7 +1702,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                           {item.preview ? "Replace file" : "Upload file"}
                           <input
                             type="file"
-                            accept="image/jpeg,image/png,image/webp"
+                            accept={RESIDENT_IMAGE_ACCEPT}
                             className="hidden"
                             onChange={(e) =>
                               updateVerificationImage(
@@ -1834,7 +1830,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                   Replace image
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept={RESIDENT_IMAGE_ACCEPT}
                     className="hidden"
                     onChange={(e) =>
                       handleHouseholdPhotoChange(e.target.files?.[0])
@@ -1857,7 +1853,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 </span>
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept={RESIDENT_IMAGE_ACCEPT}
                   className="hidden"
                   onChange={(e) =>
                     handleHouseholdPhotoChange(e.target.files?.[0])

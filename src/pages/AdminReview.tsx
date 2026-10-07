@@ -401,6 +401,14 @@ export default function AdminReview({
       return;
     }
 
+    const expectedUpdatedAt = data.resident.updated_at;
+    if (!expectedUpdatedAt) {
+      await fetchResidentData();
+      setError(
+        "The record version could not be read. Refresh and review the latest record before trying again.",
+      );
+      return;
+    }
     setActionLoading(true);
     setError(null);
 
@@ -409,8 +417,18 @@ export default function AdminReview({
         p_resident_id: residentId,
         p_action: selectedAction,
         p_remark: remarkText.trim(),
+        p_expected_updated_at: expectedUpdatedAt,
       });
 
+      if (reviewError?.code === "40001") {
+        setShowRemarksModal(false);
+        setSelectedAction(null);
+        await fetchResidentData();
+        setError(
+          "This record changed in another session. The latest information has been loaded. Review it before approving or rejecting again.",
+        );
+        return;
+      }
       if (reviewError) throw reviewError;
 
       setShowRemarksModal(false);
@@ -421,8 +439,10 @@ export default function AdminReview({
     } catch (actionError) {
       console.error("Action error:", actionError);
       setError(
-        actionError instanceof Error
-          ? actionError.message
+        actionError &&
+          typeof actionError === "object" &&
+          "message" in actionError
+          ? String(actionError.message)
           : "Failed to update the resident status. Please try again.",
       );
     } finally {

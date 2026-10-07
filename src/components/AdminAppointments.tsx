@@ -1,3 +1,4 @@
+import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -111,32 +112,42 @@ export default function AdminAppointments({
   mode = "active",
   onChanged,
 }: AdminAppointmentsProps) {
-  const requestedFilters = new URLSearchParams(
-    window.location.hash.split("?")[1] ?? "",
-  );
+  const route = useHashRoute();
+  const requestedFilters = new URLSearchParams(route.split("?")[1] ?? "");
   const [metrics, setMetrics] = useState(EMPTY_ADMIN_SUMMARY.appointments);
   const detailRequest = useRef(0);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | AppointmentStatus>(
-    () => {
-      const requested = requestedFilters.get("status");
-      return [
-        "pending",
-        "confirmed",
-        "completed",
-        "cancelled",
-        "rejected",
-      ].includes(requested ?? "")
-        ? (requested as AppointmentStatus)
-        : mode === "history"
-          ? "completed"
-          : "all";
-    },
-  );
-  const [dateFilter, setDateFilter] = useState(() =>
-    requestedFilters.get("date") === "today" ? localDateValue() : "",
-  );
+  const searchQuery = requestedFilters.get("q") ?? "";
+  const requestedStatus = requestedFilters.get("status");
+  const allowed =
+    mode === "active"
+      ? ["all", "pending", "confirmed"]
+      : mode === "history"
+        ? ["all", "completed", "cancelled", "rejected"]
+        : ["all", "pending", "confirmed", "completed", "cancelled", "rejected"];
+  const statusFilter: "all" | AppointmentStatus = allowed.includes(
+    requestedStatus ?? "",
+  )
+    ? (requestedStatus as "all" | AppointmentStatus)
+    : mode === "history"
+      ? "completed"
+      : "all";
+  const requestedDate = requestedFilters.get("date") ?? "";
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+    ? new Date(`${requestedDate}T12:00:00Z`)
+    : null;
+  const dateFilter =
+    requestedDate === "today"
+      ? localDateValue()
+      : parsedDate &&
+          !Number.isNaN(parsedDate.getTime()) &&
+          parsedDate.toISOString().slice(0, 10) === requestedDate
+        ? requestedDate
+        : "";
+  const appointmentId = requestedFilters.get("appointment");
+  const setStatusFilter = (value: string) => updateHashQuery({ status: value });
+  const setDateFilter = (value: string) => updateHashQuery({ date: value });
+  const setSearchQuery = (value: string) => updateHashQuery({ q: value }, true);
   const [sortField, setSortField] = useState("appointment_date");
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     mode === "active" ? "asc" : "desc",
@@ -193,12 +204,12 @@ export default function AdminAppointments({
     query: appointmentQuery,
     refreshKey,
   });
-  const loadMetrics = useCallback(async () => {
+  const loadMetrics = async () => {
     const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
       p_mode: mode,
     });
     if (!e) setMetrics((data as unknown as AdminSummary).appointments);
-  }, [mode]);
+  };
   useEffect(() => {
     let active = true;
     const read = async () => {
@@ -217,27 +228,31 @@ export default function AdminAppointments({
   }, [mode, refreshKey]);
   useEffect(() => {
     const request = ++detailRequest.current;
-    const id = new URLSearchParams(
-      window.location.hash.split("?")[1] ?? "",
-    ).get("appointment");
-    if (id)
+    setSelectedAppointment(null);
+    if (appointmentId)
       void supabase
         .from("admin_service_records")
         .select("*")
-        .eq("id", id)
+        .eq("id", appointmentId)
         .maybeSingle()
         .then(({ data, error: e }) => {
-          if (request === detailRequest.current && !e)
-            setSelectedAppointment(data as AdminAppointment | null);
+          if (request !== detailRequest.current) return;
+          if (e) setError(e.message);
+          else if (!data) setError("This appointment is no longer available.");
+          else setSelectedAppointment(data as AdminAppointment);
         });
     return () => {
       ++detailRequest.current;
     };
-  }, [mode, refreshKey]);
+  }, [mode, refreshKey, appointmentId]);
   useEffect(() => {
     setPage(1);
   }, [searchQuery, statusFilter, dateFilter, sortField, sortDirection]);
 
+  const closeAppointment = () => {
+    setSelectedAppointment(null);
+    updateHashQuery({ appointment: null });
+  };
   async function updateStatus(a: AdminAppointment, status: AppointmentStatus) {
     let adminNotes = a.admin_notes ?? null;
     if (status === "rejected") {
@@ -281,7 +296,7 @@ export default function AdminAppointments({
     setSuccess(`Appointment marked as ${status}.`);
     onChanged?.();
     await Promise.all([loadAppointments(), loadMetrics()]);
-    if (selectedAppointment?.id === a.id) setSelectedAppointment(null);
+    if (selectedAppointment?.id === a.id) closeAppointment();
   }
 
   const cards = [
@@ -411,6 +426,7 @@ export default function AdminAppointments({
               />
               <input
                 type="search"
+                aria-label="Search appointments"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search resident or service"
@@ -418,6 +434,7 @@ export default function AdminAppointments({
               />
             </label>
             <select
+              aria-label="Appointment status"
               value={statusFilter}
               onChange={(e) =>
                 setStatusFilter(e.target.value as "all" | AppointmentStatus)
@@ -444,6 +461,7 @@ export default function AdminAppointments({
             </select>
             <input
               type="date"
+              aria-label="Appointment date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -513,7 +531,10 @@ export default function AdminAppointments({
                       <div className="flex flex-wrap gap-2 xl:max-w-[45%] xl:justify-end">
                         <button
                           type="button"
-                          onClick={() => setSelectedAppointment(a)}
+                          onClick={() => {
+                            setSelectedAppointment(a);
+                            updateHashQuery({ appointment: a.id });
+                          }}
                           className="inline-flex items-center gap-2 rounded-xl border border-pine-200 px-4 py-2 text-sm font-bold text-pine-700 hover:bg-pine-50"
                         >
                           <Eye size={16} /> View Details
@@ -568,7 +589,7 @@ export default function AdminAppointments({
       {selectedAppointment && (
         <AdminAppointmentDetails
           appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
+          onClose={closeAppointment}
         />
       )}
     </>
