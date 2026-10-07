@@ -1,3 +1,4 @@
+import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -865,6 +866,7 @@ function AppointmentDetailsModal({
             <Detail label="Fee" value={formatFee(appointment.fee)} />
             <Detail label="Status" value={appointment.status} />
           </dl>
+          <AppointmentPaymentPanel key={appointment.id} appointment={appointment} />
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
               <MessageSquareText size={17} className="text-pine-700" />

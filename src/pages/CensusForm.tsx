@@ -2,7 +2,7 @@ import {
   RESIDENT_IMAGE_ACCEPT,
   validateResidentImage,
 } from "../lib/imageValidation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Send,
   AlertCircle,
@@ -16,6 +16,9 @@ import {
   CreditCard,
 } from "lucide-react";
 
+import { useCensusDraft } from "../hooks/useCensusDraft";
+import { censusDraftPayload } from "../lib/censusDraft";
+import type { Json } from "../types/database";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import type {
@@ -23,9 +26,8 @@ import type {
   EducationLevel,
   EducationStatus,
 } from "../types/database";
-import FaceIdentityVerification, {
-  type FaceVerificationResult,
-} from "../components/FaceIdentityVerification";
+import FaceIdentityVerification from "../components/FaceVerificationLoader";
+import type { FaceVerificationResult } from "../components/FaceIdentityVerification";
 import IdCameraCapture from "../components/IdCameraCapture";
 import { categoryLabel, EDUCATION_STATUS_OPTIONS } from "../lib/displayLabels";
 import BoardingFormFields from "../components/BoardingFormFields";
@@ -210,6 +212,9 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
   const [fieldErrors, setFieldErrors] = useState<CensusFieldErrors>({});
   const [trackingNumber, setTrackingNumber] = useState<string | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(false);
+  const [existingReady, setExistingReady] = useState(false);
+  const [baseVersion, setBaseVersion] = useState<string | null>(null);
+  const submitting = useRef(false);
   const [householdPhoto, setHouseholdPhoto] = useState<File | null>(null);
   const [householdPhotoPreview, setHouseholdPhotoPreview] = useState("");
   const [existingHouseholdPhotoPath, setExistingHouseholdPhotoPath] = useState<
@@ -379,6 +384,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
             deviceType: faceVerification.device_type ?? undefined,
           });
       }
+      setBaseVersion(resident.updated_at);
       setTrackingNumber(resident.tracking_number ?? null);
       setExistingHouseholdPhotoPath(resident.household_photo_url ?? null);
       if (resident.household_photo_url) {
@@ -442,6 +448,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           (categoryRows ?? []).find((row: any) => row.other_description)
             ?.other_description ?? "",
       });
+      setExistingReady(true);
     } catch (e) {
       setError(
         e instanceof Error
@@ -455,6 +462,36 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
   useEffect(() => {
     void loadExistingResident();
   }, [loadExistingResident]);
+
+  const restoreDraft = useCallback(
+    (payload: Record<string, Json>) => {
+      const clean = censusDraftPayload(payload);
+      setFormData(
+        (current) =>
+          ({
+            ...current,
+            ...clean,
+            email_address: accountEmail ?? "",
+            ...(residenceLocked
+              ? {
+                  residence_start_date: current.residence_start_date,
+                  residence_classification: current.residence_classification,
+                }
+              : {}),
+          }) as CensusFormData,
+      );
+    },
+    [accountEmail, residenceLocked],
+  );
+  const draft = useCensusDraft({
+    userId,
+    mode: isEditMode ? "update" : "create",
+    ready: !isEditMode || existingReady,
+    disabled: loading,
+    baseVersion,
+    payload: censusDraftPayload({ ...formData }),
+    onRestore: restoreDraft,
+  });
 
   async function loadCategories() {
     const { data, error: loadError } = await supabase
@@ -729,6 +766,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
   }
 
   async function handleSubmit() {
+    if (submitting.current || !draft.loaded || draft.saving) return;
     setError(null);
     if (!validateForm()) return;
     if (!userId) {
@@ -736,6 +774,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       return;
     }
 
+    submitting.current = true;
     setLoading(true);
     try {
       const { data: duplicateResult, error: duplicateError } =
@@ -750,6 +789,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       const duplicateCheck = duplicateResult as { duplicate?: boolean } | null;
       if (duplicateCheck?.duplicate) {
         setError("User is already registered.");
+        submitting.current = false;
         return;
       }
     } catch (caught) {
@@ -758,6 +798,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           ? caught.message
           : "Unable to validate duplicate resident information.",
       );
+      submitting.current = false;
       return;
     } finally {
       setLoading(false);
@@ -906,6 +947,8 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       }
 
       const residentValues = {
+        census_mode: isEditMode ? "update" : "create",
+        ...(isEditMode ? { expected_updated_at: baseVersion } : {}),
         boarding_status: formData.boarding_status,
         boarding_house_name:
           formData.boarding_status !== "neither"
@@ -1073,11 +1116,15 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       setError(friendlyMessage);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
 
-  if (loadingExisting)
+  if (
+    loadingExisting ||
+    (userId && (!isEditMode || existingReady) && !draft.loaded)
+  )
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-pine-50">
         <div className="text-center">
@@ -1125,6 +1172,70 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <section
+          aria-label="Census draft"
+          className="mb-5 rounded-2xl border border-pine-200 bg-pine-50 p-4"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div role="status" className="min-w-0 text-sm text-pine-900">
+              <p className="font-semibold">
+                {draft.saving
+                  ? "Saving draft…"
+                  : draft.dirty
+                    ? "Unsaved changes"
+                    : draft.savedAt
+                      ? "Draft saved"
+                      : "Your progress saves automatically"}
+              </p>
+              {draft.savedAt && (
+                <p className="mt-1 text-xs">
+                  Last saved: {new Date(draft.savedAt).toLocaleString("en-PH")}
+                </p>
+              )}
+              {draft.restored && !draft.outdated && (
+                <p className="mt-1">
+                  Your saved fields were restored. Reattach any photos that were
+                  not uploaded.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={
+                loading ||
+                draft.saving ||
+                !draft.loaded ||
+                Boolean(draft.outdated)
+              }
+              onClick={() => void draft.save()}
+              className="rounded-lg border border-pine-300 bg-white px-4 py-2 text-sm font-semibold text-pine-800 disabled:opacity-50"
+            >
+              Save draft
+            </button>
+          </div>
+          {draft.error && (
+            <p role="alert" className="mt-3 text-sm text-red-700">
+              {draft.error}
+            </p>
+          )}
+          {draft.outdated && (
+            <div className="mt-3 text-sm text-amber-900">
+              <p>
+                Your census record is newer than this draft. The latest record
+                is shown below. Discard the older draft to resume automatic
+                saving.
+              </p>
+              <button
+                type="button"
+                disabled={loading || draft.saving}
+                onClick={() => void draft.discardOutdated()}
+                className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold disabled:opacity-50"
+              >
+                Discard older draft
+              </button>
+            </div>
+          )}
+        </section>
         {error && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
             <div className="flex items-center gap-2 text-red-600">
@@ -1930,7 +2041,9 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={loading || loadingExisting}
+            disabled={
+              loading || loadingExisting || !draft.loaded || draft.saving
+            }
             className="btn-primary w-full py-4"
           >
             {loading ? (

@@ -34,7 +34,7 @@ export interface FaceVerificationResult {
   };
 }
 
-interface Props {
+export interface FaceVerificationProps {
   idFrontFile: File | null;
   idFrontPreview?: string;
   disabled?: boolean;
@@ -142,7 +142,7 @@ export default function FaceIdentityVerification({
   onVerified,
   onReset,
   autoStart = false,
-}: Props) {
+}: FaceVerificationProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);

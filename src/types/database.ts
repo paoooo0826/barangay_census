@@ -247,6 +247,8 @@ export interface Database {
       remarks: AnyTable;
       notifications: AnyTable;
       audit_logs: AnyTable;
+      census_drafts: AnyTable;
+      service_payments: AnyTable;
       admin_profiles: AnyTable;
       announcements: AnyTable;
       appointments: AnyTable;
@@ -261,8 +263,38 @@ export interface Database {
       admin_resident_records: AnyTable;
       admin_service_records: AnyTable;
       admin_announcement_list: AnyTable;
+      admin_payment_records: AnyTable;
+      admin_resident_history: AnyTable;
     };
     Functions: {
+      save_census_draft: {
+        Args: {
+          p_mode: string;
+          p_payload: Json;
+          p_expected_revision: number;
+          p_base_updated_at: string | null;
+        };
+        Returns: Json;
+      };
+      delete_census_draft: {
+        Args: { p_mode: string; p_expected_revision: number };
+        Returns: undefined;
+      };
+      record_service_payment: {
+        Args: {
+          p_appointment_id: string;
+          p_amount: number;
+          p_receipt_number: string;
+          p_expected_fee: number;
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      void_service_payment: {
+        Args: { p_payment_id: string; p_reason: string };
+        Returns: Json;
+      };
+      admin_daily_collections: { Args: { p_date: string }; Returns: Json };
       admin_dashboard_summary: { Args: { p_mode?: string }; Returns: Json };
       admin_census_analytics: { Args: Record<string, never>; Returns: Json };
       manage_residency: {
@@ -352,4 +384,27 @@ export interface Database {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
+}
+
+export interface CensusDraft {
+  user_id: string;
+  mode: "create" | "update";
+  payload: Record<string, Json>;
+  revision: number;
+  base_resident_updated_at: string | null;
+  saved_at: string;
+}
+export interface ServicePayment {
+  id: string;
+  appointment_id: string;
+  amount: number;
+  fee_at_collection: number;
+  receipt_number: string;
+  cashier_user_id: string;
+  cashier_name: string;
+  method: "cash";
+  status: "posted" | "voided";
+  paid_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
 }

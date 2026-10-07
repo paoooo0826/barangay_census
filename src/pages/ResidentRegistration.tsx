@@ -15,9 +15,8 @@ import {
   X,
 } from "lucide-react";
 
-import FaceIdentityVerification, {
-  type FaceVerificationResult,
-} from "../components/FaceIdentityVerification";
+import FaceIdentityVerification from "../components/FaceVerificationLoader";
+import type { FaceVerificationResult } from "../components/FaceIdentityVerification";
 import IdCameraCapture from "../components/IdCameraCapture";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";

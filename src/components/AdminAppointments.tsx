@@ -1,3 +1,4 @@
+import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -599,9 +600,11 @@ export default function AdminAppointments({
 export function AdminAppointmentDetails({
   appointment,
   onClose,
+  onPaymentChanged,
 }: {
   appointment: AdminAppointment;
   onClose: () => void;
+  onPaymentChanged?: () => void;
 }) {
   const dialogRef = useDialogFocus<HTMLDivElement>(true, onClose, null);
   const resident = residentFrom(appointment);
@@ -701,6 +704,7 @@ export function AdminAppointmentDetails({
               value={resident?.email_address ?? "Not available"}
             />
           </dl>
+          <AppointmentPaymentPanel key={appointment.id} appointment={appointment} admin onChanged={onPaymentChanged} />
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
               <MessageSquareText size={17} className="text-pine-700" />

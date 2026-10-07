@@ -1,6 +1,8 @@
+import AdminPayments from "../components/AdminPayments";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Receipt,
   BellRing,
   CalendarDays,
   FileSearch,
@@ -49,6 +51,7 @@ type AdminTab =
   | "announcements"
   | "appointments"
   | "history"
+  | "payments"
   | "services"
   | "housing"
   | "account";
@@ -65,6 +68,7 @@ const PRIMARY_TABS: Array<{
   { value: "appointments", label: "Appointments", icon: CalendarDays },
   { value: "history", label: "Appointment History", icon: CalendarDays },
   { value: "services", label: "Services", icon: FileSearch },
+  { value: "payments", label: "Payments & Receipts", icon: Receipt },
   { value: "housing", label: "Boarding Houses", icon: Home },
 ];
 const STATUS_STYLES: Record<ResidentStatus, string> = {
@@ -483,6 +487,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     href: "appointments&status=pending",
                     icon: CalendarDays,
                   },
+                  { label: "View Today’s Collections", count: null, href: "payments", icon: Receipt },
                   {
                     label: "Open Analytics",
                     count: null,
@@ -741,6 +746,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             refreshKey={refreshKey}
           />
         )}{" "}
+        {activeTab === "payments" && <AdminPayments />}
         {activeTab === "housing" && <HousingManager admin />}
         {(activeTab === "appointments" ||
           activeTab === "history" ||

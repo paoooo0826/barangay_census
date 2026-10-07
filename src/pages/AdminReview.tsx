@@ -1,3 +1,4 @@
+import ResidentRecordHistory from "../components/ResidentRecordHistory";
 import ResidencyDetails from "../components/ResidencyDetails";
 import BoardingDetails from "../components/BoardingDetails";
 import { useEffect, useMemo, useState } from "react";
@@ -1087,6 +1088,7 @@ export default function AdminReview({
           )}
         </section>
 
+        <ResidentRecordHistory key={residentId} residentId={residentId} refreshKey={data.resident.updated_at} />
         {data.remarks.length > 0 && (
           <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6 flex items-start justify-between">
