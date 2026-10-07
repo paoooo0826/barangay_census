@@ -22,6 +22,7 @@ interface PaymentRecord extends ServicePayment {
   appointment_status: string;
 }
 interface Collections {
+  date: string;
   collected: number;
   paid_requests: number;
   voided_records: number;
@@ -33,6 +34,7 @@ export default function AdminPayments() {
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [summary, setSummary] = useState<Collections | null>(null);
+  const currentSummary = summary?.date === date ? summary : null;
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<Appointment | null>(null);
   const request = useRef(0);
@@ -72,13 +74,28 @@ export default function AdminPayments() {
   });
   const loadSummary = useCallback(async () => {
     const generation = ++request.current;
-    const { data, error: readError } = await supabase.rpc(
-      "admin_daily_collections",
-      { p_date: date },
-    );
-    if (generation !== request.current) return;
-    setSummary(readError ? null : (data as unknown as Collections));
-    setError(readError?.message ?? "");
+    setSummary(null);
+    setError("");
+    try {
+      const { data, error: readError } = await supabase.rpc(
+        "admin_daily_collections",
+        { p_date: date },
+      );
+      if (generation !== request.current) return;
+      if (readError) throw readError;
+      if (!data)
+        throw new Error(
+          "Collection totals were not returned. Try refreshing the report.",
+        );
+      setSummary({ ...(data as unknown as Collections), date });
+    } catch (caught) {
+      if (generation !== request.current) return;
+      setError(
+        caught && typeof caught === "object" && "message" in caught
+          ? String(caught.message)
+          : "Unable to load collection totals. Check your connection and try again.",
+      );
+    }
   }, [date]);
   useEffect(() => {
     void loadSummary();
@@ -149,10 +166,13 @@ export default function AdminPayments() {
       )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Cash collected", summary ? money(summary.collected) : "—"],
-          ["Paid requests", summary?.paid_requests ?? "—"],
-          ["Voided records", summary?.voided_records ?? "—"],
-          ["Free requests received", summary?.free_requests ?? "—"],
+          [
+            "Cash collected",
+            currentSummary ? money(currentSummary.collected) : "—",
+          ],
+          ["Paid requests", currentSummary?.paid_requests ?? "—"],
+          ["Voided records", currentSummary?.voided_records ?? "—"],
+          ["Free requests received", currentSummary?.free_requests ?? "—"],
         ].map(([label, value]) => (
           <div
             key={label}

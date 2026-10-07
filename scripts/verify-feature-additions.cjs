@@ -350,6 +350,52 @@ const draftApi = `window.__saves=[];window.__mode='update';window.__base='2026-1
   );
   check(history.errors.length === 0, "History renders without React errors");
   await history.close();
+  const report = await render(
+    `import {createRoot} from 'react-dom/client';import AdminPayments from './src/components/AdminPayments';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<AdminPayments/>);window.__unmount=()=>root.unmount();`,
+    `window.__summaryCalls=[];window.__ranges=[];export const supabase={from:()=>({select(){return this},gte(){return this},lt(){return this},eq(){return this},ilike(){return this},order(){return this},range(from,to){window.__ranges.push([from,to]);return Promise.resolve({data:[],count:0,error:null})}}),rpc:async(name,args)=>{window.__summaryCalls.push(args);if(window.__holdSummary)await new Promise(resolve=>window.__releaseSummary=resolve);if(window.__throwSummary)throw new Error('Connection interrupted');return {data:{collected:window.__summaryCalls.length===1?230:130,paid_requests:1,voided_records:0,free_requests:0},error:null}}};`,
+  );
+  check(
+    report.w.document.body.textContent.includes("230.00"),
+    "Collection report shows the confirmed daily total",
+  );
+  await report.tick(() => {
+    report.w.__holdSummary = true;
+    changeInput(
+      report.w,
+      report.w.document.querySelector('[aria-label="Collection date"]'),
+      "2026-10-01",
+    );
+  });
+  check(
+    !report.w.document.body.textContent.includes("230.00"),
+    "Changing the collection date hides totals from the previous date while loading",
+  );
+  await report.tick(() => {
+    report.w.__holdSummary = false;
+    report.w.__releaseSummary();
+  });
+  check(
+    report.w.document.body.textContent.includes("130.00"),
+    "Collection report displays the new date’s confirmed total",
+  );
+  await report.tick(() => {
+    report.w.__throwSummary = true;
+    changeInput(
+      report.w,
+      report.w.document.querySelector('[aria-label="Collection date"]'),
+      "2026-10-02",
+    );
+  });
+  check(
+    report.w.document.body.textContent.includes("Connection interrupted") &&
+      !report.w.document.body.textContent.includes("130.00"),
+    "Report connection errors clear stale totals and show useful feedback",
+  );
+  check(
+    report.errors.length === 0,
+    "Collection date and error interactions have no React errors",
+  );
+  await report.close();
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
   process.exit(0);
 })().catch((error) => {
