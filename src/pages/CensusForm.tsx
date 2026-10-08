@@ -1986,14 +1986,16 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
                 (cat) => (
                   <label
                     key={cat}
-                    className="flex items-center rounded-xl border border-slate-200 bg-white p-4"
+                    className="flex min-h-[4.5rem] cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-4"
                   >
                     <input
                       type="checkbox"
                       checked={isCategorySelected(cat)}
                       onChange={() => toggleCategory(cat)}
                     />
-                    <span className="ml-2">{categoryLabel(cat)}</span>
+                    <span className="min-w-0 text-sm leading-5">
+                      {categoryLabel(cat)}
+                    </span>
                   </label>
                 ),
               )}

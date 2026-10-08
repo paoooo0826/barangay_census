@@ -59,6 +59,12 @@
     accent-color: #21513e;
   }
 
+  input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
   ::selection {
     background: #d0e1c6;
     color: #12352e;
