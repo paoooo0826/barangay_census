@@ -32,6 +32,7 @@ export function useCensusDraft({
   const savedPayload = useRef("");
   const request = useRef(0);
   const saving = useRef(false);
+  const pendingSave = useRef<Promise<boolean> | null>(null);
   const blocked = useRef(false);
   const latest = useRef(payload);
   latest.current = payload;
@@ -100,46 +101,69 @@ export function useCensusDraft({
     };
   }, [userId, mode, ready, baseVersion, onRestore]);
 
-  const save = useCallback(async () => {
-    if (!userId || !ready || disabled || blocked.current || saving.current)
-      return;
+  const save = useCallback(async (): Promise<boolean> => {
+    while (pendingSave.current) {
+      if (!(await pendingSave.current)) return false;
+    }
+    if (!userId || !ready || disabled || blocked.current) return false;
     const snapshot = JSON.stringify(latest.current);
+    if (snapshot === savedPayload.current) return true;
     const generation = request.current;
     saving.current = true;
     setState((s) => ({ ...s, saving: true }));
+    const operation = (async () => {
+      try {
+        const { data, error } = await supabase.rpc("save_census_draft", {
+          p_mode: mode,
+          p_payload: latest.current,
+          p_expected_revision: revision.current,
+          p_base_updated_at: baseVersion,
+        });
+        if (generation !== request.current) return false;
+        if (error) {
+          if (error.code === "40001") blocked.current = true;
+          throw error;
+        }
+        const draft = data as unknown as CensusDraft;
+        if (!draft?.revision) throw new Error("Draft save was not confirmed.");
+        revision.current = Number(draft.revision);
+        savedPayload.current = snapshot;
+        setState((s) => ({ ...s, savedAt: draft.saved_at, error: "" }));
+        return true;
+      } catch (error) {
+        if (generation === request.current)
+          setState((s) => ({
+            ...s,
+            error:
+              error && typeof error === "object" && "message" in error
+                ? String(error.message)
+                : "Draft could not be saved. Check your connection and retry.",
+          }));
+        return false;
+      } finally {
+        if (generation === request.current) {
+          saving.current = false;
+          setState((s) => ({ ...s, saving: false }));
+        }
+      }
+    })();
+    pendingSave.current = operation;
     try {
-      const { data, error } = await supabase.rpc("save_census_draft", {
-        p_mode: mode,
-        p_payload: latest.current,
-        p_expected_revision: revision.current,
-        p_base_updated_at: baseVersion,
-      });
-      if (generation !== request.current) return;
-      if (error) {
-        if (error.code === "40001") blocked.current = true;
-        throw error;
-      }
-      const draft = data as unknown as CensusDraft;
-      if (!draft?.revision) throw new Error("Draft save was not confirmed.");
-      revision.current = Number(draft.revision);
-      savedPayload.current = snapshot;
-      setState((s) => ({ ...s, savedAt: draft.saved_at, error: "" }));
-    } catch (error) {
-      if (generation === request.current)
-        setState((s) => ({
-          ...s,
-          error:
-            error && typeof error === "object" && "message" in error
-              ? String(error.message)
-              : "Draft could not be saved. Check your connection and retry.",
-        }));
+      return await operation;
     } finally {
-      if (generation === request.current) {
-        saving.current = false;
-        setState((s) => ({ ...s, saving: false }));
-      }
+      if (pendingSave.current === operation) pendingSave.current = null;
     }
   }, [userId, mode, ready, disabled, baseVersion]);
+
+  const flush = useCallback(async () => {
+    while (
+      pendingSave.current ||
+      JSON.stringify(latest.current) !== savedPayload.current
+    ) {
+      if (!(await save())) return false;
+    }
+    return true;
+  }, [save]);
 
   useEffect(() => {
     if (
@@ -193,6 +217,7 @@ export function useCensusDraft({
     ...state,
     outdated,
     save,
+    flush,
     discardOutdated,
     dirty: serialized !== savedPayload.current,
   };

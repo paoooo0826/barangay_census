@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
@@ -36,6 +36,15 @@ export default function App() {
   } = useAuth();
   const userId = user?.id;
   const [route, setRoute] = useState(currentRoute);
+  const acceptedRoute = useRef(route);
+  const navigationRequest = useRef(0);
+  const navigationGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const registerNavigationGuard = useCallback(
+    (guard: (() => Promise<boolean>) | null) => {
+      navigationGuard.current = guard;
+    },
+    [],
+  );
   const [logoutError, setLogoutError] = useState("");
   const [authRedirecting, setAuthRedirecting] = useState<string | null>(null);
   const [routeError, setRouteError] = useState<{
@@ -46,7 +55,27 @@ export default function App() {
   const [profileRetrying, setProfileRetrying] = useState(false);
 
   useEffect(() => {
-    const handleRouteChange = () => setRoute(currentRoute());
+    const handleRouteChange = () => {
+      const destination = currentRoute();
+      const previous = acceptedRoute.current;
+      if (destination === previous) return;
+      const request = ++navigationRequest.current;
+      const guard = navigationGuard.current;
+      const accept = () => {
+        acceptedRoute.current = destination;
+        setRoute(destination);
+      };
+      if (!guard) {
+        accept();
+        return;
+      }
+      window.history.replaceState(null, "", `#${previous}`);
+      void guard().then((allowed) => {
+        if (request !== navigationRequest.current || !allowed) return;
+        window.history.replaceState(null, "", `#${destination}`);
+        accept();
+      });
+    };
     window.addEventListener("hashchange", handleRouteChange);
     return () => window.removeEventListener("hashchange", handleRouteChange);
   }, []);
@@ -220,6 +249,7 @@ export default function App() {
             "",
             `${import.meta.env.BASE_URL}#/resident`,
           );
+          acceptedRoute.current = "/resident";
           setRoute("/resident");
         }}
       />
@@ -258,6 +288,7 @@ export default function App() {
       <CensusForm
         onDashboard={() => navigate("/resident/dashboard")}
         onLogout={() => void handleLogout()}
+        registerNavigationGuard={registerNavigationGuard}
       />
     );
   } else if (path === "/resident/dashboard") {
@@ -288,6 +319,7 @@ export default function App() {
   } else if (reviewMatch) {
     page = (
       <AdminReview
+        key={reviewMatch[1]}
         residentId={decodeURIComponent(reviewMatch[1])}
         onBack={() => navigate("/admin/dashboard?tab=census")}
         onDecisionComplete={() => navigate("/admin/dashboard?tab=census")}

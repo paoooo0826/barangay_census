@@ -1,4 +1,5 @@
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -205,6 +206,7 @@ export default function ResidentAppointments({
   const { user } = useAuth();
   const userId = user?.id;
   const bookingRequestKey = useRef<string | null>(null);
+  const appointmentRequest = useRef(0);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [showBooking, setShowBooking] = useState(Boolean(initialService));
   const [selectedService, setSelectedService] = useState<AppointmentService>(
@@ -227,28 +229,71 @@ export default function ResidentAppointments({
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [appointmentLoadError, setAppointmentLoadError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const loadAppointments = useCallback(async () => {
+  const loadAppointments = useCallback(async (background = false) => {
+    const generation = ++appointmentRequest.current;
     if (!userId) {
       setAppointments([]);
       return;
     }
-    setLoading(true);
-    setError(null);
-    const { data, error: appointmentError } = await supabase
-      .from("appointments")
-      .select("*")
-      .eq("user_id", userId)
-      .order("appointment_date", { ascending: false })
-      .order("appointment_time", { ascending: false });
-    if (appointmentError) setError(appointmentError.message);
-    else setAppointments((data ?? []) as Appointment[]);
-    setLoading(false);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const { data, error: appointmentError } = await supabase
+        .from("appointments")
+        .select("*")
+        .eq("user_id", userId)
+        .order("appointment_date", { ascending: false })
+        .order("appointment_time", { ascending: false });
+      if (generation !== appointmentRequest.current) return;
+      if (appointmentError) throw appointmentError;
+      setAppointmentLoadError(null);
+      const fresh = (data ?? []) as Appointment[];
+      setAppointments(fresh);
+      setSelectedAppointment((current) =>
+        current ? fresh.find((item) => item.id === current.id) ?? null : null,
+      );
+      setCancelTarget((current) =>
+        current
+          ? fresh.find(
+              (item) =>
+                item.id === current.id &&
+                ["pending", "confirmed"].includes(item.status),
+            ) ?? null
+          : null,
+      );
+    } catch (caught) {
+      if (generation === appointmentRequest.current)
+        setAppointmentLoadError(
+          caught && typeof caught === "object" && "message" in caught
+            ? String(caught.message)
+            : "Unable to refresh appointments. Check your connection and retry.",
+        );
+    } finally {
+      if (generation === appointmentRequest.current) setLoading(false);
+    }
   }, [userId]);
 
   useEffect(() => {
     void loadAppointments();
+    const refresh = () => {
+      if (!document.hidden) void loadAppointments(true);
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      ++appointmentRequest.current;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [loadAppointments]);
 
   useEffect(() => {
@@ -325,6 +370,15 @@ export default function ResidentAppointments({
     [appointments, category],
   );
   const visibleAppointments = pageSlice(filteredAppointments, page, PAGE_SIZE);
+
+  useEffect(() => {
+    setPage((current) =>
+      Math.min(
+        current,
+        Math.max(1, Math.ceil(filteredAppointments.length / PAGE_SIZE)),
+      ),
+    );
+  }, [filteredAppointments.length]);
 
   useEffect(() => {
     setPage(1);
@@ -490,6 +544,7 @@ export default function ResidentAppointments({
 
       <div className="p-6 sm:p-8">
         {error && <Message tone="error" text={error} />}
+        {appointmentLoadError && <Message tone="error" text={appointmentLoadError} />}
         {success && <Message tone="success" text={success} />}
 
         {showBooking && (
@@ -813,22 +868,31 @@ function AppointmentDetailsModal({
   onCancel?: () => void;
 }) {
   const purpose = purposeLabel(appointment.service_purpose);
+  const panelRef = useDialogFocus<HTMLDivElement>(true, onClose, null);
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby="appointment-details-title"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
       className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
     >
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl"
+      >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-pine-700">
               Appointment details
             </p>
-            <h3 className="mt-1 text-xl font-bold text-slate-900">
+            <h3
+              id="appointment-details-title"
+              className="mt-1 text-xl font-bold text-slate-900"
+            >
               {serviceLabel(appointment.service_type)}
             </h3>
           </div>
@@ -931,28 +995,40 @@ function CancelAppointmentModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const dismiss = () => {
+    if (saving) return;
+    if (
+      reason.trim() &&
+      !window.confirm("Discard the unsaved cancellation reason?")
+    )
+      return;
+    onClose();
+  };
+  const panelRef = useDialogFocus<HTMLDivElement>(true, dismiss, null);
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby="appointment-cancel-title"
       onClick={(event) => {
-        if (
-          event.target === event.currentTarget &&
-          !saving &&
-          (!reason.trim() ||
-            window.confirm("Discard the unsaved cancellation reason?"))
-        )
-          onClose();
+        if (event.target === event.currentTarget) dismiss();
       }}
       className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4"
     >
-      <div className="dialog-panel w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="dialog-panel w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-6"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">
               Cancel appointment
             </p>
-            <h3 className="mt-1 text-xl font-bold text-slate-900">
+            <h3
+              id="appointment-cancel-title"
+              className="mt-1 text-xl font-bold text-slate-900"
+            >
               {serviceLabel(appointment.service_type)}
             </h3>
             <p className="mt-1 text-sm text-slate-500">
@@ -962,7 +1038,7 @@ function CancelAppointmentModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={dismiss}
             disabled={saving}
             aria-label="Close cancellation form"
             className="rounded-xl border border-slate-200 p-2 text-slate-500 disabled:opacity-50"
@@ -990,7 +1066,7 @@ function CancelAppointmentModal({
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            onClick={onClose}
+            onClick={dismiss}
             disabled={saving}
             className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
           >

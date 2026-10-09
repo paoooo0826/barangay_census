@@ -63,6 +63,9 @@ interface StoredVerification {
 interface CensusFormProps {
   onDashboard: () => void;
   onLogout: () => void;
+  registerNavigationGuard?: (
+    guard: (() => Promise<boolean>) | null,
+  ) => void;
 }
 interface CensusFormData extends BoardingFormData {
   region: string;
@@ -200,7 +203,11 @@ const CATEGORY_CONFIG = {
   ],
 };
 
-export default function CensusForm({ onDashboard }: CensusFormProps) {
+export default function CensusForm({
+  onDashboard,
+  registerNavigationGuard,
+}: CensusFormProps) {
+  const censusSaved = useRef(false);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const { user } = useAuth();
   const userId = user?.id;
@@ -492,6 +499,36 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
     payload: censusDraftPayload({ ...formData }),
     onRestore: restoreDraft,
   });
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  useEffect(() => {
+    registerNavigationGuard?.(async () => {
+      if (censusSaved.current) return true;
+      if (submitting.current) return false;
+      const current = draftRef.current;
+      if (!current.dirty && !current.saving) return true;
+      if (await current.flush()) return true;
+      return window.confirm(
+        "Your latest changes could not be saved. Leave without saving them?",
+      );
+    });
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (
+        !censusSaved.current &&
+        (draftRef.current.dirty || draftRef.current.saving || submitting.current)
+      ) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => {
+      registerNavigationGuard?.(null);
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+    };
+  }, [registerNavigationGuard]);
 
   async function loadCategories() {
     const { data, error: loadError } = await supabase
@@ -1074,6 +1111,7 @@ export default function CensusForm({ onDashboard }: CensusFormProps) {
       if (!saved?.id)
         throw new Error("The census record was not returned after saving.");
 
+      censusSaved.current = true;
       setTrackingNumber(saved.tracking_number ?? trackingNumber);
       sessionStorage.removeItem(verificationKey);
       sessionStorage.removeItem("pendingResidentVerification");

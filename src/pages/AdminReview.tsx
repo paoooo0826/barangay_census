@@ -1,7 +1,7 @@
 import ResidentRecordHistory from "../components/ResidentRecordHistory";
 import ResidencyDetails from "../components/ResidencyDetails";
 import BoardingDetails from "../components/BoardingDetails";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -209,6 +209,7 @@ export default function AdminReview({
   onBack,
   onDecisionComplete,
 }: AdminReviewProps) {
+  const request = useRef(0);
   const [data, setData] = useState<ResidentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -225,16 +226,8 @@ export default function AdminReview({
     null,
   );
 
-  useEffect(() => {
-    void fetchResidentData();
-    const refreshTimer = window.setInterval(
-      () => void fetchResidentData(),
-      50 * 60 * 1000,
-    );
-    return () => window.clearInterval(refreshTimer);
-  }, [residentId]);
-
-  const fetchResidentData = async () => {
+  const fetchResidentData = useCallback(async () => {
+    const generation = ++request.current;
     setLoading(true);
     setError(null);
 
@@ -323,6 +316,7 @@ export default function AdminReview({
         ),
       };
 
+      if (generation !== request.current) return;
       setData({
         resident: residentWithHouseholdPhoto as Resident,
         governmentId: governmentId as GovernmentId | null,
@@ -331,13 +325,31 @@ export default function AdminReview({
         categories: (categoriesResult.data ?? []) as ResidentCategoryData[],
       });
     } catch (fetchError) {
+      if (generation !== request.current) return;
       console.error("Error loading resident:", fetchError);
       setError("Failed to load resident information.");
       setData(null);
     } finally {
-      setLoading(false);
+      if (generation === request.current) setLoading(false);
     }
-  };
+  }, [residentId]);
+
+  useEffect(() => {
+    setData(null);
+    setShowRemarksModal(false);
+    setSelectedAction(null);
+    setRemarkText("");
+    setPreviewImage(null);
+    void fetchResidentData();
+    const refreshTimer = window.setInterval(
+      () => void fetchResidentData(),
+      50 * 60 * 1000,
+    );
+    return () => {
+      ++request.current;
+      window.clearInterval(refreshTimer);
+    };
+  }, [fetchResidentData]);
 
   const calculateAge = (birthDate: string) => {
     const today = new Date();
@@ -393,7 +405,7 @@ export default function AdminReview({
   };
 
   const handleAction = async () => {
-    if (!selectedAction || !data) {
+    if (!selectedAction || !data || data.resident.id !== residentId) {
       return;
     }
 

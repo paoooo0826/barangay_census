@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "postinstall": "node scripts/harden-braces.cjs",
-    "test": "node scripts/verify-regressions.cjs && node scripts/verify-followup-fixes.cjs && node scripts/verify-ui-behavior.cjs && node scripts/verify-feature-additions.cjs"
+    "test": "node scripts/verify-regressions.cjs && node scripts/verify-followup-fixes.cjs && node scripts/verify-ui-behavior.cjs && node scripts/verify-feature-additions.cjs && node scripts/verify-presentation-fixes.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.110.6",
