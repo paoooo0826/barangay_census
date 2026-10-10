@@ -271,7 +271,7 @@ export default function App() {
       .filter(
         ([index, page]) =>
           index < navigationIndex.current &&
-          /^\/(resident|admin)\/(dashboard|census|review)/.test(page),
+          /^\/(resident|admin)\/(dashboard|census|review|register)/.test(page),
       )
       .sort((a, b) => b[0] - a[0])[0];
     if (previous) {
@@ -403,7 +403,7 @@ export default function App() {
       <ResidentRegistration
         email=""
         onDashboard={() => navigate("/resident/census")}
-        onBack={() => navigate("/resident")}
+        onBack={goBack}
       />
     );
   } else if (path === "/resident/census") {
@@ -446,7 +446,7 @@ export default function App() {
       <AdminReview
         key={reviewMatch[1]}
         residentId={decodeURIComponent(reviewMatch[1])}
-        onBack={() => navigate("/admin/dashboard?tab=census")}
+        onBack={goBack}
         onDecisionComplete={() => navigate("/admin/dashboard?tab=census")}
       />
     );
