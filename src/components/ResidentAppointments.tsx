@@ -1,3 +1,4 @@
+import { navigateHash } from "../hooks/useHashRoute";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +10,6 @@ import {
   Clock,
   Eye,
   FileCheck2,
-  Filter,
   Home,
   Loader2,
   MessageSquareText,
@@ -18,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import ServiceCatalog, { useServiceCatalog } from "./ServiceCatalog";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import PaginationControls, { pageSlice } from "./PaginationControls";
@@ -33,6 +34,7 @@ import type {
 interface ResidentAppointmentsProps {
   resident: Resident | null;
   initialService?: AppointmentService | null;
+  mode?: "active" | "completed" | "cancelled" | "rejected";
 }
 
 interface ServiceDefinition {
@@ -56,20 +58,13 @@ interface BookingResult {
 }
 
 type AppointmentCategory =
-  "upcoming" | "completed" | "rejected" | "cancelled" | "all";
+  | "upcoming"
+  | "completed"
+  | "rejected"
+  | "cancelled"
+  | "all";
 
 const PAGE_SIZE = 5;
-
-const CATEGORY_OPTIONS: Array<{
-  value: AppointmentCategory;
-  label: string;
-}> = [
-  { value: "upcoming", label: "Upcoming / Active" },
-  { value: "completed", label: "Completed" },
-  { value: "rejected", label: "Rejected" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "all", label: "All Appointments" },
-];
 
 export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
   {
@@ -77,7 +72,7 @@ export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
     label: "Barangay Clearance",
     description:
       "Request a clearance for employment, business, or other legal purposes.",
-    feeLabel: "₱130 student / ₱230 non-student",
+    feeLabel: "Applicable fee shown before confirmation",
     icon: FileCheck2,
     iconClass: "bg-pine-100 text-pine-700",
   },
@@ -86,7 +81,8 @@ export const APPOINTMENT_SERVICES: ServiceDefinition[] = [
     label: "Certificate of Residency",
     description:
       "Request a residency certificate for a supported barangay purpose.",
-    feeLabel: "₱30 · First Low Income request is free",
+    feeLabel:
+      "Applicable fee and first-request exemption shown before confirmation",
     icon: Home,
     iconClass: "bg-amber-100 text-amber-700",
   },
@@ -202,9 +198,12 @@ function purposeLabel(value?: AppointmentPurpose | null) {
 export default function ResidentAppointments({
   resident,
   initialService,
+  mode = "active",
 }: ResidentAppointmentsProps) {
   const { user } = useAuth();
+  const { services: approvedServices } = useServiceCatalog();
   const userId = user?.id;
+  const bookingLock = useRef(false);
   const bookingRequestKey = useRef<string | null>(null);
   const appointmentRequest = useRef(0);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -222,61 +221,73 @@ export default function ResidentAppointments({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [category, setCategory] = useState<AppointmentCategory>("upcoming");
+  const [category] = useState<AppointmentCategory>(
+    mode === "active" ? "upcoming" : mode,
+  );
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [selectedAppointment, setSelectedAppointment] =
     useState<Appointment | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [appointmentLoadError, setAppointmentLoadError] = useState<string | null>(null);
+  const [appointmentLoadError, setAppointmentLoadError] = useState<
+    string | null
+  >(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const loadAppointments = useCallback(async (background = false) => {
-    const generation = ++appointmentRequest.current;
-    if (!userId) {
-      setAppointments([]);
-      return;
-    }
-    if (!background) {
-      setLoading(true);
-      setError(null);
-    }
-    try {
-      const { data, error: appointmentError } = await supabase
-        .from("appointments")
-        .select("*")
-        .eq("user_id", userId)
-        .order("appointment_date", { ascending: false })
-        .order("appointment_time", { ascending: false });
-      if (generation !== appointmentRequest.current) return;
-      if (appointmentError) throw appointmentError;
-      setAppointmentLoadError(null);
-      const fresh = (data ?? []) as Appointment[];
-      setAppointments(fresh);
-      setSelectedAppointment((current) =>
-        current ? fresh.find((item) => item.id === current.id) ?? null : null,
-      );
-      setCancelTarget((current) =>
-        current
-          ? fresh.find(
-              (item) =>
-                item.id === current.id &&
-                ["pending", "confirmed"].includes(item.status),
-            ) ?? null
-          : null,
-      );
-    } catch (caught) {
-      if (generation === appointmentRequest.current)
-        setAppointmentLoadError(
-          caught && typeof caught === "object" && "message" in caught
-            ? String(caught.message)
-            : "Unable to refresh appointments. Check your connection and retry.",
+  const loadAppointments = useCallback(
+    async (background = false) => {
+      const generation = ++appointmentRequest.current;
+      if (!userId) {
+        setAppointments([]);
+        return;
+      }
+      if (!background) {
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        const { data, error: appointmentError } = await supabase
+          .from("appointments")
+          .select("*")
+          .eq("user_id", userId)
+          .order("appointment_date", { ascending: false })
+          .order("appointment_time", { ascending: false });
+        if (generation !== appointmentRequest.current) return;
+        if (appointmentError) throw appointmentError;
+        setAppointmentLoadError(null);
+        const fresh = (data ?? []) as Appointment[];
+        setAppointments(fresh);
+        setSelectedAppointment((current) =>
+          current
+            ? (fresh.find((item) => item.id === current.id) ?? null)
+            : null,
         );
-    } finally {
-      if (generation === appointmentRequest.current) setLoading(false);
-    }
-  }, [userId]);
+        setCancelTarget((current) =>
+          current
+            ? (fresh.find(
+                (item) =>
+                  item.id === current.id &&
+                  ["pending", "confirmed"].includes(item.status),
+              ) ?? null)
+            : null,
+        );
+      } catch (caught) {
+        if (generation === appointmentRequest.current)
+          setAppointmentLoadError(
+            caught && typeof caught === "object" && "message" in caught
+              ? String(caught.message)
+              : "Unable to refresh appointments. Check your connection and retry.",
+          );
+      } finally {
+        if (generation === appointmentRequest.current) setLoading(false);
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
     void loadAppointments();
@@ -320,7 +331,11 @@ export default function ResidentAppointments({
           setFeePreview(null);
           setError(feeError.message);
         } else {
-          setFeePreview(Number(data));
+          const quote = Number(data);
+          if (data === null || !Number.isFinite(quote) || quote < 0) {
+            setFeePreview(null);
+            setError("The fee returned is invalid. Please retry.");
+          } else setFeePreview(quote);
         }
         setFeeLoading(false);
       }
@@ -362,12 +377,29 @@ export default function ResidentAppointments({
   const filteredAppointments = useMemo(
     () =>
       appointments.filter((appointment) => {
+        const searchText =
+          `${serviceLabel(appointment.service_type)} ${purposeLabel(appointment.service_purpose) ?? ""} ${appointment.purpose} ${appointment.status}`.toLowerCase();
+        if (search && !searchText.includes(search.toLowerCase().trim()))
+          return false;
+        const timestamp =
+          mode === "completed"
+            ? appointment.completed_at
+            : mode === "cancelled"
+              ? appointment.cancelled_at
+              : null;
+        const date = timestamp
+          ? new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Manila",
+            }).format(new Date(timestamp))
+          : appointment.appointment_date;
+        if ((fromDate && date < fromDate) || (toDate && date > toDate))
+          return false;
         if (category === "all") return true;
         if (category === "upcoming")
           return ["pending", "confirmed"].includes(appointment.status);
         return appointment.status === category;
       }),
-    [appointments, category],
+    [appointments, category, search, fromDate, toDate, mode],
   );
   const visibleAppointments = pageSlice(filteredAppointments, page, PAGE_SIZE);
 
@@ -382,7 +414,7 @@ export default function ResidentAppointments({
 
   useEffect(() => {
     setPage(1);
-  }, [category]);
+  }, [category, search, fromDate, toDate]);
 
   const resetForm = () => {
     setAppointmentDate("");
@@ -393,6 +425,7 @@ export default function ResidentAppointments({
 
   const submitAppointment = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (bookingLock.current) return;
     setError(null);
     setSuccess(null);
     if (!user || !resident) {
@@ -417,29 +450,51 @@ export default function ResidentAppointments({
       setError("Choose a future appointment date and time.");
       return;
     }
-    if (feePreview == null) {
+    if (
+      feePreview == null ||
+      !Number.isFinite(feePreview) ||
+      feePreview < 0 ||
+      feeLoading
+    ) {
       setError("Wait for the fee to finish loading before confirming.");
       return;
     }
 
+    bookingLock.current = true;
     setSaving(true);
     bookingRequestKey.current ??= crypto.randomUUID();
-    const { data, error: insertError } = await supabase.rpc(
-      "book_resident_appointment",
-      {
-        p_resident_id: resident.id,
-        p_service_type: selectedService,
-        p_service_purpose:
-          selectedService === "certificate_of_residency"
-            ? selectedPurpose
-            : null,
-        p_appointment_date: appointmentDate,
-        p_appointment_time: appointmentTime,
-        p_purpose: details.trim(),
-        p_expected_fee: feePreview,
-        p_request_key: bookingRequestKey.current,
-      },
-    );
+    let bookingResponse;
+    try {
+      const { data, error: insertError } = await supabase.rpc(
+        "book_resident_appointment",
+        {
+          p_resident_id: resident.id,
+          p_service_type: selectedService,
+          p_service_purpose:
+            selectedService === "certificate_of_residency"
+              ? selectedPurpose
+              : null,
+          p_appointment_date: appointmentDate,
+          p_appointment_time: appointmentTime,
+          p_purpose: details.trim(),
+          p_expected_fee: feePreview,
+          p_request_key: bookingRequestKey.current,
+        },
+      );
+      bookingResponse = { data, error: insertError };
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Connection lost while booking. Retry to check the same request.",
+      );
+      return;
+    } finally {
+      bookingLock.current = false;
+      setSaving(false);
+    }
+    const { data, error: insertError } = bookingResponse;
+    bookingLock.current = false;
     setSaving(false);
 
     if (insertError) {
@@ -453,7 +508,17 @@ export default function ResidentAppointments({
 
     const result = data as BookingResult | null;
     if (!result?.booked && result?.fee_changed) {
-      setFeePreview(Number(result.current_fee));
+      const currentFee = Number(result.current_fee);
+      if (
+        result.current_fee == null ||
+        !Number.isFinite(currentFee) ||
+        currentFee < 0
+      ) {
+        setFeePreview(null);
+        setError("The fee returned is invalid. Please refresh and retry.");
+        return;
+      }
+      setFeePreview(currentFee);
       setError(
         `The fee changed to ${formatFee(Number(result.current_fee))}. Review it and confirm again.`,
       );
@@ -502,7 +567,7 @@ export default function ResidentAppointments({
     setSuccess(result.message ?? "Appointment cancelled successfully.");
     setCancelTarget(null);
     setCancellationReason("");
-    setCategory("cancelled");
+    navigateHash("/resident/dashboard?tab=cancelled");
     await loadAppointments();
   };
 
@@ -514,7 +579,13 @@ export default function ResidentAppointments({
             Barangay services
           </p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">
-            Appointments
+            {mode === "completed"
+              ? "Completed Appointments"
+              : mode === "cancelled"
+                ? "Cancelled Appointments"
+                : mode === "rejected"
+                  ? "Rejected Appointments"
+                  : "Active Appointments"}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             View existing requests, previous visits, or book a new appointment
@@ -533,7 +604,11 @@ export default function ResidentAppointments({
           </button>
           <button
             type="button"
-            onClick={() => setShowBooking((value) => !value)}
+            onClick={() => {
+              if (mode !== "active")
+                navigateHash("/resident/dashboard?tab=appointments");
+              else setShowBooking((value) => !value);
+            }}
             className="inline-flex items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-pine-800"
           >
             {showBooking ? <X size={17} /> : <CalendarPlus size={17} />}
@@ -543,8 +618,11 @@ export default function ResidentAppointments({
       </div>
 
       <div className="p-6 sm:p-8">
+        <ServiceCatalog />
         {error && <Message tone="error" text={error} />}
-        {appointmentLoadError && <Message tone="error" text={appointmentLoadError} />}
+        {appointmentLoadError && (
+          <Message tone="error" text={appointmentLoadError} />
+        )}
         {success && <Message tone="success" text={success} />}
 
         {showBooking && (
@@ -563,6 +641,9 @@ export default function ResidentAppointments({
 
             <div className="grid gap-3 sm:grid-cols-2">
               {APPOINTMENT_SERVICES.map((service) => {
+                const catalog = approvedServices.find(
+                  (item) => item.code === service.value,
+                );
                 const Icon = service.icon;
                 const active = selectedService === service.value;
                 return (
@@ -580,13 +661,17 @@ export default function ResidentAppointments({
                       </div>
                       <div>
                         <p className="font-bold text-slate-900">
-                          {service.label}
+                          {catalog?.label ?? service.label}
                         </p>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {service.description}
+                          {catalog?.description ?? service.description}
                         </p>
                         <p className="mt-2 text-sm font-bold text-pine-700">
-                          {service.feeLabel}
+                          {catalog
+                            ? catalog.student_fee !== null
+                              ? `₱${catalog.student_fee} currently studying / ₱${catalog.base_fee} otherwise`
+                              : `₱${catalog.base_fee} · First Low Income request is free`
+                            : service.feeLabel}
                         </p>
                       </div>
                     </div>
@@ -710,26 +795,62 @@ export default function ResidentAppointments({
           />
         </div>
 
-        <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Filter size={18} className="text-pine-700" />
-            <h3 className="font-bold text-slate-900">Appointment category</h3>
-          </div>
-          <select
-            value={category}
-            onChange={(event) =>
-              setCategory(event.target.value as AppointmentCategory)
-            }
-            className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none focus:border-pine-600 focus:ring-4 focus:ring-pine-100"
-          >
-            {CATEGORY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label} ({counts[option.value]})
-              </option>
-            ))}
-          </select>
+        <nav
+          aria-label="Appointment pages"
+          className="mt-6 flex flex-wrap gap-2"
+        >
+          {[
+            ["appointments", "Active Appointments"],
+            ["completed", "Completed Appointments"],
+            ["cancelled", "Cancelled Appointments"],
+            ["rejected", "Rejected Appointments"],
+          ].map(([value, label]) => (
+            <a
+              key={value}
+              href={`#/resident/dashboard?tab=${value}`}
+              className="rounded-xl border px-3 py-2 text-sm font-semibold text-pine-700"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <label className="text-sm font-semibold">
+            Search your appointments
+            <input
+              aria-label="Search your appointments"
+              type="search"
+              className="input-field mt-2"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            {mode === "completed"
+              ? "Completed"
+              : mode === "cancelled"
+                ? "Cancelled"
+                : "Appointment"}{" "}
+            from
+            <input
+              type="date"
+              aria-label="Appointments from"
+              className="input-field mt-2"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </label>
+          <label className="text-sm font-semibold">
+            Through
+            <input
+              type="date"
+              aria-label="Appointments through"
+              className="input-field mt-2"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </label>
         </div>
-
         <div className="mt-4">
           {loading ? (
             <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 py-10 text-sm text-slate-500">
@@ -769,6 +890,30 @@ export default function ResidentAppointments({
                             {appointment.status}
                           </span>
                         </div>
+                        {(appointment.status === "completed" ||
+                          appointment.status === "cancelled") && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            {appointment.status === "completed"
+                              ? "Completed"
+                              : "Cancelled"}
+                            :{" "}
+                            {(
+                              appointment.status === "completed"
+                                ? appointment.completed_at
+                                : appointment.cancelled_at
+                            )
+                              ? new Date(
+                                  (appointment.status === "completed"
+                                    ? appointment.completed_at
+                                    : appointment.cancelled_at)!,
+                                ).toLocaleString("en-PH", {
+                                  timeZone: "Asia/Manila",
+                                })
+                              : "Date not recorded"}
+                            {appointment.cancellation_reason &&
+                              ` · Reason: ${appointment.cancellation_reason}`}
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
                           <span className="inline-flex items-center gap-2">
                             <CalendarDays size={16} />
@@ -930,7 +1075,10 @@ function AppointmentDetailsModal({
             <Detail label="Fee" value={formatFee(appointment.fee)} />
             <Detail label="Status" value={appointment.status} />
           </dl>
-          <AppointmentPaymentPanel key={appointment.id} appointment={appointment} />
+          <AppointmentPaymentPanel
+            key={appointment.id}
+            appointment={appointment}
+          />
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
               <MessageSquareText size={17} className="text-pine-700" />

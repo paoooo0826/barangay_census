@@ -14,7 +14,7 @@ export function navigateHash(destination: string, replace = false) {
   const route = destination.startsWith("/") ? destination : `/${destination}`;
   if (route === currentRoute()) return;
   if (replace) {
-    window.history.replaceState(null, "", `#${route}`);
+    window.history.replaceState(window.history.state, "", `#${route}`);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   } else window.location.hash = route;
 }

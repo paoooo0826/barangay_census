@@ -25,6 +25,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
     define: {
       "process.env.NODE_ENV": '"development"',
       "import.meta.env.BASE_URL": '"/"',
+      "import.meta.env.VITE_SESSION_TIMEOUT_MINUTES": '"15"',
     },
     alias: { fs: path.join(project, "src/shims/fs.ts") },
     loader: { ".png": "dataurl", ".css": "empty" },
@@ -403,6 +404,8 @@ async function cameraChecks() {
     "Concurrent automatic captures produce only one final detection",
   );
   await tick(() => w.__finishFace());
+  check(w.__verified.length === 0 && w.document.body.textContent.includes("Confirm Photo"), "Capture waits for explicit confirmation before uploading");
+  await tick(() => [...w.document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Confirm Photo").click());
   check(
     w.__verified.length === 1 &&
       w.__verified[0].file.size > 0 &&
@@ -448,6 +451,7 @@ async function cameraChecks() {
   await capture();
   await w.__capture;
   await tick();
+  await tick(() => [...w.document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Confirm Photo").click());
   check(
     !w.__camera.complete() &&
       w.document.body.textContent.includes("Upload failed. Please retry."),

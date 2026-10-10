@@ -1,3 +1,4 @@
+import { useImageCrop } from "../components/ImageCropDialog";
 import {
   RESIDENT_IMAGE_ACCEPT,
   validateResidentImage,
@@ -40,7 +41,11 @@ import {
 type Sex = "Male" | "Female";
 type CivilStatus = "Single" | "Married" | "Widowed" | "Divorced" | "Separated";
 type TenurialStatus =
-  "House Owner" | "Sharer" | "Caretaker" | "Renter" | "Landlord/Landlady";
+  | "House Owner"
+  | "Sharer"
+  | "Caretaker"
+  | "Renter"
+  | "Landlord/Landlady";
 
 interface StoredVerification {
   userId?: string;
@@ -63,9 +68,7 @@ interface StoredVerification {
 interface CensusFormProps {
   onDashboard: () => void;
   onLogout: () => void;
-  registerNavigationGuard?: (
-    guard: (() => Promise<boolean>) | null,
-  ) => void;
+  registerNavigationGuard?: (guard: (() => Promise<boolean>) | null) => void;
 }
 interface CensusFormData extends BoardingFormData {
   region: string;
@@ -207,6 +210,7 @@ export default function CensusForm({
   onDashboard,
   registerNavigationGuard,
 }: CensusFormProps) {
+  const { crop, cropDialog } = useImageCrop();
   const censusSaved = useRef(false);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const { user } = useAuth();
@@ -517,16 +521,24 @@ export default function CensusForm({
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       if (
         !censusSaved.current &&
-        (draftRef.current.dirty || draftRef.current.saving || submitting.current)
+        (draftRef.current.dirty ||
+          draftRef.current.saving ||
+          submitting.current)
       ) {
         event.preventDefault();
         event.returnValue = "";
       }
     };
+    const flushOnTimeout = (event: Event) => {
+      const pending = (event as CustomEvent<Promise<unknown>[]>).detail;
+      if (!censusSaved.current) pending.push(draftRef.current.flush());
+    };
+    window.addEventListener("barangay:flush-drafts", flushOnTimeout);
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => {
       registerNavigationGuard?.(null);
       window.removeEventListener("beforeunload", warnBeforeUnload);
+      window.removeEventListener("barangay:flush-drafts", flushOnTimeout);
     };
   }, [registerNavigationGuard]);
 
@@ -611,15 +623,27 @@ export default function CensusForm({
     const category = categories.find((item) => item.name === name);
     return category ? formData.categories.includes(category.id) : false;
   }
-  function updateVerificationImage(
+  async function updateVerificationImage(
     file: File | undefined,
     kind: "front" | "back" | "face",
+    confirmed = false,
   ) {
     if (!file) return;
     try {
       validateResidentImage(file);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Invalid image.");
+      return;
+    }
+    if (kind !== "face" && !confirmed) {
+      try {
+        const image = await crop(file, "id");
+        if (image) await updateVerificationImage(image, kind, true);
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? caught.message : "Unable to crop image.",
+        );
+      }
       return;
     }
     setError(null);
@@ -644,12 +668,22 @@ export default function CensusForm({
       setCapturedFacePreview(preview);
     }
   }
-  function handleHouseholdPhotoChange(file?: File) {
+  async function handleHouseholdPhotoChange(file?: File) {
     if (!file) return;
     try {
       validateResidentImage(file);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Invalid image.");
+      return;
+    }
+    try {
+      const cropped = await crop(file, "household");
+      if (!cropped) return;
+      file = cropped;
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to crop photo.",
+      );
       return;
     }
     if (householdPhotoPreview.startsWith("blob:"))
@@ -698,9 +732,9 @@ export default function CensusForm({
       !existingVerification?.verificationStatus ||
       Boolean(
         governmentIdFront ||
-        governmentIdBack ||
-        capturedFaceFile ||
-        liveVerificationResult,
+          governmentIdBack ||
+          capturedFaceFile ||
+          liveVerificationResult,
       );
     if (
       requiresFreshLiveVerification &&
@@ -1630,7 +1664,8 @@ export default function CensusForm({
                     setFormData((p) => ({
                       ...p,
                       residence_classification: e.target.value as
-                        "temporary" | "resident",
+                        | "temporary"
+                        | "resident",
                     }));
                     clearFieldError("residence_classification");
                   }}
@@ -2101,6 +2136,7 @@ export default function CensusForm({
           </button>
         </div>
       </div>
+      {cropDialog}
     </div>
   );
 }

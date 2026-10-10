@@ -267,6 +267,8 @@ export interface Database {
       admin_resident_history: AnyTable;
     };
     Functions: {
+      admin_system_analytics: { Args: { p_from?: string | null; p_to?: string | null; p_status?: string }; Returns: Json };
+      get_service_catalog: { Args: Record<string, never>; Returns: Json };
       save_census_draft: {
         Args: {
           p_mode: string;

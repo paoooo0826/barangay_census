@@ -23,6 +23,7 @@ async function render(source, api = "export const supabase = {};") {
     define: {
       "process.env.NODE_ENV": '"development"',
       "import.meta.env.BASE_URL": '"/"',
+      "import.meta.env.VITE_SESSION_TIMEOUT_MINUTES": '"15"',
     },
     loader: { ".png": "dataurl" },
     plugins: [

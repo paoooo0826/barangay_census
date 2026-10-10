@@ -1,3 +1,4 @@
+import { resetSessionActivity } from "../hooks/useIdleSession";
 import {
   createContext,
   useCallback,
@@ -66,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: string | null;
   }>({ userId: undefined, data: null, error: null });
   const profileRequest = useRef(0);
+  const knownUser = useRef<string | null>(null);
+  const logoutIntent = useRef(false);
   const userId = session?.user.id ?? null;
   const loading = !sessionReady || profile.userId !== userId;
   const adminProfile = profile.userId === userId ? profile.data : null;
@@ -79,7 +82,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
       receivedEvent = true;
-      if (event === "SIGNED_OUT") clearAccountTemporaryData();
+      if (event === "SIGNED_OUT") {
+        const id = knownUser.current;
+        let deliberate = logoutIntent.current;
+        try {
+          const at = Number(localStorage.getItem(`barangay:logout:${id}`));
+          deliberate ||= at > Date.now() - 10_000;
+        } catch {
+          /* A local logout is still recognized. */
+        }
+        clearAccountTemporaryData(id ?? undefined);
+        if (id && !deliberate)
+          window.dispatchEvent(new Event("barangay:authentication-expired"));
+      }
+      knownUser.current = nextSession?.user.id ?? null;
       setSession(nextSession);
       setSessionReady(true);
     });
@@ -88,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .getSession()
       .then(({ data, error }) => {
         if (!active || receivedEvent) return;
+        knownUser.current = error ? null : (data.session?.user.id ?? null);
         setSession(error ? null : data.session);
         setSessionReady(true);
       })
@@ -129,10 +146,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<AuthResult> => {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
       });
+      if (!error && data?.user) resetSessionActivity(data.user.id);
       return { error };
     },
     [],
@@ -148,10 +166,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
+      if (data.session?.user) resetSessionActivity(data.session.user.id);
       const isExistingUser = Boolean(
         data.user &&
-        Array.isArray(data.user.identities) &&
-        data.user.identities.length === 0,
+          Array.isArray(data.user.identities) &&
+          data.user.identities.length === 0,
       );
 
       return {
@@ -168,12 +187,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async (): Promise<AuthResult> => {
+    logoutIntent.current = true;
+    try {
+      localStorage.setItem(`barangay:logout:${userId}`, String(Date.now()));
+    } catch {
+      /* Current tab still clears. */
+    }
     const { error } = await supabase.auth.signOut();
     if (!error) {
       clearAccountTemporaryData(userId ?? undefined);
       setSession(null);
       setProfile({ userId: null, data: null, error: null });
     }
+    logoutIntent.current = false;
     return { error };
   }, [userId]);
 

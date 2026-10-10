@@ -1,3 +1,7 @@
+import { useIdleSession } from "./hooks/useIdleSession";
+import SessionWarning from "./components/SessionWarning";
+import { useDialogFocus } from "./hooks/useDialogFocus";
+import { navigateHash } from "./hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
@@ -45,6 +49,20 @@ export default function App() {
     },
     [],
   );
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState(
+    () => sessionStorage.getItem("barangay:session-notice") ?? "",
+  );
+  const logoutDialog = useDialogFocus<HTMLDivElement>(
+    confirmLogout,
+    () => setConfirmLogout(false),
+    null,
+  );
+  const previousPages = useRef(new Map<number, string>());
+  const navigationIndex = useRef(
+    Number(window.history.state?.barangayIndex ?? 0),
+  );
+  const activeAdminRef = useRef(false);
   const [logoutError, setLogoutError] = useState("");
   const [authRedirecting, setAuthRedirecting] = useState<string | null>(null);
   const [routeError, setRouteError] = useState<{
@@ -55,13 +73,27 @@ export default function App() {
   const [profileRetrying, setProfileRetrying] = useState(false);
 
   useEffect(() => {
+    window.history.replaceState(
+      { ...window.history.state, barangayIndex: navigationIndex.current },
+      "",
+    );
+    previousPages.current.set(navigationIndex.current, acceptedRoute.current);
     const handleRouteChange = () => {
       const destination = currentRoute();
       const previous = acceptedRoute.current;
       if (destination === previous) return;
+      const nextIndex =
+        window.history.state?.barangayIndex ?? navigationIndex.current + 1;
       const request = ++navigationRequest.current;
       const guard = navigationGuard.current;
       const accept = () => {
+        navigationIndex.current = nextIndex;
+        previousPages.current.set(nextIndex, destination);
+        window.history.replaceState(
+          { ...window.history.state, barangayIndex: nextIndex },
+          "",
+          `#${destination}`,
+        );
         acceptedRoute.current = destination;
         setRoute(destination);
       };
@@ -69,10 +101,18 @@ export default function App() {
         accept();
         return;
       }
-      window.history.replaceState(null, "", `#${previous}`);
+      window.history.replaceState(
+        { ...window.history.state, barangayIndex: nextIndex },
+        "",
+        `#${previous}`,
+      );
       void guard().then((allowed) => {
         if (request !== navigationRequest.current || !allowed) return;
-        window.history.replaceState(null, "", `#${destination}`);
+        window.history.replaceState(
+          { ...window.history.state, barangayIndex: nextIndex },
+          "",
+          `#${destination}`,
+        );
         accept();
       });
     };
@@ -114,7 +154,10 @@ export default function App() {
     if (loading || !userId || isPasswordReset) return;
     if (path === "/admin") {
       if (adminProfileError) return;
-      navigate(isActiveAdmin ? "/admin/dashboard" : "/resident/dashboard");
+      navigateHash(
+        isActiveAdmin ? "/admin/dashboard" : "/resident/dashboard",
+        true,
+      );
       return;
     }
     if (path !== "/resident" && path !== "/resident/register") return;
@@ -130,7 +173,10 @@ export default function App() {
           .maybeSingle();
         if (error) throw error;
         if (active)
-          navigate(data ? "/resident/dashboard" : "/resident/register");
+          navigateHash(
+            data ? "/resident/dashboard" : "/resident/register",
+            true,
+          );
       } catch {
         if (active)
           setRouteError({
@@ -156,15 +202,84 @@ export default function App() {
     userId,
   ]);
 
-  const handleLogout = useCallback(async () => {
+  const performLogout = useCallback(async () => {
+    setConfirmLogout(false);
+    const portal = activeAdminRef.current ? "/admin" : "/resident";
+    const pending: Promise<unknown>[] = [];
+    window.dispatchEvent(
+      new CustomEvent("barangay:flush-drafts", { detail: pending }),
+    );
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise((resolve) => window.setTimeout(resolve, 2500)),
+    ]);
+    navigationGuard.current = null;
     setLogoutError("");
     const { error } = await signOut();
     if (error) {
       setLogoutError(error.message || "Unable to sign out. Please try again.");
       return;
     }
-    navigate("/");
-  }, [navigate, signOut]);
+    previousPages.current.clear();
+    navigateHash(portal, true);
+  }, [signOut]);
+  const handleLogout = useCallback(() => setConfirmLogout(true), []);
+  useEffect(() => {
+    activeAdminRef.current = isActiveAdmin;
+  }, [isActiveAdmin]);
+  const expireSession = useCallback(async () => {
+    setConfirmLogout(false);
+    const portal = activeAdminRef.current ? "/admin" : "/resident";
+    const message = "Your session expired due to inactivity";
+    sessionStorage.setItem("barangay:session-notice", message);
+    setSessionNotice(message);
+    const pending: Promise<unknown>[] = [];
+    window.dispatchEvent(
+      new CustomEvent("barangay:flush-drafts", { detail: pending }),
+    );
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise((resolve) => window.setTimeout(resolve, 2500)),
+    ]);
+    const result = await signOut();
+    if (result.error) await supabase.auth.signOut({ scope: "local" });
+    navigationGuard.current = null;
+    previousPages.current.clear();
+    navigateHash(portal, true);
+  }, [signOut]);
+  const idle = useIdleSession(userId, expireSession);
+  useEffect(() => {
+    const expired = () => {
+      const message = "Your authentication session has expired. Sign in again.";
+      sessionStorage.setItem("barangay:session-notice", message);
+      setSessionNotice(message);
+      navigationGuard.current = null;
+      navigateHash(activeAdminRef.current ? "/admin" : "/resident", true);
+    };
+    window.addEventListener("barangay:authentication-expired", expired);
+    return () =>
+      window.removeEventListener("barangay:authentication-expired", expired);
+  }, []);
+  useEffect(() => {
+    if (userId && !idle.expiring) {
+      setSessionNotice("");
+      sessionStorage.removeItem("barangay:session-notice");
+    }
+  }, [userId, idle.expiring]);
+  const goBack = () => {
+    const previous = [...previousPages.current.entries()]
+      .filter(
+        ([index, page]) =>
+          index < navigationIndex.current &&
+          /^\/(resident|admin)\/(dashboard|census|review)/.test(page),
+      )
+      .sort((a, b) => b[0] - a[0])[0];
+    if (previous) {
+      window.history.go(previous[0] - navigationIndex.current);
+      return;
+    }
+    setConfirmLogout(true);
+  };
 
   let page: ReactNode;
 
@@ -224,10 +339,13 @@ export default function App() {
       <ResidentAuth
         onBack={() => navigate("/")}
         onLoginSuccess={(destination) =>
-          navigate(
-            destination === "dashboard"
-              ? "/resident/dashboard"
-              : "/resident/census",
+          navigateHash(
+            destination === "dashboard" && residentProtected
+              ? route
+              : destination === "dashboard"
+                ? "/resident/dashboard"
+                : "/resident/census",
+            true,
           )
         }
         onRegisterClick={() => navigate("/resident/register")}
@@ -237,7 +355,9 @@ export default function App() {
     page = (
       <AdminAuth
         onBack={() => navigate("/")}
-        onLoginSuccess={() => navigate("/admin/dashboard")}
+        onLoginSuccess={() =>
+          navigateHash(adminProtected ? route : "/admin/dashboard", true)
+        }
       />
     );
   } else if (isPasswordReset) {
@@ -266,10 +386,13 @@ export default function App() {
       <ResidentAuth
         onBack={() => navigate("/")}
         onLoginSuccess={(destination) =>
-          navigate(
-            destination === "dashboard"
-              ? "/resident/dashboard"
-              : "/resident/census",
+          navigateHash(
+            destination === "dashboard" && residentProtected
+              ? route
+              : destination === "dashboard"
+                ? "/resident/dashboard"
+                : "/resident/census",
+            true,
           )
         }
         onRegisterClick={() => navigate("/resident/register")}
@@ -303,7 +426,9 @@ export default function App() {
     page = (
       <AdminAuth
         onBack={() => navigate("/")}
-        onLoginSuccess={() => navigate("/admin/dashboard")}
+        onLoginSuccess={() =>
+          navigateHash(adminProtected ? route : "/admin/dashboard", true)
+        }
       />
     );
   } else if (path === "/admin/setup") {
@@ -344,7 +469,87 @@ export default function App() {
           {logoutError}
         </div>
       )}
-      {page}
+      {sessionNotice && !user && (
+        <p
+          role="alert"
+          className="fixed inset-x-3 top-3 z-[350] mx-auto max-w-xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-center text-sm font-semibold text-amber-900"
+        >
+          {sessionNotice}
+        </p>
+      )}
+      <div
+        hidden={idle.expiring && Boolean(user)}
+        inert={idle.expiring && Boolean(user)}
+      >
+        {page}
+      </div>
+      {idle.expiring && user && (
+        <div
+          className="fixed inset-0 z-[450] flex items-center justify-center bg-slate-50"
+          role="status"
+        >
+          Your session expired due to inactivity. Signing out…
+        </div>
+      )}
+      {user &&
+        !loading &&
+        (residentProtected || adminProtected) &&
+        !idle.expiring && (
+          <button
+            type="button"
+            onClick={goBack}
+            className="fixed bottom-3 left-3 z-[45] rounded-xl border border-slate-300 bg-white/95 px-3 py-2 text-sm font-semibold text-pine-800 shadow-sm"
+            aria-label="Back to previous application page"
+          >
+            ← Back
+          </button>
+        )}
+      {idle.remaining !== null && !idle.expiring && (
+        <SessionWarning
+          seconds={idle.remaining}
+          onStay={idle.stay}
+          onLogout={() => {
+            idle.stay();
+            setConfirmLogout(true);
+          }}
+        />
+      )}
+      {confirmLogout && (
+        <div
+          className="fixed inset-0 z-[420] flex items-center justify-center bg-black/70 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmLogout(false);
+          }}
+        >
+          <div
+            ref={logoutDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-title"
+            className="w-full max-w-md rounded-2xl bg-white p-6"
+          >
+            <h2 id="logout-title" className="text-xl font-bold">
+              Are you sure you want to log out?
+            </h2>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmLogout(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void performLogout()}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -24,6 +24,7 @@ import HousingManager from "../components/HousingManager";
 import BarangayBrand from "../components/BarangayBrand";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import RecentServices from "../components/RecentServices";
+import ServiceCatalog from "../components/ServiceCatalog";
 import AdminAppointments from "../components/AdminAppointments";
 import SortControls from "../components/SortControls";
 import PaginationControls from "../components/PaginationControls";
@@ -50,6 +51,8 @@ type AdminTab =
   | "analytics"
   | "announcements"
   | "appointments"
+  | "completed"
+  | "cancelled"
   | "history"
   | "payments"
   | "services"
@@ -66,6 +69,8 @@ const PRIMARY_TABS: Array<{
   { value: "analytics", label: "Analytics", icon: Activity },
   { value: "announcements", label: "Announcements", icon: BellRing },
   { value: "appointments", label: "Appointments", icon: CalendarDays },
+  { value: "completed", label: "Completed Appointments", icon: CalendarDays },
+  { value: "cancelled", label: "Cancelled Appointments", icon: CalendarDays },
   { value: "history", label: "Appointment History", icon: CalendarDays },
   { value: "services", label: "Services", icon: FileSearch },
   { value: "payments", label: "Payments & Receipts", icon: Receipt },
@@ -487,7 +492,12 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     href: "appointments&status=pending",
                     icon: CalendarDays,
                   },
-                  { label: "View Today’s Collections", count: null, href: "payments", icon: Receipt },
+                  {
+                    label: "View Today’s Collections",
+                    count: null,
+                    href: "payments",
+                    icon: Receipt,
+                  },
                   {
                     label: "Open Analytics",
                     count: null,
@@ -748,7 +758,10 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         )}{" "}
         {activeTab === "payments" && <AdminPayments />}
         {activeTab === "housing" && <HousingManager admin />}
+        {activeTab === "services" && <ServiceCatalog />}
         {(activeTab === "appointments" ||
+          activeTab === "completed" ||
+          activeTab === "cancelled" ||
           activeTab === "history" ||
           activeTab === "services") && (
           <AdminAppointments
@@ -756,11 +769,13 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             onChanged={() => void fetchData(true)}
             refreshKey={refreshKey}
             mode={
-              activeTab === "history"
-                ? "history"
-                : activeTab === "services"
-                  ? "services"
-                  : "active"
+              activeTab === "completed" || activeTab === "cancelled"
+                ? activeTab
+                : activeTab === "history"
+                  ? "history"
+                  : activeTab === "services"
+                    ? "services"
+                    : "active"
             }
           />
         )}{" "}

@@ -1,3 +1,4 @@
+import { useImageCrop } from "../components/ImageCropDialog";
 import {
   RESIDENT_IMAGE_ACCEPT,
   validateResidentImage,
@@ -66,6 +67,7 @@ export default function ResidentRegistration({
   onDashboard,
   onBack,
 }: RegistrationProps) {
+  const { crop, cropDialog } = useImageCrop();
   const { user } = useAuth();
   const userId = user?.id;
   const mounted = useRef(true);
@@ -125,7 +127,7 @@ export default function ResidentRegistration({
     return () => window.clearTimeout(timer);
   }, [backImage, frontImage, idType, step]);
 
-  function replaceImage(
+  async function replaceImage(
     file: File,
     currentPreview: string,
     setFile: (value: File | null) => void,
@@ -134,6 +136,9 @@ export default function ResidentRegistration({
   ) {
     try {
       validateResidentImage(file);
+      const cropped = await crop(file, "id");
+      if (!cropped) return;
+      file = cropped;
       if (currentPreview.startsWith("blob:"))
         URL.revokeObjectURL(currentPreview);
       setFile(file);
@@ -516,6 +521,7 @@ export default function ResidentRegistration({
           </div>
         </div>
       </div>
+      {cropDialog}
     </div>
   );
 }

@@ -25,6 +25,7 @@ async function render(source, mock = "", cameraStub = false) {
     define: {
       "process.env.NODE_ENV": '"development"',
       "import.meta.env.BASE_URL": '"/"',
+      "import.meta.env.VITE_SESSION_TIMEOUT_MINUTES": '"15"',
     },
     alias: { fs: path.join(project, "src/shims/fs.ts") },
     loader: { ".png": "dataurl", ".css": "empty" },
@@ -271,20 +272,12 @@ async function adminPageChecks() {
     "Resident Next button fetches the next server range",
   );
   await tick(() => w.__tab("analytics"));
-  check(
-    [
-      "Age Distribution",
-      "Gender Distribution",
-      "Civil Status Distribution",
-      "Education Distribution",
-    ].every((s) => w.document.body.textContent.includes(s)),
-    "Admin analytics renders the four aggregate charts",
-  );
-  check(
-    w.document.body.textContent.includes("18 approved census records") &&
-      w.document.body.textContent.includes("excluded (9)"),
-    "Analytics explains the approved-record sample and exclusions",
-  );
+  check(w.document.body.textContent.includes("Residents by Registration Status"), "Analytics initially displays current resident status statistics");
+  await click(button("Demographics"));
+  check(["Residents by Age Group", "Residents by Sex", "Residents by Civil Status"].every(s=>w.document.body.textContent.includes(s)), "Demographic section renders specific chart titles");
+  await click(button("Education and Work"));
+  check(w.document.body.textContent.includes("Residents by Highest Education"), "Education statistics are organized in their own section");
+  check(w.document.body.textContent.includes("Address groups are not verified household counts"), "Analytics explains the distinction between address groups and households");
   await tick(() => w.__tab("appointments"));
   check(
     w.__requests.some(
@@ -319,9 +312,10 @@ async function adminPageChecks() {
   const seeMore = button("See More") || button("View More");
   await click(seeMore);
   check(
-    Boolean(button("Show Less") || button("See Less") || button("View Less")),
-    "Long announcement expansion still works",
+    Boolean(w.document.querySelector('[aria-labelledby="announcement-detail-title"]')),
+    "Long announcement opens a complete detail dialog",
   );
+  await tick(() => w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await click(button("Archive"));
   check(
     w.document.body.textContent.includes("Announcement archived."),

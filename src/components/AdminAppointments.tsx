@@ -31,7 +31,7 @@ import PaginationControls from "./PaginationControls";
 
 interface AdminAppointmentsProps {
   refreshKey: number;
-  mode?: "active" | "history" | "services";
+  mode?: "active" | "completed" | "cancelled" | "history" | "services";
   onChanged?: () => void;
 }
 interface AppointmentResident {
@@ -108,6 +108,11 @@ function purposeLabel(a: AdminAppointment) {
   );
 }
 
+function historyDateRange(date: string) {
+  const start = `${date}T00:00:00+08:00`;
+  return { start, end: new Date(Date.parse(start) + 86_400_000).toISOString() };
+}
+
 export default function AdminAppointments({
   refreshKey,
   mode = "active",
@@ -123,9 +128,18 @@ export default function AdminAppointments({
   const allowed =
     mode === "active"
       ? ["all", "pending", "confirmed"]
-      : mode === "history"
-        ? ["all", "completed", "cancelled", "rejected"]
-        : ["all", "pending", "confirmed", "completed", "cancelled", "rejected"];
+      : mode === "completed" || mode === "cancelled"
+        ? ["all", mode]
+        : mode === "history"
+          ? ["all", "completed", "cancelled", "rejected"]
+          : [
+              "all",
+              "pending",
+              "confirmed",
+              "completed",
+              "cancelled",
+              "rejected",
+            ];
   const statusFilter: "all" | AppointmentStatus = allowed.includes(
     requestedStatus ?? "",
   )
@@ -168,12 +182,26 @@ export default function AdminAppointments({
           "status",
           mode === "active"
             ? ["pending", "confirmed"]
-            : mode === "history"
-              ? ["completed", "cancelled", "rejected"]
-              : ["pending", "confirmed", "completed", "cancelled", "rejected"],
+            : mode === "completed" || mode === "cancelled"
+              ? [mode]
+              : mode === "history"
+                ? ["completed", "cancelled", "rejected"]
+                : [
+                    "pending",
+                    "confirmed",
+                    "completed",
+                    "cancelled",
+                    "rejected",
+                  ],
         );
       if (statusFilter !== "all") q = q.eq("status", statusFilter);
-      if (dateFilter) q = q.eq("appointment_date", dateFilter);
+      if (dateFilter) {
+        if (mode === "completed" || mode === "cancelled") {
+          const column = mode === "completed" ? "completed_at" : "cancelled_at";
+          const range = historyDateRange(dateFilter);
+          q = q.gte(column, range.start).lt(column, range.end);
+        } else q = q.eq("appointment_date", dateFilter);
+      }
       if (searchQuery.trim())
         q = q.ilike("search_text", searchPattern(searchQuery));
       const column =
@@ -207,7 +235,7 @@ export default function AdminAppointments({
   });
   const loadMetrics = async () => {
     const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
-      p_mode: mode,
+      p_mode: mode === "completed" || mode === "cancelled" ? "history" : mode,
     });
     if (!e) setMetrics((data as unknown as AdminSummary).appointments);
   };
@@ -215,7 +243,7 @@ export default function AdminAppointments({
     let active = true;
     const read = async () => {
       const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
-        p_mode: mode,
+        p_mode: mode === "completed" || mode === "cancelled" ? "history" : mode,
       });
       if (active && !e)
         setMetrics((data as unknown as AdminSummary).appointments);
@@ -305,10 +333,15 @@ export default function AdminAppointments({
       label:
         mode === "active"
           ? "Active Appointments"
-          : mode === "history"
-            ? "Previous Appointments"
-            : "All Service Requests",
-      value: metrics.total,
+          : mode === "completed"
+            ? "Matching Completed Appointments"
+            : mode === "cancelled"
+              ? "Matching Cancelled Appointments"
+              : mode === "history"
+                ? "Previous Appointments"
+                : "All Service Requests",
+      value:
+        mode === "completed" || mode === "cancelled" ? total : metrics.total,
       icon: CalendarClock,
       style: "bg-pine-100 text-pine-700",
     },
@@ -330,7 +363,11 @@ export default function AdminAppointments({
       icon: Clock,
       style: "bg-amber-100 text-amber-700",
     },
-  ].filter((card) => mode !== "active" || card.label !== "Completed Today");
+  ].filter((card) =>
+    mode === "completed" || mode === "cancelled"
+      ? card.label.startsWith("Matching")
+      : mode !== "active" || card.label !== "Completed Today",
+  );
 
   return (
     <>
@@ -341,11 +378,15 @@ export default function AdminAppointments({
               Barangay services
             </p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">
-              {mode === "history"
-                ? "Appointment History"
-                : mode === "services"
-                  ? "Service Requests"
-                  : "Active Appointments"}
+              {mode === "completed"
+                ? "Completed Appointments"
+                : mode === "cancelled"
+                  ? "Cancelled Appointments"
+                  : mode === "history"
+                    ? "Appointment History"
+                    : mode === "services"
+                      ? "Service Requests"
+                      : "Active Appointments"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {mode === "active"
@@ -445,15 +486,17 @@ export default function AdminAppointments({
               <option value="all">All statuses</option>
               {(mode === "active"
                 ? ["pending", "confirmed"]
-                : mode === "history"
-                  ? ["completed", "cancelled", "rejected"]
-                  : [
-                      "pending",
-                      "confirmed",
-                      "completed",
-                      "cancelled",
-                      "rejected",
-                    ]
+                : mode === "completed" || mode === "cancelled"
+                  ? [mode]
+                  : mode === "history"
+                    ? ["completed", "cancelled", "rejected"]
+                    : [
+                        "pending",
+                        "confirmed",
+                        "completed",
+                        "cancelled",
+                        "rejected",
+                      ]
               ).map((value) => (
                 <option key={value} value={value}>
                   {value.charAt(0).toUpperCase() + value.slice(1)}
@@ -462,7 +505,13 @@ export default function AdminAppointments({
             </select>
             <input
               type="date"
-              aria-label="Appointment date"
+              aria-label={
+                mode === "completed"
+                  ? "Completion date"
+                  : mode === "cancelled"
+                    ? "Cancellation date"
+                    : "Appointment date"
+              }
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -479,6 +528,7 @@ export default function AdminAppointments({
               { value: "fee", label: "Fee" },
               { value: "status", label: "Status" },
               { value: "completed_at", label: "Completion date" },
+              { value: "cancelled_at", label: "Cancellation date" },
             ]}
             onFieldChange={setSortField}
             onDirectionChange={setSortDirection}
@@ -704,7 +754,12 @@ export function AdminAppointmentDetails({
               value={resident?.email_address ?? "Not available"}
             />
           </dl>
-          <AppointmentPaymentPanel key={appointment.id} appointment={appointment} admin onChanged={onPaymentChanged} />
+          <AppointmentPaymentPanel
+            key={appointment.id}
+            appointment={appointment}
+            admin
+            onChanged={onPaymentChanged}
+          />
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
               <MessageSquareText size={17} className="text-pine-700" />

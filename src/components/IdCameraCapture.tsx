@@ -1,3 +1,4 @@
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
 import { Camera, FlipHorizontal2, Loader2, X } from "lucide-react";
 import VideoGuide from "./VideoGuide";
@@ -21,7 +22,8 @@ export default function IdCameraCapture({
   const generationRef = useRef(0);
   const captureInProgressRef = useRef(false);
   const autoOpenHandledRef = useRef(false);
-  const finishTimerRef = useRef<number | null>(null);
+  const capturedFile = useRef<File | null>(null);
+  const manualCapture = useRef(false);
   const previewUrlRef = useRef("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,19 +35,20 @@ export default function IdCameraCapture({
   const [progress, setProgress] = useState(0);
   const [capturedPreview, setCapturedPreview] = useState("");
 
+  const dialogRef = useDialogFocus<HTMLDivElement>(open, close, null);
+
   function stop() {
     generationRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    if (finishTimerRef.current !== null)
-      window.clearTimeout(finishTimerRef.current);
-    finishTimerRef.current = null;
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = "";
   }
   function close() {
     stop();
     captureInProgressRef.current = false;
+    capturedFile.current = null;
+    manualCapture.current = false;
     setOpen(false);
     setBusy(false);
     setError("");
@@ -77,12 +80,14 @@ export default function IdCameraCapture({
     stop();
     const token = generationRef.current;
     captureInProgressRef.current = false;
+    capturedFile.current = null;
+    manualCapture.current = false;
     setFacing(nextFacing);
     setOpen(true);
     setBusy(true);
     setCapturedPreview("");
     setError("");
-    setMessage("Align all four card edges with the guide.");
+    setMessage("Opening camera… Allow camera access when your browser asks.");
     setProgress(0);
     try {
       if (!navigator.mediaDevices?.getUserMedia)
@@ -140,7 +145,8 @@ export default function IdCameraCapture({
               : result.message,
           );
           setProgress(stableFrames);
-          if (stableFrames >= requiredStableFrames) {
+          if (stableFrames >= requiredStableFrames || manualCapture.current) {
+            manualCapture.current = false;
             captureInProgressRef.current = true;
             setBusy(true);
             setMessage("Capturing ID…");
@@ -193,19 +199,10 @@ export default function IdCameraCapture({
             setCapturedPreview(preview);
             setBusy(false);
             setProgress(requiredStableFrames);
-            setMessage("ID captured successfully. Saving image…");
+            capturedFile.current = file;
+            setMessage("Review your ID photo. Confirm it or retake.");
             streamRef.current?.getTracks().forEach((track) => track.stop());
             streamRef.current = null;
-            finishTimerRef.current = window.setTimeout(() => {
-              finishTimerRef.current = null;
-              if (generationRef.current !== token || file.size === 0) return;
-              onCapture(file);
-              URL.revokeObjectURL(preview);
-              previewUrlRef.current = "";
-              setCapturedPreview("");
-              setOpen(false);
-              captureInProgressRef.current = false;
-            }, 650);
             return;
           }
         }
@@ -217,9 +214,13 @@ export default function IdCameraCapture({
         streamRef.current = null;
         captureInProgressRef.current = false;
         setError(
-          caught instanceof Error
-            ? caught.message
-            : "Unable to capture the ID. Allow camera permission or upload a photo.",
+          caught instanceof DOMException && caught.name === "NotAllowedError"
+            ? "Camera permission was denied. Allow camera access in browser settings, then retry, or close and upload a photo."
+            : caught instanceof DOMException && caught.name === "NotFoundError"
+              ? "No camera is available. Connect a camera or close and upload an ID photo."
+              : caught instanceof Error
+                ? caught.message
+                : "Unable to capture the ID. Allow camera permission or upload a photo.",
         );
       }
     } finally {
@@ -240,6 +241,7 @@ export default function IdCameraCapture({
       </button>
       {open && (
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label={`Photograph ID ${side}`}
@@ -249,7 +251,8 @@ export default function IdCameraCapture({
             <div>
               <p className="font-bold">Photograph ID {side}</p>
               <p className="mt-1 text-xs text-slate-300">
-                Capture is automatic. Keep the whole card aligned and steady.
+                Keep the whole card aligned and steady. Capture automatically or
+                press Capture.
               </p>
             </div>
             <button
@@ -296,6 +299,41 @@ export default function IdCameraCapture({
             {error || message}
           </p>
           <div className="flex shrink-0 flex-wrap justify-center gap-3">
+            {capturedPreview ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void start()}
+                >
+                  Retake
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    const file = capturedFile.current;
+                    if (file) {
+                      onCapture(file);
+                      close();
+                    }
+                  }}
+                >
+                  Confirm Photo
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || !!error || !streamRef.current}
+                className="btn-primary"
+                onClick={() => {
+                  manualCapture.current = true;
+                }}
+              >
+                Capture
+              </button>
+            )}
             {!capturedPreview && !captureInProgressRef.current && (
               <button
                 type="button"

@@ -58,10 +58,17 @@ export function usePagedQuery<T>({
   useEffect(() => {
     void reload();
     if (!enabled) return;
-    const timer = window.setInterval(() => void reload(), 60_000);
+    const refresh = () => {
+      if (!document.hidden) void reload();
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       ++request.current;
       window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [reload, enabled, refreshKey]);
   return { rows, total, loading, error, reload };

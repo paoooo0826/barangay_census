@@ -21,18 +21,12 @@ GitHub Pages base path `/barangay-census/`.
 
 ## Database setup
 
-Run the supplied SQL files in the Supabase SQL Editor as required by your
-existing schema:
-
-- `supabase-verification-setup.sql`
-- `face-verification-migration.sql`
-- `household-photo-migration.sql`
-- `census-submit-rls-fix.sql`
-- `submit-census-database-fix.sql`
-- `resident-remarks-rls-fix.sql`
-- `new-features-migration.sql` (required for monthly rent and announcements)
-
-Review all Row Level Security policies before using real resident information.
+Use the ordered migration history in `supabase/migrations` for the current
+schema. The deployment uses Supabase project `pqpezqeagxeuetztwlam`. The expanded
+analytics/service migration is
+`20261010124936_expanded_analytics_shared_services_and_fee_snapshots.sql`.
+It has been applied to the connected project. The older root SQL files are
+historical setup scripts; do not rerun them over the current schema.
 
 ## Publish with GitHub Pages
 
@@ -93,24 +87,72 @@ files.
 
 ## Camera verification
 
-Camera access requires HTTPS or localhost. GitHub Pages provides HTTPS.
-face-api.js model weights currently load from jsDelivr, so face verification
-also requires an internet connection. The live preview uses a larger 4:3 frame
-and starts mirrored for natural movement; residents can use **Flip preview** if
-their device reports the opposite orientation. The stored verification photo is
-kept in the camera's original orientation for comparison.
+Camera access requires HTTPS or localhost. Vercel provides HTTPS. Face-api.js
+model weights currently load from jsDelivr, so live identity verification also
+requires an internet connection. Both camera previews and saved captures use the
+camera's original, unmirrored orientation. Screens open fullscreen during
+initialization, and photographs require explicit confirmation.
 
-## Administrator features
+## Current panels and services
 
-- Publish information, important, or urgent announcements to all residents or
-  to residents with a selected review status.
-- Hide, republish, expire, or delete announcements.
-- View descriptive and diagnostic census indicators.
-- View a bounded 30-day submission projection and residents approaching senior
-  citizen eligibility.
-- Review rule-based recommended actions for record processing, data quality,
-  housing assessment, and outreach.
+Administrators can review census records, manage announcements, appointments,
+boarding houses and payment receipts, and view 36 aggregate analytics charts
+organized into nine sections. Current census totals are separate from date-filtered
+activity. Charts omit names, contacts, addresses, identity images and biometric
+measurements. Address groups are explicitly not verified household counts because
+there is no household identifier in the schema. Resident category totals may
+exceed the resident total because selections overlap; categories count distinct
+resident accounts. Occupation free text is grouped into broad reporting categories.
 
-The prediction panel is a transparent trend estimate from the available census
-records. It is not a guaranteed forecast and should be used with administrator
-judgment.
+Both panels have separate Active, Completed and Cancelled appointment routes.
+The resident panel additionally retains rejected requests. Appointments and
+announcements refresh while visible and when the tab regains focus. Resident
+queries use account ownership; administrator queries retain the existing RLS scope.
+
+The shared database service catalog contains the existing approved services:
+Barangay Clearance (130 PHP when education status is Currently Studying, 230 PHP
+otherwise) and Certificate of Residency (30 PHP, with the existing first Low
+Income request exemption). Low Income, Good Moral, Financial and Medical
+Assistance purposes are retained. As before, a cancelled or rejected Low Income
+request counts as a previous request. Existing appointment fees and service
+ownership are immutable. Official documentary requirements and processing durations
+are not currently recorded; the UI asks residents to consult the barangay office.
+No additional official fees or eligibility conditions have been introduced.
+
+Announcement uploads have an interactive 16:7 banner crop. ID and household
+photo uploads retain their original proportions, with drag, zoom, reset and
+confirmation controls. IDs initially show the complete image. JPEG, PNG and WebP
+files are accepted; announcement uploads are limited to 5 MB, resident photos to
+8 MB, and unreadable or undersized images cannot be confirmed. EXIF orientation
+is applied before cropping. Cancelling preserves the previous photo. There is
+currently no separate profile-picture upload field, so no new avatar feature was
+added. Live face verification stays separate from uploaded photo editing.
+
+## Session and navigation
+
+Both roles default to 15 minutes of inactivity. Set
+`VITE_SESSION_TIMEOUT_MINUTES` before building to configure another duration.
+The final minute shows a countdown and Stay Signed In action. Shared activity and
+expiry markers coordinate tabs; suspended tabs check elapsed time on resume.
+At timeout protected UI is hidden immediately, the existing census draft is
+flushed with a bounded wait, Supabase signs out and login shows the inactivity
+message. Draft images follow the existing draft mechanism and are not stored as
+browser blobs. Authentication expiry has a separate message. Valid authentication
+survives refreshes and application/browser Back navigation. Explicit logout and
+Back with no earlier application page ask for confirmation.
+
+## Verification of the expanded flows
+
+`npm test` runs the regression, behavior, presentation and enhancement suites.
+`supabase/tests/system_enhancements.sql` is a transaction-backed database test:
+all its temporary users, requests and price changes roll back. It verifies chart
+privacy, role scope, date semantics, catalog permissions, quote validation,
+idempotent booking and immutable historical fees. Existing database test suites
+remain available in `supabase/tests`.
+
+Camera tests cover cancellation while permissions, face detection or encoding
+are pending, empty captures and failed uploads. Camera screens are fullscreen
+from initialization, retain image aspect ratios and release tracks on close or
+unmount. Captures use an unmirrored canvas and require confirmation. Physical
+camera hardware, lighting, permission prompts and mobile browser behavior still
+require a real-device smoke test.

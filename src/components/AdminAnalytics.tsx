@@ -1,198 +1,317 @@
-import { useEffect, useState } from "react";
-import {
-  BarChart3,
-  Compass,
-  SearchCheck,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
-
-interface AdminAnalyticsProps {
-  refreshKey?: number;
+export interface AnalyticsChart {
+  section: string;
+  title: string;
+  unit: string;
+  period: boolean;
+  kind: string;
+  note?: string;
+  rows: { label: string; count: number }[];
 }
-interface ChartRow {
-  label: string;
-  count: number;
-  detail?: string;
-}
-
 interface AnalyticsData {
-  total: number;
-  excluded: number;
-  age: ChartRow[];
-  gender: ChartRow[];
-  civil: ChartRow[];
-  education: ChartRow[];
+  residentTotal: number;
+  recordTotal: number;
+  duplicateRecords: number;
+  addressGroups: number;
+  postedPayments: number;
+  charts: AnalyticsChart[];
 }
-export default function AdminAnalytics({ refreshKey }: AdminAnalyticsProps) {
-  const [analytics, setAnalytics] = useState<AnalyticsData>({
-    total: 0,
-    excluded: 0,
-    age: [],
-    gender: [],
-    civil: [],
-    education: [],
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+const number = new Intl.NumberFormat("en-PH");
+const colors = [
+  "#166534",
+  "#d97706",
+  "#0284c7",
+  "#7c3aed",
+  "#dc2626",
+  "#64748b",
+];
+export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
+  const total = chart.rows.reduce((sum, row) => sum + row.count, 0),
+    max = Math.max(1, ...chart.rows.map((r) => r.count));
+  let offset = 0;
+  return (
+    <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="font-bold text-slate-900">{chart.title}</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        {chart.period ? "Activity in selected period" : "Current totals"} ·{" "}
+        {number.format(total)} {chart.unit}
+      </p>
+      {chart.note && (
+        <p className="mt-2 text-xs leading-5 text-slate-600">{chart.note}</p>
+      )}
+      {total === 0 ? (
+        <p className="mt-5 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">
+          No records available for this statistic.
+        </p>
+      ) : (
+        <>
+          {chart.kind === "donut" && (
+            <svg
+              viewBox="0 0 120 120"
+              role="img"
+              aria-label={`${chart.title}: ${total} ${chart.unit}`}
+              className="mx-auto my-4 h-36 w-36 -rotate-90"
+            >
+              {chart.rows.map((r, i) => {
+                const length = (r.count / total) * 251.33,
+                  at = offset;
+                offset += length;
+                return (
+                  <circle
+                    key={r.label}
+                    cx="60"
+                    cy="60"
+                    r="40"
+                    fill="none"
+                    stroke={colors[i % colors.length]}
+                    strokeWidth="18"
+                    strokeDasharray={`${length} ${251.33 - length}`}
+                    strokeDashoffset={-at}
+                  >
+                    <title>
+                      {r.label}: {r.count} (
+                      {Math.round((r.count / total) * 100)}%)
+                    </title>
+                  </circle>
+                );
+              })}
+            </svg>
+          )}
+          {chart.kind === "trend" && (
+            <svg
+              viewBox="0 0 320 110"
+              role="img"
+              aria-label={`${chart.title}; monthly ${chart.unit}`}
+              className="my-4 h-28 w-full overflow-visible"
+            >
+              <line x1="10" y1="95" x2="310" y2="95" stroke="#cbd5e1" />
+              <text x="0" y="108" fontSize="9">
+                0
+              </text>
+              <polyline
+                fill="none"
+                stroke="#166534"
+                strokeWidth="3"
+                points={chart.rows
+                  .map(
+                    (r, i) =>
+                      `${10 + (i * 300) / Math.max(1, chart.rows.length - 1)},${95 - (r.count / max) * 80}`,
+                  )
+                  .join(" ")}
+              />
+              {chart.rows.map((r, i) => (
+                <circle
+                  key={r.label}
+                  cx={10 + (i * 300) / Math.max(1, chart.rows.length - 1)}
+                  cy={95 - (r.count / max) * 80}
+                  r="4"
+                  fill="#166534"
+                >
+                  <title>
+                    {r.label}: {r.count} {chart.unit}
+                  </title>
+                </circle>
+              ))}
+            </svg>
+          )}
+          <ul className="mt-4 space-y-3">
+            {chart.rows.map((r, i) => (
+              <li
+                key={r.label}
+                title={`${r.label}: ${r.count} ${chart.unit} (${((r.count / total) * 100).toFixed(1)}%)`}
+              >
+                <div className="mb-1 flex items-start justify-between gap-3 text-sm">
+                  <span className="min-w-0 break-words">
+                    {chart.kind === "donut" && (
+                      <span
+                        aria-hidden="true"
+                        className="mr-2 inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ background: colors[i % colors.length] }}
+                      />
+                    )}
+                    {r.label.replaceAll("_", " ")}
+                  </span>
+                  <span className="shrink-0 font-semibold">
+                    {number.format(r.count)}
+                  </span>
+                </div>
+                {chart.kind === "bar" && (
+                  <div className="h-2 rounded-full bg-slate-100">
+                    <div
+                      className="h-2 rounded-full bg-pine-700"
+                      style={{ width: `${(r.count / max) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </article>
+  );
+}
+export default function AdminAnalytics({
+  refreshKey,
+}: {
+  refreshKey?: number;
+}) {
+  const [data, setData] = useState<AnalyticsData | null>(null),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+  const [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [status, setStatus] = useState("all"),
+    [section, setSection] = useState("Residents");
+  const generation = useRef(0);
   useEffect(() => {
     let active = true;
     const read = async () => {
-      const { data, error: e } = await supabase.rpc("admin_census_analytics");
-      if (!active) return;
-      if (e) setError(e.message);
-      else {
-        setAnalytics(data as unknown as AnalyticsData);
-        setError("");
+      const request = ++generation.current;
+      if (from && to && from > to) {
+        setError("The start date must precede the end date.");
+        setData(null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      setLoading(true);
+      try {
+        const r = await supabase.rpc("admin_system_analytics", {
+          p_from: from || null,
+          p_to: to || null,
+          p_status: status,
+        });
+        if (!active || request !== generation.current) return;
+        if (r.error) throw r.error;
+        setData(r.data as unknown as AnalyticsData);
+        setError("");
+      } catch (e) {
+        if (active && request === generation.current) {
+          setData(null);
+          setError(
+            e && typeof e === "object" && "message" in e
+              ? String(e.message)
+              : "Unable to load analytics. Retry when connected.",
+          );
+        }
+      } finally {
+        if (active && request === generation.current) setLoading(false);
+      }
     };
     void read();
-    const timer = window.setInterval(() => void read(), 60_000);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void read();
+    }, 60_000);
     return () => {
       active = false;
+      ++generation.current;
       window.clearInterval(timer);
     };
-  }, [refreshKey]);
+  }, [from, to, status, refreshKey]);
+  const sections = [...new Set((data?.charts ?? []).map((c) => c.section))];
   return (
-    <section className="space-y-6">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pine-100 text-pine-700">
-            <BarChart3 size={24} />
-          </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-pine-700">
-              Live Supabase census data
-            </p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">
-              Barangay Census Analytics
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Charts count {analytics.total} approved census records. Pending,
-              rejected, and legacy returned records are excluded (
-              {analytics.excluded}).
-            </p>
-          </div>
-        </div>
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900">
+          Barangay Analytics
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Aggregate statistics from current records. Dates filter activity
+          charts and collected payments; current totals remain unchanged.
+          Resident status filters resident and verification charts. No names,
+          contact details, addresses, or ID images are included.
+        </p>
+      </div>
+      <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-3">
+        <label className="text-sm font-semibold">
+          Activity from
+          <input
+            aria-label="Activity from"
+            type="date"
+            className="input-field mt-2"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Activity through
+          <input
+            aria-label="Activity through"
+            type="date"
+            className="input-field mt-2"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Resident status
+          <select
+            className="input-field mt-2"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            {["all", "verified", "pending_review", "returned", "rejected"].map(
+              (s) => (
+                <option key={s} value={s}>
+                  {s.replaceAll("_", " ")}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
       </div>
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">
           {error}
         </p>
       )}
-      {loading ? (
-        <p className="p-8 text-center text-slate-500">
-          Loading census analytics…
-        </p>
-      ) : !analytics.total ? (
-        <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
-          <p className="font-bold text-slate-700">No data available yet.</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Charts will appear after census records are approved.
+      {loading && <p role="status">Loading analytics…</p>}
+      {data && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Current unique residents", data.residentTotal],
+              ["Distinct address groups", data.addressGroups],
+              ["Duplicate account records excluded", data.duplicateRecords],
+              ["Posted payments in period (PHP)", data.postedPayments],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border bg-white p-5">
+                <p className="text-xs text-slate-500">{label}</p>
+                <p className="mt-2 text-2xl font-bold text-pine-800">
+                  {number.format(Number(value))}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs leading-5 text-slate-500">
+            Address groups are not verified household counts: the database has
+            no independent household identifier. Resident charts use the latest
+            record per account. Missing values are shown explicitly. Occupations
+            are grouped to avoid displaying personal free text.
           </p>
-        </div>
-      ) : (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <ChartCard
-            title="Age Distribution"
-            subtitle="Approved census records by age group"
-            icon={SearchCheck}
-            rows={analytics.age}
-            note="This is the distribution of approved records, not a complete population estimate."
-          />
-          <ChartCard
-            title="Gender Distribution"
-            subtitle="Distribution by the census sex field"
-            icon={Sparkles}
-            rows={analytics.gender}
-            note="Counts use the sex value provided in each saved census record."
-          />
-          <ChartCard
-            title="Civil Status Distribution"
-            subtitle="Distribution by recorded civil status"
-            icon={TrendingUp}
-            rows={analytics.civil}
-            note="Counts represent approved census records, not a forecast."
-          />
-          <ChartCard
-            title="Education Distribution"
-            subtitle="Highest educational level reported by residents"
-            icon={Compass}
-            rows={analytics.education}
-            note="Missing education values are shown as Not specified."
-          />
-        </div>
+          <nav aria-label="Analytics sections" className="flex flex-wrap gap-2">
+            {sections.map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={s === section}
+                onClick={() => setSection(s)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold ${s === section ? "bg-pine-700 text-white" : "border bg-white text-slate-700"}`}
+              >
+                {s}
+              </button>
+            ))}
+          </nav>
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            {data.charts
+              .filter((c) => c.section === section)
+              .map((c) => (
+                <AnalyticsChartCard key={c.title} chart={c} />
+              ))}
+          </div>
+        </>
       )}
     </section>
-  );
-}
-
-function ChartCard({
-  title,
-  subtitle,
-  icon: Icon,
-  rows,
-  note,
-}: {
-  title: string;
-  subtitle: string;
-  icon: typeof SearchCheck;
-  rows: ChartRow[];
-  note: string;
-}) {
-  const max = Math.max(1, ...rows.map((row) => row.count));
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
-  return (
-    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
-          <Icon size={20} />
-        </div>
-        <div>
-          <h3 className="font-bold text-slate-900">{title}</h3>
-          <p className="text-xs text-slate-500">{subtitle}</p>
-        </div>
-      </div>
-      <div className="mt-6 space-y-4">
-        {rows.length ? (
-          rows.map((row) => (
-            <div
-              key={row.label}
-              title={row.detail ?? `${row.label}: ${row.count}`}
-            >
-              <div className="mb-1.5 flex items-start justify-between gap-3 text-sm">
-                <span className="min-w-0 font-medium text-slate-700">
-                  {row.label}
-                </span>
-                <span className="shrink-0 font-bold text-slate-900">
-                  {row.count}{" "}
-                  <span className="font-normal text-slate-400">
-                    ({total ? Math.round((row.count / total) * 100) : 0}%)
-                  </span>
-                </span>
-              </div>
-              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-pine-700 transition-all"
-                  style={{ width: `${(row.count / max) * 100}%` }}
-                />
-              </div>
-              {row.detail && (
-                <p className="mt-1 text-xs text-slate-500">{row.detail}</p>
-              )}
-            </div>
-          ))
-        ) : (
-          <p className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">
-            No data available yet.
-          </p>
-        )}
-      </div>
-      <p className="mt-5 rounded-xl border border-pine-100 bg-pine-50 p-3 text-xs leading-5 text-pine-900">
-        {note}
-      </p>
-    </article>
   );
 }

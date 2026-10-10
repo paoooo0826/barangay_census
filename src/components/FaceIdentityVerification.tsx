@@ -1,3 +1,4 @@
+import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -13,7 +14,11 @@ import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
 
 export type LivenessAction =
-  "blink_twice" | "turn_left" | "turn_right" | "smile" | "move_closer";
+  | "blink_twice"
+  | "turn_left"
+  | "turn_right"
+  | "smile"
+  | "move_closer";
 
 export interface FaceVerificationResult {
   file: File | null;
@@ -162,6 +167,15 @@ export default function FaceIdentityVerification({
   const capturePreviewRef = useRef("");
 
   const [modelsReady, setModelsReady] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [pendingResult, setPendingResult] =
+    useState<FaceVerificationResult | null>(null);
+  const facingRef = useRef<"user" | "environment">("user");
+  const dialogRef = useDialogFocus<HTMLDivElement>(
+    cameraOpen,
+    resetVerification,
+    null,
+  );
   const [cameraReady, setCameraReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -192,13 +206,13 @@ export default function FaceIdentityVerification({
     };
   }, []);
   useEffect(() => {
-    if (!cameraReady) return;
+    if (!cameraOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [cameraReady]);
+  }, [cameraOpen]);
   useEffect(() => {
     resetVerification();
     autoStartKeyRef.current = "";
@@ -274,6 +288,8 @@ export default function FaceIdentityVerification({
     setActionIndex(0);
     setPassed([]);
     setComplete(false);
+    setCameraOpen(false);
+    setPendingResult(null);
     setBusy(false);
     setCameraUnavailable(false);
     setError("");
@@ -297,8 +313,13 @@ export default function FaceIdentityVerification({
     if (disabled || validatingRef.current) return;
     validatingRef.current = true;
     const attempt = ++attemptRef.current;
+    setCameraOpen(true);
+    setPendingResult(null);
     setBusy(true);
     setError("");
+    setStatus(
+      "Initializing fullscreen capture. Preparing verification and camera permission…",
+    );
     try {
       await enterBrowserFullscreen();
       if (!activeAttempt(attempt)) return;
@@ -413,13 +434,14 @@ export default function FaceIdentityVerification({
     attempt = attemptRef.current,
   ) {
     if (!activeAttempt(attempt)) return;
+    setCameraOpen(true);
     if (!navigator.mediaDevices?.getUserMedia)
       throw new DOMException("Camera unsupported", "NotFoundError");
     stopCamera();
     const sessionId = monitorSessionRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: "user",
+        facingMode: { ideal: facingRef.current },
         width: { ideal: 1280 },
         height: { ideal: 960 },
         aspectRatio: { ideal: 4 / 3 },
@@ -694,10 +716,9 @@ export default function FaceIdentityVerification({
 
       if (!idFaceAvailable || !idDescriptor) {
         stopCamera();
-        exitBrowserFullscreen();
         setBusy(true);
-        setStatus("Saving captured verification…");
-        await onVerified({
+        setStatus("Review the captured photo, then confirm or retake.");
+        setPendingResult({
           file,
           matched: false,
           matchDistance: 0,
@@ -712,7 +733,7 @@ export default function FaceIdentityVerification({
           deviceType: deviceType(),
         });
         if (!activeAttempt(attempt)) return;
-        setComplete(true);
+        setComplete(false);
         setStatus(
           "Liveness passed. The ID has no usable face photo, so manual administrator verification is required.",
         );
@@ -737,10 +758,9 @@ export default function FaceIdentityVerification({
         );
       }
       stopCamera();
-      exitBrowserFullscreen();
       setBusy(true);
-      setStatus("Saving captured verification…");
-      await onVerified({
+      setStatus("Review the captured photo, then confirm or retake.");
+      setPendingResult({
         file,
         matched,
         matchDistance: distance,
@@ -753,7 +773,7 @@ export default function FaceIdentityVerification({
         deviceType: deviceType(),
       });
       if (!activeAttempt(attempt)) return;
-      setComplete(true);
+      setComplete(false);
       setStatus(
         recommendation === "match"
           ? "Strong face match. Awaiting administrator review."
@@ -837,15 +857,19 @@ export default function FaceIdentityVerification({
         </button>
       )}
 
-      {(cameraReady || complete || capturePreview) && (
+      {(cameraOpen || cameraReady || complete || capturePreview) && (
         <div
+          ref={dialogRef}
+          role={cameraOpen ? "dialog" : undefined}
+          aria-modal={cameraOpen ? true : undefined}
+          aria-label="Fullscreen identity capture"
           className={
-            cameraReady && !complete
+            cameraOpen
               ? "camera-dialog fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5"
               : "mt-4"
           }
         >
-          {cameraReady && !complete && (
+          {cameraOpen && (
             <div className="mb-3 flex shrink-0 items-start justify-between gap-3 text-white">
               <div>
                 <p className="text-sm font-bold sm:text-base">
@@ -873,7 +897,7 @@ export default function FaceIdentityVerification({
           )}
           <div
             className={
-              cameraReady && !complete
+              cameraOpen
                 ? "camera-preview relative flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl"
                 : "relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
             }
@@ -882,7 +906,7 @@ export default function FaceIdentityVerification({
               <img
                 src={capturePreview}
                 alt="Captured live verification photo"
-                className="aspect-[4/3] w-full object-contain"
+                className="h-full w-full object-contain"
               />
             ) : (
               <video
@@ -890,7 +914,7 @@ export default function FaceIdentityVerification({
                 muted
                 playsInline
                 className={
-                  cameraReady && !complete
+                  cameraOpen
                     ? "h-full w-full object-contain"
                     : "aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
                 }
@@ -906,6 +930,78 @@ export default function FaceIdentityVerification({
             )}
           </div>
           <canvas ref={canvasRef} className="hidden" />
+          {cameraOpen && (
+            <div className="mt-3 flex shrink-0 flex-wrap justify-center gap-3 text-white">
+              {pendingResult ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={resetVerification}
+                  >
+                    Retake
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={busy}
+                    onClick={async () => {
+                      const attempt = attemptRef.current;
+                      setBusy(true);
+                      try {
+                        await onVerified(pendingResult);
+                        if (!activeAttempt(attempt)) return;
+                        setPendingResult(null);
+                        setComplete(true);
+                        setCameraOpen(false);
+                        exitBrowserFullscreen();
+                      } catch (caught) {
+                        if (activeAttempt(attempt))
+                          setError(
+                            caught instanceof Error
+                              ? caught.message
+                              : "Unable to save photo. Retry confirmation.",
+                          );
+                      } finally {
+                        if (activeAttempt(attempt)) setBusy(false);
+                      }
+                    }}
+                  >
+                    Confirm Photo
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-white/10 px-4 py-2"
+                    disabled={busy}
+                    onClick={() => {
+                      facingRef.current =
+                        facingRef.current === "user" ? "environment" : "user";
+                      resetVerification();
+                      void validateIdAndStart();
+                    }}
+                  >
+                    Switch camera
+                  </button>
+                  {error && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        resetVerification();
+                        void validateIdAndStart();
+                      }}
+                    >
+                      Retry camera
+                    </button>
+                  )}
+                  {!cameraReady && !error && <p role="status">{status}</p>}
+                </>
+              )}
+            </div>
+          )}
           {!complete && !cameraReady && (
             <p className="mt-3 text-xs text-slate-500">
               The camera preview and saved verification photo use the normal,
@@ -915,7 +1011,7 @@ export default function FaceIdentityVerification({
           {actionSummary && (
             <div
               className={
-                cameraReady && !complete
+                cameraOpen
                   ? "mt-3 text-center text-xs text-slate-300"
                   : "mt-3 text-xs text-slate-500"
               }

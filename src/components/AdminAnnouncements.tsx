@@ -1,3 +1,6 @@
+import AnnouncementDetail, { AnnouncementImage } from "./AnnouncementDetail";
+import type { AnnouncementDetailData } from "./AnnouncementDetail";
+import { useImageCrop } from "./ImageCropDialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -75,66 +78,11 @@ function formatDateTime(value?: string | null) {
       }).format(date);
 }
 
-async function cropToBanner(file: File) {
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
-    throw new Error("Announcement photo must be JPG, PNG, or WebP.");
-  if (file.size > 5 * 1024 * 1024)
-    throw new Error("Announcement photo must be 5 MB or smaller.");
-  const url = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => resolve(element);
-      element.onerror = () =>
-        reject(new Error("The selected announcement image could not be read."));
-      element.src = url;
-    });
-    const ratio = 16 / 7;
-    const sourceRatio = image.naturalWidth / image.naturalHeight;
-    let sx = 0;
-    let sy = 0;
-    let sw = image.naturalWidth;
-    let sh = image.naturalHeight;
-    if (sourceRatio > ratio) {
-      sw = image.naturalHeight * ratio;
-      sx = (image.naturalWidth - sw) / 2;
-    } else {
-      sh = image.naturalWidth / ratio;
-      sy = (image.naturalHeight - sh) / 2;
-    }
-    const width = Math.min(1600, Math.max(800, Math.round(sw)));
-    const height = Math.round(width / ratio);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context)
-      throw new Error("This browser cannot crop the announcement image.");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (value) =>
-          value && value.size > 0
-            ? resolve(value)
-            : reject(new Error("The cropped image is empty.")),
-        "image/jpeg",
-        0.9,
-      ),
-    );
-    return new File([blob], `announcement-${Date.now()}.jpg`, {
-      type: "image/jpeg",
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 export default function AdminAnnouncements({
   adminProfileId,
   refreshKey,
 }: Props) {
+  const { crop, cropDialog } = useImageCrop();
   const mutationLock = useRef(false);
   const imageGeneration = useRef(0);
   const [preparingImage, setPreparingImage] = useState(false);
@@ -159,7 +107,14 @@ export default function AdminAnnouncements({
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [detail, setDetail] = useState<AnnouncementDetailData | null>(null);
+  useEffect(() => {
+    setDetail((current) =>
+      current?.id
+        ? (announcements.find((item) => item.id === current.id) ?? null)
+        : current,
+    );
+  }, [announcements]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -238,14 +193,26 @@ export default function AdminAnnouncements({
     void Promise.all(
       rows.map(async (row) => {
         if (!row.image_path) return { ...row, imageUrl: null };
-        const { data, error: e } = await supabase.storage
-          .from("announcement-images")
-          .createSignedUrl(row.image_path, 3600);
+        const { data, error: e } = await Promise.resolve(
+          supabase.storage
+            .from("announcement-images")
+            .createSignedUrl(row.image_path, 3600),
+        ).catch(() => ({
+          data: null,
+          error: { message: "Image unavailable" },
+        }));
         return { ...row, imageUrl: e ? null : (data?.signedUrl ?? null) };
       }),
-    ).then((withImages) => {
-      if (generation === imageRequest.current) setAnnouncements(withImages);
-    });
+    )
+      .then((withImages) => {
+        if (generation === imageRequest.current) setAnnouncements(withImages);
+      })
+      .catch(() => {
+        if (generation === imageRequest.current)
+          setError(
+            "Some announcement images could not be loaded. Refresh to retry.",
+          );
+      });
     return () => {
       ++imageRequest.current;
     };
@@ -274,8 +241,8 @@ export default function AdminAnnouncements({
     const generation = ++imageGeneration.current;
     setPreparingImage(true);
     try {
-      const cropped = await cropToBanner(file);
-      if (generation !== imageGeneration.current) return;
+      const cropped = await crop(file, "announcement");
+      if (generation !== imageGeneration.current || !cropped) return;
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImage(cropped);
       setRemoveExistingImage(false);
@@ -619,6 +586,24 @@ export default function AdminAnnouncements({
       )}
       <div className={`grid ${showForm ? "xl:grid-cols-[0.9fr_1.1fr]" : ""}`}>
         {showForm && (
+          <button
+            type="button"
+            disabled={preparingImage}
+            className="btn-secondary mb-5"
+            onClick={() =>
+              setDetail({
+                title: title.trim() || "Announcement preview",
+                message: message || "Your announcement text appears here.",
+                imageUrl: imagePreview,
+                priority,
+              })
+            }
+          >
+            Preview as Resident
+          </button>
+        )}
+
+        {showForm && (
           <form
             onSubmit={handlePublish}
             noValidate
@@ -843,147 +828,145 @@ export default function AdminAnnouncements({
                 earlierLabel="Other Announcements"
               >
                 {(a, recent) => {
-                const long = a.message.length > 240;
-                const open = expanded.has(a.id);
-                return (
-                  <article
-                    key={a.id}
-                    className={`min-w-0 overflow-hidden rounded-2xl border ${PRIORITY_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
-                  >
-                    {a.imageUrl && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPreviewImage({
-                            title: a.title,
-                            url: a.imageUrl as string,
-                          })
-                        }
-                        className="block aspect-[16/7] w-full overflow-hidden bg-white/70"
-                      >
-                        <img
-                          src={a.imageUrl}
-                          alt={`Attached image for ${a.title}`}
-                          className="h-full w-full object-cover"
-                        />
-                      </button>
-                    )}
-                    <div className="p-4">
-                      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold uppercase">
-                            {PRIORITY_LABELS[a.priority]} ·{" "}
-                            {AUDIENCE_LABELS[a.audience]}
-                          </p>
-                          <h4 className="mt-2 font-bold text-slate-900">
-                            {a.title}
-                          </h4>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          {recent && <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">Recent</span>}
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.archived ? "bg-slate-200 text-slate-700" : a.is_published && (!a.expires_at || new Date(a.expires_at).getTime() > currentTime) ? "bg-sage-100 text-sage-700" : "bg-slate-200 text-slate-600"}`}
-                        >
-                          {a.archived
-                            ? "Archived"
-                            : a.is_published
-                              ? a.expires_at &&
-                                new Date(a.expires_at).getTime() <= currentTime
-                                ? "Expired"
-                                : "Published"
-                              : "Hidden"}
-                        </span>
-                        </div>
-                      </div>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                        {long && !open
-                          ? `${a.message.slice(0, 240).trim()}…`
-                          : a.message}
-                      </p>
-                      {long && (
+                  const long = a.message.length > 240;
+                  const open = false;
+                  return (
+                    <article
+                      key={a.id}
+                      className={`min-w-0 overflow-hidden rounded-2xl border ${PRIORITY_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
+                    >
+                      {(a.imageUrl || a.image_path) && (
                         <button
                           type="button"
                           onClick={() =>
-                            setExpanded((previous) => {
-                              const next = new Set(previous);
-                              if (next.has(a.id)) next.delete(a.id);
-                              else next.add(a.id);
-                              return next;
+                            setPreviewImage({
+                              title: a.title,
+                              url: a.imageUrl ?? "",
                             })
                           }
-                          className="mt-2 text-sm font-bold text-pine-700"
+                          className="block aspect-[16/7] w-full overflow-hidden bg-white/70"
                         >
-                          {open ? "Show Less" : "See More"}
+                          <AnnouncementImage
+                            src={a.imageUrl}
+                            alt={`Attached image for ${a.title}`}
+                            className="h-full w-full object-cover"
+                          />
                         </button>
                       )}
-                      <p className="mt-3 text-xs text-slate-500">
-                        {a.archived
-                          ? `Archived ${formatDateTime(a.archived_at)}`
-                          : `Published ${formatDateTime(a.published_at)}`}
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {!a.archived ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={saving || preparingImage}
-                              className="rounded-lg border border-pine-200 px-3 py-2 text-xs font-bold text-pine-700"
-                              onClick={() => editAnnouncement(a)}
+                      <div className="p-4">
+                        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold uppercase">
+                              {PRIORITY_LABELS[a.priority]} ·{" "}
+                              {AUDIENCE_LABELS[a.audience]}
+                            </p>
+                            <h4 className="mt-2 font-bold text-slate-900">
+                              {a.title}
+                            </h4>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            {recent && (
+                              <span className="rounded-full bg-pine-800 px-2.5 py-1 text-xs font-bold text-white">
+                                Recent
+                              </span>
+                            )}
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${a.archived ? "bg-slate-200 text-slate-700" : a.is_published && (!a.expires_at || new Date(a.expires_at).getTime() > currentTime) ? "bg-sage-100 text-sage-700" : "bg-slate-200 text-slate-600"}`}
                             >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() =>
-                                void runAction(() => togglePublished(a))
-                              }
-                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
-                            >
-                              {a.is_published ? "Hide" : "Publish"}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() =>
-                                void runAction(() => archiveAnnouncement(a))
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700"
-                            >
-                              <Archive size={14} />
-                              Archive
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() =>
-                                void runAction(() => restoreAnnouncement(a))
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-pine-200 bg-white px-3 py-2 text-xs font-bold text-pine-700"
-                            >
-                              <RotateCcw size={14} />
-                              Restore
-                            </button>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() =>
-                                void runAction(() => permanentlyDelete(a))
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"
-                            >
-                              <Trash2 size={14} />
-                              Permanently Delete
-                            </button>
-                          </>
+                              {a.archived
+                                ? "Archived"
+                                : a.is_published
+                                  ? a.expires_at &&
+                                    new Date(a.expires_at).getTime() <=
+                                      currentTime
+                                    ? "Expired"
+                                    : "Published"
+                                  : "Hidden"}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                          {long && !open
+                            ? `${a.message.slice(0, 240).trim()}…`
+                            : a.message}
+                        </p>
+                        {long && (
+                          <button
+                            type="button"
+                            onClick={() => setDetail(a)}
+                            className="mt-2 text-sm font-bold text-pine-700"
+                          >
+                            {open ? "Show Less" : "See More"}
+                          </button>
                         )}
+                        <p className="mt-3 text-xs text-slate-500">
+                          {a.archived
+                            ? `Archived ${formatDateTime(a.archived_at)}`
+                            : `Published ${formatDateTime(a.published_at)}`}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {!a.archived ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={saving || preparingImage}
+                                className="rounded-lg border border-pine-200 px-3 py-2 text-xs font-bold text-pine-700"
+                                onClick={() => editAnnouncement(a)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() =>
+                                  void runAction(() => togglePublished(a))
+                                }
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700"
+                              >
+                                {a.is_published ? "Hide" : "Publish"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() =>
+                                  void runAction(() => archiveAnnouncement(a))
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700"
+                              >
+                                <Archive size={14} />
+                                Archive
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() =>
+                                  void runAction(() => restoreAnnouncement(a))
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-pine-200 bg-white px-3 py-2 text-xs font-bold text-pine-700"
+                              >
+                                <RotateCcw size={14} />
+                                Restore
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() =>
+                                  void runAction(() => permanentlyDelete(a))
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"
+                              >
+                                <Trash2 size={14} />
+                                Permanently Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                );
+                    </article>
+                  );
                 }}
               </AnnouncementSections>
               {!visible.length && (
@@ -1001,6 +984,13 @@ export default function AdminAnnouncements({
           )}
         </div>
       </div>
+      {cropDialog}
+      {detail && (
+        <AnnouncementDetail
+          announcement={detail}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {previewImage && (
         <div
           ref={imagePreviewRef}

@@ -1,3 +1,7 @@
+import AnnouncementDetail, {
+  AnnouncementImage,
+} from "../components/AnnouncementDetail";
+import type { AnnouncementDetailData } from "../components/AnnouncementDetail";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -46,7 +50,15 @@ interface Props {
   onLogout: () => void;
   onEdit: () => void;
 }
-type Tab = "home" | "appointments" | "profile" | "record" | "housing";
+type Tab =
+  | "home"
+  | "completed"
+  | "cancelled"
+  | "rejected"
+  | "appointments"
+  | "profile"
+  | "record"
+  | "housing";
 type AnnouncementView = Announcement & { imageUrl?: string | null };
 interface ResidentCategoryView {
   name: string;
@@ -148,7 +160,14 @@ export default function ResidentDashboard({
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [categories, setCategories] = useState<ResidentCategoryView[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementView[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [detail, setDetail] = useState<AnnouncementDetailData | null>(null);
+  useEffect(() => {
+    setDetail((current) =>
+      current?.id
+        ? (announcements.find((item) => item.id === current.id) ?? null)
+        : current,
+    );
+  }, [announcements]);
   const [images, setImages] = useState<ResidentImages>({
     household: null,
     idFront: null,
@@ -168,6 +187,9 @@ export default function ResidentDashboard({
   const selectedTab: Tab = [
     "home",
     "appointments",
+    "completed",
+    "cancelled",
+    "rejected",
     "profile",
     "record",
     "housing",
@@ -291,9 +313,14 @@ export default function ResidentDashboard({
           active.map(async (announcement) => {
             if (!announcement.image_path)
               return { ...announcement, imageUrl: null };
-            const { data, error: imageError } = await supabase.storage
-              .from("announcement-images")
-              .createSignedUrl(announcement.image_path, 300);
+            const { data, error: imageError } = await Promise.resolve(
+              supabase.storage
+                .from("announcement-images")
+                .createSignedUrl(announcement.image_path, 300),
+            ).catch(() => ({
+              data: null,
+              error: { message: "Image unavailable" },
+            }));
             return {
               ...announcement,
               imageUrl: imageError ? null : (data?.signedUrl ?? null),
@@ -350,14 +377,18 @@ export default function ResidentDashboard({
   }, [load]);
 
   useEffect(() => {
-    const refreshTimer = window.setInterval(() => void load(true), 60_000);
+    const refreshTimer = window.setInterval(() => {
+      if (!document.hidden) void load(true);
+    }, 30_000);
     const refreshOnFocus = () => {
       if (document.visibilityState !== "hidden") void load(true);
     };
     window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
     return () => {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
     };
   }, [load]);
 
@@ -694,7 +725,19 @@ export default function ResidentDashboard({
           resident && (
             <ResidencyDetails residentId={resident.id} onRecordStart={onEdit} />
           )}
-        {tab === "appointments" && <ResidentAppointments resident={resident} />}
+        {["appointments", "completed", "cancelled", "rejected"].includes(
+          tab,
+        ) && (
+          <ResidentAppointments
+            key={tab}
+            resident={resident}
+            mode={
+              tab === "completed" || tab === "cancelled" || tab === "rejected"
+                ? tab
+                : "active"
+            }
+          />
+        )}
         {tab === "profile" && (
           <Profile
             resident={resident}
@@ -738,24 +781,24 @@ export default function ResidentDashboard({
                   <AnnouncementSections items={announcements}>
                     {(a, recent) => {
                       const long = a.message.length > 240;
-                      const open = expanded.has(a.id);
+                      const open = false;
                       return (
                         <article
                           key={a.id}
                           className={`min-w-0 rounded-2xl border p-5 ${ANNOUNCEMENT_STYLES[a.priority]} ${recent ? "ring-2 ring-pine-300/70 shadow-sm" : ""}`}
                         >
-                          {a.imageUrl && (
+                          {(a.imageUrl || a.image_path) && (
                             <button
                               type="button"
                               onClick={() =>
                                 setPreviewImage({
                                   title: a.title,
-                                  url: a.imageUrl as string,
+                                  url: a.imageUrl ?? "",
                                 })
                               }
                               className="mb-4 block w-full overflow-hidden rounded-2xl bg-white/70"
                             >
-                              <img
+                              <AnnouncementImage
                                 src={a.imageUrl}
                                 alt={`Attached image for ${a.title}`}
                                 className="aspect-[16/7] w-full object-cover"
@@ -791,14 +834,7 @@ export default function ResidentDashboard({
                           </p>
                           {long && (
                             <button
-                              onClick={() =>
-                                setExpanded((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(a.id)) next.delete(a.id);
-                                  else next.add(a.id);
-                                  return next;
-                                })
-                              }
+                              onClick={() => setDetail(a)}
                               className="mt-2 text-sm font-bold text-pine-700"
                             >
                               {open ? "Show Less" : "See More"}
@@ -966,6 +1002,12 @@ export default function ResidentDashboard({
           </>
         )}
       </main>
+      {detail && (
+        <AnnouncementDetail
+          announcement={detail}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {previewImage && (
         <div
           ref={imagePreviewRef}
