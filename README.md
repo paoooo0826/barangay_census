@@ -97,7 +97,7 @@ initialization, and photographs require explicit confirmation.
 
 Administrators can review census records, manage announcements, appointments,
 boarding houses and payment receipts, and view 36 aggregate analytics charts
-organized into nine sections. Current census totals are separate from date-filtered
+organized into ten sections. Current census totals are separate from date-filtered
 activity. Charts omit names, contacts, addresses, identity images and biometric
 measurements. Address groups are explicitly not verified household counts because
 there is no household identifier in the schema. Resident category totals may
@@ -123,7 +123,7 @@ Announcement uploads have an interactive 16:7 banner crop. ID and household
 photo uploads retain their original proportions, with drag, zoom, reset and
 confirmation controls. IDs initially show the complete image. JPEG, PNG and WebP
 files are accepted; announcement uploads are limited to 5 MB, resident photos to
-8 MB, and unreadable or undersized images cannot be confirmed. EXIF orientation
+8 MB, and images that cannot be decoded or are undersized cannot be confirmed. EXIF orientation
 is applied before cropping. Cancelling preserves the previous photo. There is
 currently no separate profile-picture upload field, so no new avatar feature was
 added. Live face verification stays separate from uploaded photo editing.
