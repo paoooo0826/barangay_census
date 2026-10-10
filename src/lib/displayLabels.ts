@@ -23,3 +23,43 @@ export function categoryLabel(value?: string | null) {
   if (value === "FHONA") return "Family Head and other needy adults";
   return value ?? "";
 }
+
+const ANALYTICS_ACRONYMS = new Map([
+  ["id", "ID"],
+  ["ids", "IDs"],
+  ["pwd", "PWD"],
+  ["ip", "IP"],
+  ["php", "PHP"],
+  ["4ps", "4Ps"],
+  ["ofw", "OFW"],
+  ["phd", "PhD"],
+]);
+const TITLE_CONNECTORS = new Set([
+  "and",
+  "at",
+  "by",
+  "for",
+  "in",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "with",
+]);
+
+export function analyticsLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu, (word, offset: number) => {
+      const lower = word.toLowerCase();
+      return (
+        ANALYTICS_ACRONYMS.get(lower) ??
+        (offset > 0 && TITLE_CONNECTORS.has(lower)
+          ? lower
+          : lower.charAt(0).toUpperCase() + lower.slice(1))
+      );
+    });
+}

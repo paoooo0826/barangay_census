@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { analyticsLabel } from "../lib/displayLabels";
 export interface AnalyticsChart {
   section: string;
   title: string;
@@ -27,6 +28,10 @@ const colors = [
   "#64748b",
 ];
 export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
+  const rows = chart.rows.map((row) => ({
+    ...row,
+    displayLabel: analyticsLabel(row.label),
+  }));
   const total = chart.rows.reduce((sum, row) => sum + row.count, 0),
     max = Math.max(1, ...chart.rows.map((r) => r.count));
   let offset = 0;
@@ -53,7 +58,7 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
               aria-label={`${chart.title}: ${total} ${chart.unit}`}
               className="mx-auto my-4 h-36 w-36 -rotate-90"
             >
-              {chart.rows.map((r, i) => {
+              {rows.map((r, i) => {
                 const length = (r.count / total) * 251.33,
                   at = offset;
                 offset += length;
@@ -70,8 +75,7 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
                     strokeDashoffset={-at}
                   >
                     <title>
-                      {r.label}: {r.count} (
-                      {Math.round((r.count / total) * 100)}%)
+                      {`${r.displayLabel}: ${r.count} (${Math.round((r.count / total) * 100)}%)`}
                     </title>
                   </circle>
                 );
@@ -93,14 +97,14 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
                 fill="none"
                 stroke="#166534"
                 strokeWidth="3"
-                points={chart.rows
+                points={rows
                   .map(
                     (r, i) =>
                       `${10 + (i * 300) / Math.max(1, chart.rows.length - 1)},${95 - (r.count / max) * 80}`,
                   )
                   .join(" ")}
               />
-              {chart.rows.map((r, i) => (
+              {rows.map((r, i) => (
                 <circle
                   key={r.label}
                   cx={10 + (i * 300) / Math.max(1, chart.rows.length - 1)}
@@ -109,17 +113,17 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
                   fill="#166534"
                 >
                   <title>
-                    {r.label}: {r.count} {chart.unit}
+                    {`${r.displayLabel}: ${r.count} ${chart.unit}`}
                   </title>
                 </circle>
               ))}
             </svg>
           )}
           <ul className="mt-4 space-y-3">
-            {chart.rows.map((r, i) => (
+            {rows.map((r, i) => (
               <li
                 key={r.label}
-                title={`${r.label}: ${r.count} ${chart.unit} (${((r.count / total) * 100).toFixed(1)}%)`}
+                title={`${r.displayLabel}: ${r.count} ${chart.unit} (${((r.count / total) * 100).toFixed(1)}%)`}
               >
                 <div className="mb-1 flex items-start justify-between gap-3 text-sm">
                   <span className="min-w-0 break-words">
@@ -130,7 +134,7 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
                         style={{ background: colors[i % colors.length] }}
                       />
                     )}
-                    {r.label.replaceAll("_", " ")}
+                    {r.displayLabel}
                   </span>
                   <span className="shrink-0 font-semibold">
                     {number.format(r.count)}
@@ -225,9 +229,9 @@ export default function AdminAnalytics({
       </div>
       <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-3">
         <label className="text-sm font-semibold">
-          Activity from
+          Activity From
           <input
-            aria-label="Activity from"
+            aria-label="Activity From"
             type="date"
             className="input-field mt-2"
             value={from}
@@ -235,9 +239,9 @@ export default function AdminAnalytics({
           />
         </label>
         <label className="text-sm font-semibold">
-          Activity through
+          Activity Through
           <input
-            aria-label="Activity through"
+            aria-label="Activity Through"
             type="date"
             className="input-field mt-2"
             value={to}
@@ -245,7 +249,7 @@ export default function AdminAnalytics({
           />
         </label>
         <label className="text-sm font-semibold">
-          Resident status
+          Resident Status
           <select
             className="input-field mt-2"
             value={status}
@@ -254,7 +258,7 @@ export default function AdminAnalytics({
             {["all", "verified", "pending_review", "returned", "rejected"].map(
               (s) => (
                 <option key={s} value={s}>
-                  {s.replaceAll("_", " ")}
+                  {analyticsLabel(s)}
                 </option>
               ),
             )}
@@ -271,10 +275,10 @@ export default function AdminAnalytics({
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Current unique residents", data.residentTotal],
-              ["Distinct address groups", data.addressGroups],
-              ["Duplicate account records excluded", data.duplicateRecords],
-              ["Posted payments in period (PHP)", data.postedPayments],
+              ["Current Unique Residents", data.residentTotal],
+              ["Distinct Address Groups", data.addressGroups],
+              ["Duplicate Account Records Excluded", data.duplicateRecords],
+              ["Posted Payments in Period (PHP)", data.postedPayments],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border bg-white p-5">
                 <p className="text-xs text-slate-500">{label}</p>
