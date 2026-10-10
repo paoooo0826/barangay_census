@@ -10,6 +10,15 @@ export interface CatalogService {
   processing: string;
   purposes: { value: string; label: string }[];
 }
+export function catalogFeeLabel(service: CatalogService) {
+  if (service.code === "certificate_of_residency") {
+    return `₱${service.base_fee} · First Low Income request is free`;
+  }
+  if (service.student_fee !== null && service.student_fee !== service.base_fee) {
+    return `₱${service.student_fee} currently studying / ₱${service.base_fee} otherwise`;
+  }
+  return `₱${service.base_fee} per request`;
+}
 export function useServiceCatalog() {
   const [services, setServices] = useState<CatalogService[]>([]),
     [error, setError] = useState(""),
@@ -61,9 +70,7 @@ export default function ServiceCatalog() {
             <h3 className="font-bold text-pine-800">{s.label}</h3>
             <p className="mt-2 text-sm">{s.description}</p>
             <p className="mt-3 font-semibold">
-              {s.student_fee !== null
-                ? `₱${s.student_fee} currently studying / ₱${s.base_fee} otherwise`
-                : `₱${s.base_fee}; first Low Income request is free`}
+              {catalogFeeLabel(s)}
             </p>
             {s.purposes.length > 0 && (
               <ul className="mt-2 list-inside list-disc text-sm">

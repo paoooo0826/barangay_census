@@ -18,7 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-import ServiceCatalog, { useServiceCatalog } from "./ServiceCatalog";
+import ServiceCatalog, { catalogFeeLabel, useServiceCatalog } from "./ServiceCatalog";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import PaginationControls, { pageSlice } from "./PaginationControls";
@@ -668,9 +668,7 @@ export default function ResidentAppointments({
                         </p>
                         <p className="mt-2 text-sm font-bold text-pine-700">
                           {catalog
-                            ? catalog.student_fee !== null
-                              ? `₱${catalog.student_fee} currently studying / ₱${catalog.base_fee} otherwise`
-                              : `₱${catalog.base_fee} · First Low Income request is free`
+                            ? catalogFeeLabel(catalog)
                             : service.feeLabel}
                         </p>
                       </div>
@@ -1072,7 +1070,7 @@ function AppointmentDetailsModal({
               label="Time"
               value={formatAppointmentTime(appointment.appointment_time)}
             />
-            <Detail label="Fee" value={formatFee(appointment.fee)} />
+            <Detail label="Saved Fee" value={formatFee(appointment.fee)} />
             <Detail label="Status" value={appointment.status} />
           </dl>
           <AppointmentPaymentPanel

@@ -110,12 +110,13 @@ announcements refresh while visible and when the tab regains focus. Resident
 queries use account ownership; administrator queries retain the existing RLS scope.
 
 The shared database service catalog contains the existing approved services:
-Barangay Clearance (130 PHP when education status is Currently Studying, 230 PHP
-otherwise) and Certificate of Residency (30 PHP, with the existing first Low
-Income request exemption). Low Income, Good Moral, Financial and Medical
+Barangay Clearance and Certificate of Residency both cost 100 PHP per paid
+request, including students. The existing first Low Income request exemption
+remains free. Low Income, Good Moral, Financial and Medical
 Assistance purposes are retained. As before, a cancelled or rejected Low Income
 request counts as a previous request. Existing appointment fees and service
-ownership are immutable. Official documentary requirements and processing durations
+ownership are immutable. Analytics label older saved prices as historical;
+current fees do not change previous requests. Official documentary requirements and processing durations
 are not currently recorded; the UI asks residents to consult the barangay office.
 No additional official fees or eligibility conditions have been introduced.
 

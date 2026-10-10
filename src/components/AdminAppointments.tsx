@@ -719,7 +719,7 @@ export function AdminAppointmentDetails({
               label="Appointment Time"
               value={formatTime(appointment.appointment_time)}
             />
-            <AdminDetail label="Fee" value={formatFee(appointment.fee)} />
+            <AdminDetail label="Saved Fee" value={formatFee(appointment.fee)} />
             <AdminDetail label="Status" value={appointment.status} />
             <AdminDetail
               label="Requested"

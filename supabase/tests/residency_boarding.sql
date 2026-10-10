@@ -128,8 +128,8 @@ do $$ declare r uuid; d date:=current_date+1; result jsonb; key uuid:=gen_random
  insert into census_test_appointments values('complete',(result->'appointment'->>'id')::uuid);
  result:=public.book_resident_appointment(r,'certificate_of_residency','low_income',d,'09:00','Verification test',0,key);
  if (select count(*) from public.appointments where resident_id=r)<>1 then raise exception 'FAIL: duplicate booking was not prevented'; end if;
- if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>30 then raise exception 'FAIL: first-free state did not persist'; end if;
- result:=public.book_resident_appointment(r,'certificate_of_residency','financial',d,'10:00','Verification test',30,gen_random_uuid());
+ if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>100 then raise exception 'FAIL: first-free state did not persist'; end if;
+ result:=public.book_resident_appointment(r,'certificate_of_residency','financial',d,'10:00','Verification test',100,gen_random_uuid());
  insert into census_test_appointments values('cancel',(result->'appointment'->>'id')::uuid);
  result:=public.cancel_resident_appointment((result->'appointment'->>'id')::uuid,'Schedule changed');
  if not coalesce((result->>'cancelled')::boolean,false) then raise exception 'FAIL: cancellation did not save'; end if;
