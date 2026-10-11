@@ -21,6 +21,7 @@ export function useIdleSession(
   timeout = SESSION_TIMEOUT_MS,
 ) {
   const [remaining, setRemaining] = useState<number | null>(null),
+    [secondsLeft, setSecondsLeft] = useState<number | null>(null),
     [expiring, setExpiring] = useState(false);
   const last = useRef(0),
     locked = useRef(false),
@@ -35,9 +36,11 @@ export function useIdleSession(
     resetSessionActivity(userId);
     warning.current = false;
     setRemaining(null);
-  }, [userId]);
+    setSecondsLeft(Math.ceil(timeout / 1000));
+  }, [userId, timeout]);
   useEffect(() => {
     setRemaining(null);
+    setSecondsLeft(null);
     setExpiring(false);
     locked.current = false;
     warning.current = false;
@@ -59,6 +62,7 @@ export function useIdleSession(
       locked.current = true;
       setExpiring(true);
       setRemaining(null);
+      setSecondsLeft(null);
       try {
         localStorage.setItem(expiredKey, String(Date.now()));
       } catch {
@@ -81,6 +85,7 @@ export function useIdleSession(
         return;
       }
       warning.current = left <= Math.min(WARNING_MS, timeout);
+      setSecondsLeft(Math.ceil(left / 1000));
       setRemaining(warning.current ? Math.ceil(left / 1000) : null);
     };
     const activity = () => {
@@ -89,6 +94,7 @@ export function useIdleSession(
       const now = Date.now();
       if (now - last.current < 1000) return;
       last.current = now;
+      setSecondsLeft(Math.ceil(timeout / 1000));
       try {
         localStorage.setItem(key, String(now));
       } catch {
@@ -118,5 +124,5 @@ export function useIdleSession(
       window.clearInterval(timer);
     };
   }, [userId, timeout]);
-  return { remaining, expiring, stay };
+  return { remaining, secondsLeft, expiring, stay };
 }

@@ -101,6 +101,36 @@
     @apply bg-slate-100 text-slate-600;
   }
 
+  .input:disabled {
+    @apply text-slate-700 opacity-100;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  select.input {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 2.75rem;
+    text-align: left;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%23475569' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 1rem;
+  }
+
+  input.input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    text-align: left;
+  }
+
+  input.input[type="date"]::-webkit-date-and-time-value {
+    min-height: 1.5em;
+    text-align: left;
+  }
+
   /* Safari's native date control must fit inside its grid column. */
   .boarding-move-in input[type="date"] {
     -webkit-appearance: none;

@@ -16,9 +16,10 @@ insert into public.admin_profiles(user_id,full_name,is_active)
 select uid,'Fee test administrator',true from fee_test_accounts where label='admin';
 
 do $$ begin
- if (select count(*) from public.service_catalog)<>2 or exists(
-   select 1 from public.service_catalog where base_fee<>100 or (student_fee is not null and student_fee<>100)
- ) then raise exception 'FAIL: inconsistent current paid service rates'; end if;
+ if (select count(*) from public.service_catalog)<>2
+ or not exists(select 1 from public.service_catalog where code='barangay_clearance' and base_fee=230 and student_fee=130)
+ or not exists(select 1 from public.service_catalog where code='certificate_of_residency' and base_fee=30 and student_fee is null)
+ then raise exception 'FAIL: incorrect confirmed service rates'; end if;
 end $$;
 
 select set_config('request.jwt.claim.sub',(select uid::text from fee_test_accounts where label='student'),true);
@@ -26,30 +27,30 @@ set local role authenticated;
 do $$ declare r uuid; d date:=((now() at time zone 'Asia/Manila')::date+90); result jsonb; purpose text; begin
  select rid into r from fee_test_accounts where label='student';
  while extract(isodow from d)>5 loop d:=d+1; end loop;
- if public.preview_appointment_fee(r,'barangay_clearance')<>100 then raise exception 'FAIL: student clearance quote'; end if;
+ if public.preview_appointment_fee(r,'barangay_clearance')<>130 then raise exception 'FAIL: student clearance quote'; end if;
  foreach purpose in array array['good_moral','financial','medical_assistance'] loop
-   if public.preview_appointment_fee(r,'certificate_of_residency',purpose)<>100 then raise exception 'FAIL: residency quote for %',purpose; end if;
+   if public.preview_appointment_fee(r,'certificate_of_residency',purpose)<>30 then raise exception 'FAIL: residency quote for %',purpose; end if;
  end loop;
- result:=public.book_resident_appointment(r,'barangay_clearance',null,d,'09:00','Uniform fee test',130,gen_random_uuid());
+ result:=public.book_resident_appointment(r,'barangay_clearance',null,d,'09:00','Service fee test',100,gen_random_uuid());
  if coalesce((result->>'booked')::boolean,false) or not coalesce((result->>'fee_changed')::boolean,false)
-    or (result->>'current_fee')::numeric<>100 then raise exception 'FAIL: obsolete expected price accepted'; end if;
- result:=public.book_resident_appointment(r,'barangay_clearance',null,d,'09:00','Uniform fee test',100,gen_random_uuid());
+    or (result->>'current_fee')::numeric<>130 then raise exception 'FAIL: obsolete expected price accepted'; end if;
+ result:=public.book_resident_appointment(r,'barangay_clearance',null,d,'09:00','Service fee test',130,gen_random_uuid());
  if not coalesce((result->>'booked')::boolean,false) then raise exception 'FAIL: standard booking failed: %',result; end if;
- if not exists(select 1 from public.appointments where resident_id=r and service_type='barangay_clearance' and fee=100) then raise exception 'FAIL: stored clearance fee'; end if;
+ if not exists(select 1 from public.appointments where resident_id=r and service_type='barangay_clearance' and fee=130) then raise exception 'FAIL: stored clearance fee'; end if;
  if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>0 then raise exception 'FAIL: first Low Income exemption'; end if;
  result:=public.book_resident_appointment(r,'certificate_of_residency','low_income',d,'10:00','Uniform fee exemption test',0,gen_random_uuid());
  if not coalesce((result->>'booked')::boolean,false) then raise exception 'FAIL: free booking failed: %',result; end if;
- if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>100 then raise exception 'FAIL: subsequent Low Income fee'; end if;
+ if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>30 then raise exception 'FAIL: subsequent Low Income fee'; end if;
  perform public.cancel_resident_appointment((result->'appointment'->>'id')::uuid,'Fee regression test');
- if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>100 then raise exception 'FAIL: cancelled request resets exemption'; end if;
+ if public.preview_appointment_fee(r,'certificate_of_residency','low_income')<>30 then raise exception 'FAIL: cancelled request resets exemption'; end if;
 end $$;
 reset role;
 select set_config('request.jwt.claim.sub',(select uid::text from fee_test_accounts where label='other'),true);
 set local role authenticated;
 do $$ declare r uuid; begin
  select rid into r from fee_test_accounts where label='other';
- if public.preview_appointment_fee(r,'barangay_clearance')<>100 then raise exception 'FAIL: non-student clearance quote'; end if;
- if public.preview_appointment_fee(r,'certificate_of_residency','financial')<>100 then raise exception 'FAIL: non-student residency quote'; end if;
+ if public.preview_appointment_fee(r,'barangay_clearance')<>230 then raise exception 'FAIL: non-student clearance quote'; end if;
+ if public.preview_appointment_fee(r,'certificate_of_residency','financial')<>30 then raise exception 'FAIL: non-student residency quote'; end if;
 end $$;
 reset role;
 select set_config('request.jwt.claim.sub',(select uid::text from fee_test_accounts where label='admin'),true);
@@ -57,15 +58,15 @@ set local role authenticated;
 do $$ declare chart jsonb; begin
  select c into strict chart from jsonb_array_elements(public.admin_system_analytics()->'charts') c
  where c->>'title'='Service Requests by Saved Fee';
- if not exists(select 1 from jsonb_array_elements(chart->'rows') r where r->>'label'='₱100' and (r->>'count')::int>0) then raise exception 'FAIL: current fee chart label'; end if;
- if exists(select 1 from jsonb_array_elements(chart->'rows') r where r->>'label' not in ('Free','₱100') and r->>'label' not like '%(Historical)') then raise exception 'FAIL: unlabeled historical fee'; end if;
+ if not exists(select 1 from jsonb_array_elements(chart->'rows') r where r->>'label'='₱130' and (r->>'count')::int>0) then raise exception 'FAIL: current fee chart label'; end if;
+ if exists(select 1 from jsonb_array_elements(chart->'rows') r where r->>'label' not in ('Free','₱30','₱130','₱230') and r->>'label' not like '%(Historical)') then raise exception 'FAIL: unlabeled historical fee'; end if;
  if chart->>'note' is null then raise exception 'FAIL: missing saved fee explanation'; end if;
 end $$;
 reset role;
 update public.service_catalog set base_fee=105,student_fee=case when student_fee is not null then 105 end;
 do $$ begin
- if exists(select 1 from public.appointments a join fee_test_accounts t on t.rid=a.resident_id where a.service_type='barangay_clearance' and a.fee<>100) then raise exception 'FAIL: repriced saved request'; end if;
+ if exists(select 1 from public.appointments a join fee_test_accounts t on t.rid=a.resident_id where a.service_type='barangay_clearance' and a.fee<>130) then raise exception 'FAIL: repriced saved request'; end if;
  if exists(select 1 from original_request_fees o left join public.appointments a using(id) where a.id is null or a.fee is distinct from o.fee) then raise exception 'FAIL: changed original request fee'; end if;
 end $$;
-select 'PASS: all paid quotes and new bookings use 100 PHP, obsolete quotes are rejected, first Low Income exemption remains free, saved fees are preserved, and historical chart labels are explicit' result;
+select 'PASS: clearance costs 130 PHP for students and 230 PHP otherwise, residency costs 30 PHP, obsolete quotes are rejected, the first Low Income exemption remains free, and saved fees are preserved' result;
 rollback;

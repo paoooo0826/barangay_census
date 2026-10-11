@@ -813,17 +813,18 @@ export default function ResidentAppointments({
           ))}
         </nav>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <label className="text-sm font-semibold">
+          <label className="label">
             Search your appointments
             <input
               aria-label="Search your appointments"
               type="search"
-              className="input-field mt-2"
+              className="input mt-2"
+              placeholder="Search services, purposes, or status"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
-          <label className="text-sm font-semibold">
+          <label className="label">
             {mode === "completed"
               ? "Completed"
               : mode === "cancelled"
@@ -833,17 +834,17 @@ export default function ResidentAppointments({
             <input
               type="date"
               aria-label="Appointments from"
-              className="input-field mt-2"
+              className="input mt-2"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
             />
           </label>
-          <label className="text-sm font-semibold">
+          <label className="label">
             Through
             <input
               type="date"
               aria-label="Appointments through"
-              className="input-field mt-2"
+              className="input mt-2"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
             />

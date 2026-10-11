@@ -228,30 +228,30 @@ export default function AdminAnalytics({
         </p>
       </div>
       <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-3">
-        <label className="text-sm font-semibold">
+        <label className="label">
           Activity From
           <input
             aria-label="Activity From"
             type="date"
-            className="input-field mt-2"
+            className="input mt-2"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="text-sm font-semibold">
+        <label className="label">
           Activity Through
           <input
             aria-label="Activity Through"
             type="date"
-            className="input-field mt-2"
+            className="input mt-2"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
-        <label className="text-sm font-semibold">
+        <label className="label">
           Resident Status
           <select
-            className="input-field mt-2"
+            className="input mt-2"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >

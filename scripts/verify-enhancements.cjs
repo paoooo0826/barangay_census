@@ -105,7 +105,7 @@ const button = (w, text) =>
   );
 (async () => {
   let t = await render(
-    `import {useIdleSession,activityKey} from './src/hooks/useIdleSession';function Test(){const idle=useIdleSession('resident',async()=>{window.__expired++},120000);window.__idle=idle;window.__key=activityKey('resident');return <p>{idle.remaining??'active'}</p>}`,
+    `import {useIdleSession,activityKey} from './src/hooks/useIdleSession';import SessionTimer from './src/components/SessionTimer';function Test(){const idle=useIdleSession('resident',async()=>{window.__expired++},120000);window.__idle=idle;window.__key=activityKey('resident');return idle.secondsLeft===null?<p>Expired</p>:<SessionTimer seconds={idle.secondsLeft}/>}`,
     undefined,
     (w) => {
       w.__now = 1_000_000;
@@ -120,6 +120,14 @@ const button = (w, text) =>
     },
   );
   check(t.w.__idle.remaining === null, "Fresh resident session starts active");
+  check(t.w.document.querySelector('[role=timer]')?.textContent.includes('02:00'), "Resident countdown is visible before the final-minute warning");
+  await t.tick(() => {
+    t.w.__now += 10000;
+    t.w.__timers.forEach((f) => f());
+  });
+  check(t.w.__idle.secondsLeft === 110 && t.w.document.querySelector('[role=timer]').textContent.includes('01:50'), "Visible countdown follows elapsed inactivity");
+  await t.tick(() => t.w.dispatchEvent(new t.w.Event('pointerdown')));
+  check(t.w.__idle.secondsLeft === 120, "Ordinary activity immediately resets the visible countdown");
   await t.tick(() => {
     t.w.__now += 61000;
     t.w.__timers.forEach((f) => f());
@@ -130,7 +138,7 @@ const button = (w, text) =>
   );
   await t.tick(() => t.w.__idle.stay());
   check(
-    t.w.__idle.remaining === null,
+    t.w.__idle.remaining === null && t.w.__idle.secondsLeft === 120,
     "Stay Signed In resets warning and shared activity timestamp",
   );
   await t.tick(() => {
@@ -149,11 +157,12 @@ const button = (w, text) =>
     t.w.__expired === 1 && t.w.__idle.expiring,
     "Resumed tab expires immediately after elapsed inactivity",
   );
+  check(!t.w.document.querySelector('[role=timer]'), "Expired sessions remove the visible countdown");
   await t.tick(() => t.w.__timers.forEach((f) => f()));
   check(t.w.__expired === 1, "Expiry runs once while signout is processing");
   await t.close();
   t = await render(
-    `import {useIdleSession,activityKey} from './src/hooks/useIdleSession';function Test(){const idle=useIdleSession('admin',async()=>{window.__expired++},120000);window.__idle=idle;window.__key=activityKey('admin');return <p>Admin</p>}`,
+    `import {useIdleSession,activityKey} from './src/hooks/useIdleSession';import SessionTimer from './src/components/SessionTimer';function Test(){const idle=useIdleSession('admin',async()=>{window.__expired++},120000);window.__idle=idle;window.__key=activityKey('admin');return idle.secondsLeft===null?<p>Expired</p>:<SessionTimer seconds={idle.secondsLeft}/>}`,
     undefined,
     (w) => {
       w.__now = 1_000_000;
@@ -167,13 +176,14 @@ const button = (w, text) =>
       w.clearInterval = () => {};
     },
   );
+  check(t.w.document.querySelector('[role=timer]')?.textContent.includes('02:00'), "Admin countdown is visible throughout the session");
   await t.tick(() => {
     t.w.__now += 65000;
     t.w.localStorage.setItem(t.w.__key, String(t.w.__now));
     t.w.dispatchEvent(new t.w.StorageEvent("storage", { key: t.w.__key }));
   });
   check(
-    t.w.__idle.remaining === null,
+    t.w.__idle.remaining === null && t.w.__idle.secondsLeft === 120,
     "Activity in another tab keeps an admin session active",
   );
   await t.tick(() => {
@@ -391,6 +401,7 @@ const button = (w, text) =>
       w.location.hash = "#/admin/dashboard?tab=records";
     },
   );
+  check(t.w.document.querySelector('[role=timer]')?.textContent.includes('15:00'), "The authenticated application exposes the configured session countdown");
   await t.tick(() =>
     t.w.document
       .querySelector('[aria-label="Back to previous application page"]')

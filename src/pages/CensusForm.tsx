@@ -1681,6 +1681,8 @@ export default function CensusForm({
                 )}
               </label>
               <p className="text-sm text-slate-500 sm:col-span-2">
+                {residenceLocked &&
+                  "These recorded details are read-only. Contact the barangay office if a correction is needed. "}
                 Temporary residents become residents after six calendar months
                 of continuous residence. The recorded start date and original
                 classification are preserved. Boarding-house occupancy is

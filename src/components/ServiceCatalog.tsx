@@ -15,7 +15,7 @@ export function catalogFeeLabel(service: CatalogService) {
     return `₱${service.base_fee} · First Low Income request is free`;
   }
   if (service.student_fee !== null && service.student_fee !== service.base_fee) {
-    return `₱${service.student_fee} currently studying / ₱${service.base_fee} otherwise`;
+    return `₱${service.base_fee} Regular · ₱${service.student_fee} Student`;
   }
   return `₱${service.base_fee} per request`;
 }

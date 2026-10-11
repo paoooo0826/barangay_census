@@ -110,9 +110,9 @@ announcements refresh while visible and when the tab regains focus. Resident
 queries use account ownership; administrator queries retain the existing RLS scope.
 
 The shared database service catalog contains the existing approved services:
-Barangay Clearance and Certificate of Residency both cost 100 PHP per paid
-request, including students. The existing first Low Income request exemption
-remains free. Low Income, Good Moral, Financial and Medical
+Barangay Clearance costs 230 PHP for regular requests and 130 PHP for students
+(education status Currently Studying). Certificate of Residency costs 30 PHP.
+The existing first Low Income request exemption remains free. Low Income, Good Moral, Financial and Medical
 Assistance purposes are retained. As before, a cancelled or rejected Low Income
 request counts as a previous request. Existing appointment fees and service
 ownership are immutable. Analytics label older saved prices as historical;
@@ -133,7 +133,8 @@ added. Live face verification stays separate from uploaded photo editing.
 
 Both roles default to 15 minutes of inactivity. Set
 `VITE_SESSION_TIMEOUT_MINUTES` before building to configure another duration.
-The final minute shows a countdown and Stay Signed In action. Shared activity and
+A visible session timer counts down throughout the signed-in session and resets
+on activity. The final minute shows a warning and Stay Signed In action. Shared activity and
 expiry markers coordinate tabs; suspended tabs check elapsed time on resume.
 At timeout protected UI is hidden immediately, the existing census draft is
 flushed with a bounded wait, Supabase signs out and login shows the inactivity

@@ -1,5 +1,6 @@
 import { useIdleSession } from "./hooks/useIdleSession";
 import SessionWarning from "./components/SessionWarning";
+import SessionTimer from "./components/SessionTimer";
 import { useDialogFocus } from "./hooks/useDialogFocus";
 import { navigateHash } from "./hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -480,6 +481,9 @@ export default function App() {
       <div
         hidden={idle.expiring && Boolean(user)}
         inert={idle.expiring && Boolean(user)}
+        className={
+          user && (residentProtected || adminProtected) ? "pb-20" : undefined
+        }
       >
         {page}
       </div>
@@ -495,14 +499,19 @@ export default function App() {
         !loading &&
         (residentProtected || adminProtected) &&
         !idle.expiring && (
-          <button
-            type="button"
-            onClick={goBack}
-            className="fixed bottom-3 left-3 z-[45] rounded-xl border border-slate-300 bg-white/95 px-3 py-2 text-sm font-semibold text-pine-800 shadow-sm"
-            aria-label="Back to previous application page"
-          >
-            ← Back
-          </button>
+          <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[45] flex items-end justify-between gap-3">
+            <button
+              type="button"
+              onClick={goBack}
+              className="pointer-events-auto rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-pine-800 shadow-sm"
+              aria-label="Back to previous application page"
+            >
+              ← Back
+            </button>
+            {idle.secondsLeft !== null && (
+              <SessionTimer seconds={idle.secondsLeft} />
+            )}
+          </div>
         )}
       {idle.remaining !== null && !idle.expiring && (
         <SessionWarning
