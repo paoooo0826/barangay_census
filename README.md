@@ -141,7 +141,14 @@ flushed with a bounded wait, Supabase signs out and login shows the inactivity
 message. Draft images follow the existing draft mechanism and are not stored as
 browser blobs. Authentication expiry has a separate message. Valid authentication
 survives refreshes and application/browser Back navigation. Explicit logout and
-Back with no earlier application page ask for confirmation.
+Back with no earlier application page ask for confirmation. Browser Back also
+shows “Are you sure you want to log out?” at the signed-in session boundary,
+including direct dashboard links. Cancel, Escape and outside clicks keep the
+current page and authentication. Earlier application routes survive refreshes
+through browser history metadata. A single boundary entry is reused; cancelling
+does not add more entries. Log Out flushes existing drafts before signing out
+and opening the appropriate login page. Ordinary Back/Forward between authorized
+pages does not log out or show the confirmation.
 
 ## Verification of the expanded flows
 

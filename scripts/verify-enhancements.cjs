@@ -13,10 +13,11 @@ async function render(
   component,
   api = "export const supabase={}",
   setup = () => {},
+  auth = `export const useAuth=()=>({user:{id:'u0'},adminProfile:{is_active:true},loading:false,signOut:async()=>{window.__logouts++;return{error:null}}});`,
 ) {
   const built = await esbuild.build({
     stdin: {
-      contents: `import {act} from 'react';import {createRoot} from 'react-dom/client';window.__act=act;${component};const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<Test/>);window.__unmount=()=>root.unmount();`,
+      contents: `import {act} from 'react';import {createRoot} from 'react-dom/client';window.__act=act;${component};let root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<Test/>);window.__unmount=()=>root.unmount();window.__remount=()=>{root.unmount();root=createRoot(document.getElementById('root'));root.render(<Test/>)};`,
       loader: "tsx",
       resolveDir: project,
     },
@@ -44,10 +45,11 @@ async function render(
           }));
           b.onLoad({ filter: /.*/, namespace: "mock" }, (a) => ({
             loader: "tsx",
+            resolveDir: project,
             contents:
               a.path === "api"
                 ? api
-                : `export const useAuth=()=>({user:{id:'u0'},adminProfile:{is_active:true},loading:false,signOut:async()=>{window.__logouts++;return{error:null}}});`,
+                : auth,
           }));
         },
       },
@@ -367,6 +369,132 @@ const button = (w, text) =>
     path.join(project, "scripts/fixtures/admin-api.js"),
     "utf8",
   );
+  const sessionAuth = `
+    import {useSyncExternalStore} from 'react';
+    const listeners=new Set();
+    const authenticated={user:{id:'u0',email:'test@test.invalid'},adminProfile:window.__resident?null:{is_active:true},adminProfileError:null,loading:false,refreshAdminProfile:async()=>{},signOut:async()=>{
+      window.__logouts++;
+      if(window.__logoutError)return{error:{message:'Sign-out connection failed'}};
+      snapshot={...snapshot,user:null,adminProfile:null};
+      listeners.forEach(fn=>fn());
+      return{error:null};
+    }};
+    let snapshot=authenticated;
+    window.__setAuthLoading=value=>{snapshot={...snapshot,loading:value};listeners.forEach(fn=>fn())};
+    export const useAuth=()=>useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn)},()=>snapshot);
+  `;
+  const navigationApi = fixture.replace(
+    '    order(key, options) {',
+    '    or() { return q; },\n    order(key, options) {',
+  );
+  for (const role of ['admin', 'resident']) {
+    const dashboard = `#/${role}/dashboard`;
+    const nextPage = `${dashboard}?tab=${role === 'admin' ? 'analytics' : 'profile'}`;
+    t = await render(
+      `import App from './src/App';function Test(){return <App/>}`,
+      navigationApi,
+      w => {
+        w.__resident = role === 'resident';
+        w.history.replaceState({barangayIndex:0}, '', '#/');
+        w.history.pushState({barangayIndex:1}, '', dashboard);
+      },
+      sessionAuth,
+    );
+    const originalLength = t.w.history.length;
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    check(
+      t.w.document.querySelector('[role=dialog]')?.textContent.includes('Are you sure you want to log out?') && t.w.location.hash === dashboard && t.w.__logouts === 0,
+      `${role}: browser Back at the session boundary asks before logout and keeps the dashboard mounted`,
+    );
+    await t.tick(() => button(t.w, 'Cancel').click());
+    check(t.w.location.hash === dashboard && t.w.history.length === originalLength && t.w.__logouts === 0, `${role}: cancelling preserves authentication and does not grow browser history`);
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    check(Boolean(t.w.document.querySelector('[role=dialog]')), `${role}: repeated browser Back still requires confirmation`);
+    await t.tick(() => t.w.document.dispatchEvent(new t.w.KeyboardEvent('keydown', {key:'Escape', bubbles:true})));
+    check(!t.w.document.querySelector('[role=dialog]') && t.w.__logouts === 0, `${role}: Escape cancels boundary logout`);
+    await t.tick(() => {
+      t.w.history.back();
+      t.w.history.back();
+    });
+    await t.tick();
+    check(t.w.location.hash === dashboard && Boolean(t.w.document.querySelector('[role=dialog]')) && t.w.__logouts === 0, `${role}: rapid repeated browser Back restores the protected page and keeps confirmation available`);
+    await t.tick(() => button(t.w, 'Cancel').click());
+    await t.tick(() => t.w.location.hash = nextPage);
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    check(t.w.location.hash === dashboard && !t.w.document.querySelector('[role=dialog]') && t.w.__logouts === 0, `${role}: browser Back between protected pages keeps the session without a logout prompt`);
+    await t.tick(() => t.w.history.forward());
+    await t.tick();
+    check(t.w.location.hash === nextPage && !t.w.document.querySelector('[role=dialog]'), `${role}: browser Forward restores the later application page`);
+    const beforeReloadLength = t.w.history.length;
+    await t.tick(() => t.w.__setAuthLoading(true));
+    await t.tick(() => t.w.__remount());
+    await t.tick(() => t.w.__setAuthLoading(false));
+    check(t.w.history.length === beforeReloadLength, `${role}: reloading and restoring authentication do not add another boundary entry`);
+    await t.tick(() => t.w.document.querySelector('[aria-label="Back to previous application page"]').click());
+    await t.tick();
+    check(t.w.location.hash === dashboard && !t.w.document.querySelector('[role=dialog]'), `${role}: application Back still finds the earlier protected page after remount`);
+    await t.tick(() => t.w.history.go(-2));
+    await t.tick();
+    check(t.w.location.hash === dashboard && Boolean(t.w.document.querySelector('[role=dialog]')), `${role}: skipping directly to account selection in browser history also requires confirmation`);
+    await t.tick(() => t.w.document.querySelector('[role=dialog]').parentElement.click());
+    check(!t.w.document.querySelector('[role=dialog]') && t.w.location.hash === dashboard, `${role}: clicking outside cancels logout and preserves the current page`);
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    await t.tick(() => {
+      t.w.__logoutError = true;
+      button(t.w, 'Log Out').click();
+    });
+    check(t.w.location.hash === dashboard && t.w.document.body.textContent.includes('Sign-out connection failed') && Boolean(t.w.document.querySelector('[role=timer]')), `${role}: a failed sign-out preserves the protected session and reports the error`);
+    let saveDraft;
+    await t.tick(() => {
+      t.w.__logoutError = false;
+      t.w.addEventListener('barangay:flush-drafts', e => {
+        e.detail.push(new Promise(resolve => {saveDraft = resolve}));
+      });
+      t.w.history.back();
+    });
+    await t.tick();
+    const logoutCalls = t.w.__logouts;
+    await t.tick(() => button(t.w, 'Log Out').click());
+    check(t.w.__logouts === logoutCalls && t.w.document.body.textContent.includes('Signing out…') && !t.w.document.querySelector('[role=timer]'), `${role}: confirmed logout saves pending drafts before calling sign-out and hides protected controls`);
+    await t.tick(() => saveDraft());
+    check(t.w.__logouts === logoutCalls + 1 && t.w.location.hash === `#/${role}` && !t.w.document.querySelector('[role=timer]') && !t.w.document.querySelector('[aria-label="Back to previous application page"]'), `${role}: confirmed logout clears the session and opens the correct login page`);
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    check(!t.w.document.querySelector('[role=timer]') && !t.w.document.querySelector('[role=dialog]'), `${role}: Back after logout cannot reveal an authenticated dashboard`);
+    check(t.errors.length === 0, `${role}: boundary, refresh and logout flows have no runtime errors`);
+    await t.close();
+  }
+  t = await render(
+    `import App from './src/App';function Test(){return <App/>}`,
+    navigationApi,
+    w => w.history.replaceState({}, '', '#/resident/dashboard'),
+    sessionAuth.replace('window.__resident?null:{is_active:true}', 'null'),
+  );
+  await t.tick(() => t.w.history.back());
+  await t.tick();
+  check(t.w.location.hash === '#/resident/dashboard' && Boolean(t.w.document.querySelector('[role=dialog]')) && t.w.__logouts === 0, 'A direct resident dashboard link still warns before browser Back can leave the signed-in session');
+  await t.close();
+  t = await render(
+    `import App from './src/App';function Test(){return <App/>}`,
+    navigationApi,
+    w => {
+      w.__resident = true;
+      w.history.replaceState({}, '', '#/resident/dashboard');
+    },
+    sessionAuth,
+  );
+  await t.tick(() => t.w.location.hash = '#/resident');
+  await t.tick();
+  check(t.w.location.hash === '#/resident/dashboard' && !t.w.document.querySelector('[role=dialog]') && t.w.__logouts === 0, 'A signed-in resident visiting login is redirected with the existing session');
+  await t.tick(() => t.w.location.hash = '#/admin');
+  await t.tick();
+  check(t.w.location.hash === '#/resident/dashboard' && !t.w.document.querySelector('[role=dialog]') && t.w.__logouts === 0, 'Resident login redirection cannot grant administrator access');
+  check(t.errors.length === 0, 'Resident login-route recovery has no runtime errors');
+  await t.close();
   for (const mode of ["completed", "cancelled"]) {
     t = await render(
       `import A from './src/components/AdminAppointments';function Test(){return <A mode="${mode}"/>}`,
