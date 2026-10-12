@@ -64,7 +64,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                     contents: fs.readFileSync(args.path, "utf8").replace(
                       "const currentAction = actions[actionIndex];",
                       `
-                    window.__camera={start:()=>startCamera(['blink_twice','turn_left','smile']),reset:resetVerification,
+                    window.__camera={start:(facing='user')=>{facingRef.current=facing;return startCamera(['blink_twice','turn_left','smile'])},reset:resetVerification,
                       capture:()=>captureAndCompare(['blink_twice','turn_left','smile']),complete:()=>complete,
                       seed:()=>{idQualityRef.current={brightness:128,blurVariance:100,faceAreaRatio:0.1,detectedFaces:0};
                         idFaceAvailableRef.current=false;idDescriptorRef.current=null;}};
@@ -371,11 +371,17 @@ async function cameraChecks() {
     w.__trackStops === 1 && !w.document.querySelector("video"),
     "Permission result arriving after Reset is stopped and cannot reopen camera",
   );
+  check(w.document.body.style.overflow === "", "Resetting the face camera restores page scrolling after pending permission");
   await open();
+  check(w.document.querySelector('video')?.style.transform === 'scaleX(-1)' && w.document.querySelector('[aria-label="Mirror Preview"]')?.getAttribute('aria-pressed') === 'true', 'Front-facing live verification uses the familiar selfie preview direction');
+  await tick(() => w.document.querySelector('[aria-label="Mirror Preview"]').click());
+  check(w.document.querySelector('video')?.style.transform === 'none', 'Face verification allows a normal preview without changing captured image orientation');
+  await tick(() => w.document.querySelector('[aria-label="Mirror Preview"]').click());
   await tick(() => {
     w.__capture = w.__camera.capture();
   });
   await tick(() => w.__camera.reset());
+  check(w.document.body.style.overflow === "", "Closing active face verification restores scrolling for subsequent panels");
   await tick(() => w.__finishFace());
   await w.__capture;
   check(

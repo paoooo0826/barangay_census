@@ -1,9 +1,10 @@
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
-import { Camera, SwitchCamera, Loader2, X } from "lucide-react";
+import { Camera, SwitchCamera, FlipHorizontal2, Loader2, X } from "lucide-react";
 import VideoGuide from "./VideoGuide";
 import { idGuide, inspectIdFrame } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
+import { mirrorCameraPreview } from "../lib/cameraOrientation";
 
 interface Props {
   side: "front" | "back";
@@ -29,6 +30,7 @@ export default function IdCameraCapture({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [facing, setFacing] = useState<"environment" | "user">("environment");
+  const [mirroredPreview, setMirroredPreview] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState(
     "Align all four card edges with the guide.",
@@ -59,14 +61,6 @@ export default function IdCameraCapture({
 
   useEffect(() => () => stop(), []);
   useEffect(() => {
-    if (!open) return;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = overflow;
-    };
-  }, [open]);
-  useEffect(() => {
     if (!autoOpen) {
       autoOpenHandledRef.current = false;
       return;
@@ -84,6 +78,7 @@ export default function IdCameraCapture({
     capturedFile.current = null;
     manualCapture.current = false;
     setFacing(nextFacing);
+    setMirroredPreview(nextFacing === "user");
     setOpen(true);
     setBusy(true);
     setCapturedPreview("");
@@ -108,6 +103,7 @@ export default function IdCameraCapture({
         return;
       }
       streamRef.current = stream;
+      setMirroredPreview(mirrorCameraPreview(stream));
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => resolve()),
       );
@@ -268,8 +264,8 @@ export default function IdCameraCapture({
                   ref={videoRef}
                   muted
                   playsInline
-                  style={{ transform: "none" }}
-                  data-orientation="unmirrored"
+                  style={{ transform: mirroredPreview ? "scaleX(-1)" : "none" }}
+                  data-orientation={mirroredPreview ? "mirrored" : "unmirrored"}
                   className="h-full w-full object-contain"
                 />
                 <VideoGuide
@@ -285,6 +281,12 @@ export default function IdCameraCapture({
               </div>
             )}
           </div>
+          {!capturedPreview && (
+            <p className="mt-3 text-center text-xs text-slate-300">
+              {mirroredPreview ? "Selfie preview follows your movements. " : "Normal camera preview. "}
+              Saved ID photos keep text readable.
+            </p>
+          )}
           <p
             role={error ? "alert" : "status"}
             className={`my-3 text-center text-sm ${error ? "text-red-300" : "text-slate-200"}`}
@@ -325,6 +327,19 @@ export default function IdCameraCapture({
                 }}
               >
                 Capture
+              </button>
+            )}
+            {!capturedPreview && !captureInProgressRef.current && (
+              <button
+                type="button"
+                disabled={busy}
+                aria-label="Mirror Preview"
+                aria-pressed={mirroredPreview}
+                onClick={() => setMirroredPreview(value => !value)}
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
+              >
+                <FlipHorizontal2 size={18} />
+                Mirror Preview: {mirroredPreview ? "On" : "Off"}
               </button>
             )}
             {!capturedPreview && !captureInProgressRef.current && (

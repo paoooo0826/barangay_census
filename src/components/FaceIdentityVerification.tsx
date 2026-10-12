@@ -5,6 +5,7 @@ import {
   Camera,
   CheckCircle2,
   Loader2,
+  FlipHorizontal2,
   RefreshCw,
   ShieldCheck,
   X,
@@ -13,6 +14,7 @@ import * as faceapi from "face-api.js";
 import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
+import { detectsHeadTurn, mirrorCameraPreview } from "../lib/cameraOrientation";
 
 export type LivenessAction =
   | "blink_twice"
@@ -169,6 +171,7 @@ export default function FaceIdentityVerification({
 
   const [modelsReady, setModelsReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [mirroredPreview, setMirroredPreview] = useState(true);
   const [pendingResult, setPendingResult] =
     useState<FaceVerificationResult | null>(null);
   const facingRef = useRef<"user" | "environment">("user");
@@ -206,14 +209,6 @@ export default function FaceIdentityVerification({
       clearCapturePreview();
     };
   }, []);
-  useEffect(() => {
-    if (!cameraOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [cameraOpen]);
   useEffect(() => {
     resetVerification();
     autoStartKeyRef.current = "";
@@ -315,6 +310,7 @@ export default function FaceIdentityVerification({
     validatingRef.current = true;
     const attempt = ++attemptRef.current;
     setCameraOpen(true);
+    setMirroredPreview(facingRef.current === "user");
     setPendingResult(null);
     setBusy(true);
     setError("");
@@ -454,6 +450,7 @@ export default function FaceIdentityVerification({
       return;
     }
     streamRef.current = stream;
+    setMirroredPreview(mirrorCameraPreview(stream));
     setCameraReady(true);
 
     // cameraReady mounts the video element. Wait for React to commit it before attaching the stream.
@@ -561,8 +558,8 @@ export default function FaceIdentityVerification({
         if (requestedAction === "smile") {
           actionDetected = (detection.expressions.happy ?? 0) >= 0.7;
         }
-        if (requestedAction === "turn_left") actionDetected = yaw <= -0.12;
-        if (requestedAction === "turn_right") actionDetected = yaw >= 0.12;
+        if (requestedAction === "turn_left" || requestedAction === "turn_right")
+          actionDetected = detectsHeadTurn(requestedAction, yaw);
         if (requestedAction === "move_closer") {
           actionDetected =
             areaRatio >=
@@ -900,7 +897,7 @@ export default function FaceIdentityVerification({
             className={
               cameraOpen
                 ? "camera-preview relative flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl"
-                : "relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
+                : "camera-preview relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
             }
           >
             {capturePreview ? (
@@ -914,8 +911,8 @@ export default function FaceIdentityVerification({
                 ref={videoRef}
                 muted
                 playsInline
-                style={{ transform: "none" }}
-                data-orientation="unmirrored"
+                style={{ transform: mirroredPreview ? "scaleX(-1)" : "none" }}
+                data-orientation={mirroredPreview ? "mirrored" : "unmirrored"}
                 className={
                   cameraOpen
                     ? "h-full w-full object-contain"
@@ -977,6 +974,17 @@ export default function FaceIdentityVerification({
                 <>
                   <button
                     type="button"
+                    disabled={busy}
+                    aria-label="Mirror Preview"
+                    aria-pressed={mirroredPreview}
+                    onClick={() => setMirroredPreview(value => !value)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2"
+                  >
+                    <FlipHorizontal2 size={18} />
+                    Mirror Preview: {mirroredPreview ? "On" : "Off"}
+                  </button>
+                  <button
+                    type="button"
                     className="rounded-xl bg-white/10 px-4 py-2"
                     disabled={busy}
                     onClick={() => {
@@ -1005,10 +1013,10 @@ export default function FaceIdentityVerification({
               )}
             </div>
           )}
-          {!complete && !cameraReady && (
-            <p className="mt-3 text-xs text-slate-500">
-              The camera preview and saved verification photo use the normal,
-              non-mirrored camera orientation.
+          {!complete && !capturePreview && (
+            <p className={`mt-3 text-center text-xs ${cameraOpen ? "text-slate-300" : "text-slate-500"}`}>
+              {mirroredPreview ? "Selfie preview follows your movements. " : "Normal camera preview. "}
+              Saved photos use the normal camera orientation. Follow head-turn instructions using your own left and right.
             </p>
           )}
           {actionSummary && (

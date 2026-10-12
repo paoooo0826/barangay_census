@@ -204,6 +204,10 @@
     image-orientation: from-image;
   }
 
+  .camera-preview video[data-orientation="mirrored"] {
+    transform: scaleX(-1) !important;
+  }
+
   .menu-backdrop {
     animation: backdrop-enter 180ms ease-out;
   }

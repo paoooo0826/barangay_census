@@ -217,6 +217,7 @@ const canvasSetup = w => {
     check(button(t.w,'Saving Acceptance…').disabled && Boolean(t.w.document.querySelector('[aria-labelledby=terms-title]')),`${role}: protected content waits for server confirmation`);
     await t.tick(()=>t.w.__resolveSave());
     check(!t.w.document.querySelector('[aria-labelledby=terms-title]') && t.w.__acceptCalls.at(-1).p_agreed===true && t.w.__acceptCalls.at(-1).p_document_id==='document',`${role}: successful explicit acceptance releases the authorized page`);
+    check(t.w.document.body.style.overflow==='',`${role}: accepting terms after a nested logout dialog restores page scrolling`);
     await t.tick(()=>t.w.__remount());
     await t.tick();
     check(!t.w.document.querySelector('[aria-labelledby=terms-title]') && t.w.__termsReads>=2,`${role}: remount/device-style lookup uses the saved database receipt without another popup`);
@@ -306,14 +307,55 @@ const canvasSetup = w => {
   t.w.__draw(context,{pixels},{x:0,y:0,width:4,height:1},4,1);
   check(JSON.stringify(drawn)===JSON.stringify(pixels) && JSON.stringify(calls[1])==='[1,0,0,1,0,0]','Camera capture removes stale transforms and keeps asymmetric text/right-side pixels in their true order');
   await t.close();
-  t=await render(`import Camera from './src/components/IdCameraCapture';function Test(){return <Camera side="front" onCapture={()=>{}}/>}`,undefined,w=>{
+  t=await render(`import {useState} from 'react';import Camera from './src/components/IdCameraCapture';import Admin from './src/pages/AdminDashboard';function Test(){const [admin,setAdmin]=useState(false);window.__goAdmin=()=>setAdmin(true);return admin?<Admin onLogout={()=>{}} onReview={()=>{}}/>:<Camera side="front" onCapture={()=>{}}/>}`,fixture,w=>{
     Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:()=>new Promise(resolve=>w.__cameraPermission=()=>resolve({getTracks:()=>[{stop(){w.__stopped=true}}]}))}});
   });
   await t.tick(()=>button(t.w,'Take live photo').click());
   check(t.w.document.querySelector('video')?.style.transform==='none' && t.w.document.querySelector('video').className.includes('object-contain'),'Live ID camera preview explicitly uses unmirrored orientation and preserves the source aspect ratio');
   await t.tick(()=>t.w.document.querySelector('[aria-label="Close camera"]').click());
+  check(t.w.document.body.style.overflow==='', 'Closing the ID camera restores page scrolling before another panel is opened');
   await t.tick(()=>t.w.__cameraPermission());
   check(t.w.__stopped && !t.w.document.querySelector('[role=dialog]'),'Camera closure still releases a stream that arrives after permission was pending');
+  await t.tick(()=>t.w.__goAdmin());
+  check(Boolean(t.w.document.querySelector('#admin-main')) && t.w.document.body.style.overflow==='','Navigating from a closed camera to the real admin dashboard leaves main content scrollable');
+  check(t.errors.length===0,'Camera closure and admin navigation have no runtime errors');
+  await t.close();
+
+  t=await render(`import {mirrorCameraPreview,detectsHeadTurn} from './src/lib/cameraOrientation';function Test(){window.__orientation={mirrorCameraPreview,detectsHeadTurn};return null}`);
+  const orientation=t.w.__orientation;
+  const stream=facingMode=>({getVideoTracks:()=>[{getSettings:()=>({facingMode})}]});
+  check(orientation.mirrorCameraPreview(stream('user')) && !orientation.mirrorCameraPreview(stream('environment')),'The actual front/rear camera settings determine the default preview direction');
+  check(orientation.mirrorCameraPreview(stream(undefined)),'Desktop webcams without facing-mode metadata use the expected selfie direction');
+  check(orientation.detectsHeadTurn('turn_left',0.2) && !orientation.detectsHeadTurn('turn_left',-0.2) && orientation.detectsHeadTurn('turn_right',-0.2) && !orientation.detectsHeadTurn('turn_right',0.2),'Liveness left/right prompts use the person’s own direction in raw landmarks, independent of preview mirroring');
+  check(!orientation.detectsHeadTurn('turn_left',0.05) && !orientation.detectsHeadTurn('turn_right',-0.05),'Small neutral head movement does not satisfy a turn challenge');
+  await t.close();
+
+  t=await render(`import Camera from './src/components/IdCameraCapture';function Test(){return <Camera side="front" onCapture={file=>window.__confirmedFile=file}/>} `,undefined,w=>{
+    w.__deviceFacing='user';w.__trackStops=0;w.__transforms=[];
+    Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async()=>({getTracks:()=>[{stop(){w.__trackStops++}}],getVideoTracks:()=>[{getSettings:()=>({facingMode:w.__deviceFacing})}]})}});
+    w.HTMLMediaElement.prototype.play=async()=>{};
+    Object.defineProperties(w.HTMLVideoElement.prototype,{videoWidth:{get:()=>1920},videoHeight:{get:()=>1080},readyState:{get:()=>w.__captureReady?2:0}});
+    w.HTMLCanvasElement.prototype.getContext=()=>({save(){},restore(){},setTransform(...matrix){w.__transforms.push(matrix)},drawImage(){},getImageData:()=>({width:480,height:270,data:new w.Uint8ClampedArray(480*270*4)})});
+    w.HTMLCanvasElement.prototype.toBlob=fn=>fn(new w.Blob(['asymmetric ID text'],{type:'image/jpeg'}));
+  });
+  await t.tick(()=>button(t.w,'Take live photo').click());
+  await t.tick();await t.tick();
+  let video=t.w.document.querySelector('video'), mirror=t.w.document.querySelector('[aria-label="Mirror Preview"]');
+  check(video?.style.transform==='scaleX(-1)' && mirror?.getAttribute('aria-pressed')==='true','A desktop front camera mirrors the live ID preview even when the initial rear-camera preference is ignored');
+  await t.tick(()=>mirror.click());
+  check(video.style.transform==='none' && mirror.getAttribute('aria-pressed')==='false','The user can turn selfie mirroring off to read ID text in the live preview');
+  await t.tick(()=>mirror.click());
+  await t.tick(()=>{t.w.__deviceFacing='environment';button(t.w,'Switch camera').click()});
+  await t.tick();await t.tick();
+  video=t.w.document.querySelector('video');
+  check(video?.style.transform==='none' && t.w.__trackStops===1,'Switching to an actual rear camera restores normal preview direction and releases the previous stream');
+  await t.tick(()=>t.w.document.querySelector('[aria-label="Mirror Preview"]').click());
+  await t.tick(()=>{t.w.__captureReady=true;button(t.w,'Capture').click()});
+  await t.w.__act(async()=>{await new Promise(resolve=>setTimeout(resolve,250))});
+  check(Boolean(t.w.document.querySelector('[alt="Captured ID preview"]')) && JSON.stringify(t.w.__transforms.at(-1))==='[1,0,0,1,0,0]','Capturing from a mirrored preview uses raw image pixels and shows the readable saved-photo review');
+  await t.tick(()=>button(t.w,'Confirm Photo').click());
+  check(t.w.__confirmedFile?.type==='image/jpeg' && !t.w.document.querySelector('[role=dialog]') && t.w.document.body.style.overflow==='','Confirming the photo returns the saved file and releases the camera scroll lock');
+  check(t.errors.length===0,'Preview toggling, device switching, capture and confirmation have no runtime errors');
   await t.close();
   console.log(`Media and terms verification passed (${checks.length} checks).`);
   process.exit(0);

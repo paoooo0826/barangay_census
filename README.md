@@ -89,8 +89,11 @@ files.
 
 Camera access requires HTTPS or localhost. Vercel provides HTTPS. Face-api.js
 model weights currently load from jsDelivr, so live identity verification also
-requires an internet connection. Both camera previews and saved captures use the
-camera's original, unmirrored orientation. Screens open fullscreen during
+requires an internet connection. Front and unspecified webcam previews use a
+selfie mirror so movement follows the user; rear-camera previews stay normal.
+Both screens offer a Mirror Preview toggle. Saved captures always retain the
+camera's original, unmirrored orientation so ID text remains readable. Head-turn
+instructions refer to the user's own left and right. Screens open fullscreen during
 initialization, and photographs require explicit confirmation.
 
 ## Current panels and services
@@ -190,6 +193,8 @@ remain available in `supabase/tests`.
 Camera tests cover cancellation while permissions, face detection or encoding
 are pending, empty captures and failed uploads. Camera screens are fullscreen
 from initialization, retain image aspect ratios and release tracks on close or
-unmount. Captures use an unmirrored canvas and require confirmation. Physical
+unmount. One shared dialog manager owns scroll locks, restoring page scrolling
+after camera closure and navigation. Captures use an unmirrored canvas and
+require confirmation. Physical
 camera hardware, lighting, permission prompts and mobile browser behavior still
 require a real-device smoke test.
