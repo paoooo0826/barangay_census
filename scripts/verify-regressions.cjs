@@ -66,6 +66,7 @@ async function render(source, mock = "", cameraStub = false) {
     url: "http://test.invalid",
     virtualConsole,
     beforeParse(w) {
+      w.scrollTo = () => {};
       w.IS_REACT_ACT_ENVIRONMENT = true;
       w.MessageChannel = require("node:worker_threads").MessageChannel;
     },

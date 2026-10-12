@@ -65,6 +65,7 @@ async function render(source, api = "export const supabase = {};") {
     runScripts: "dangerously",
     virtualConsole: vc,
     beforeParse(w) {
+      w.scrollTo = () => {};
       w.IS_REACT_ACT_ENVIRONMENT = true;
       w.__signCalls = 0;
       w.MessageChannel = require("node:worker_threads").MessageChannel;

@@ -197,10 +197,12 @@ export default function ResidentDashboard({
   ].includes(requested ?? "")
     ? (requested as Tab)
     : "home";
-  const navigateToTab = (value: Tab) =>
+  const navigateToTab = (value: Tab) => {
     navigateHash(
       `/resident/dashboard${value === "home" ? "" : `?tab=${value}`}`,
     );
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  };
   const boardingAccess = canAccessBoarding(resident?.boarding_status);
   const tab =
     selectedTab === "housing" && !boardingAccess ? "home" : selectedTab;

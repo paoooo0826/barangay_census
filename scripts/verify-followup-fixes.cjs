@@ -137,6 +137,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
     url: "http://test.invalid",
     virtualConsole,
     beforeParse(w) {
+      w.scrollTo = () => {};
       w.crypto.randomUUID = require("node:crypto").randomUUID;
       w.URL.createObjectURL = () => "blob:test-preview";
       w.URL.revokeObjectURL = () => {};
