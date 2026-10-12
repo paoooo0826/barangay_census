@@ -159,7 +159,7 @@ export const supabase = {
   rpc: async (name) => ({
     error: null,
     data:
-      name === "get_service_catalog" ? [] : name === "admin_system_analytics" ? { residentTotal: 27, recordTotal: 27, duplicateRecords: 0, addressGroups: 18, postedPayments: 0, charts: [
+      name === "get_account_terms" ? {document:null,acceptance:{user_id:'u0',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}} : name === "get_service_catalog" ? [] : name === "admin_system_analytics" ? { residentTotal: 27, recordTotal: 27, duplicateRecords: 0, addressGroups: 18, postedPayments: 0, charts: [
         { section: "Residents", title: "Residents by Registration Status", unit: "residents", period: false, kind: "bar", rows: [{label:"verified",count:18},{label:"pending review",count:9}] },
         ...["Residents by Age Group","Residents by Sex","Residents by Civil Status"].map(title=>({section:"Demographics", title,unit:"residents",period:false,kind:"bar",rows:[{label:"Example",count:27}]})),
         {section:"Education and Work",title:"Residents by Highest Education",unit:"residents",period:false,kind:"bar",rows:[{label:"College",count:18}]}

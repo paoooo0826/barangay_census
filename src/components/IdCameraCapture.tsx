@@ -1,8 +1,9 @@
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
-import { Camera, FlipHorizontal2, Loader2, X } from "lucide-react";
+import { Camera, SwitchCamera, Loader2, X } from "lucide-react";
 import VideoGuide from "./VideoGuide";
 import { idGuide, inspectIdFrame } from "../lib/captureGuide";
+import { drawCameraFrame } from "../lib/cameraFrame";
 
 interface Props {
   side: "front" | "back";
@@ -165,17 +166,7 @@ export default function IdCameraCapture({
             const captureContext = canvas.getContext("2d");
             if (!captureContext)
               throw new Error("Unable to capture the ID image.");
-            captureContext.drawImage(
-              video,
-              sx,
-              sy,
-              sw,
-              sh,
-              0,
-              0,
-              canvas.width,
-              canvas.height,
-            );
+            drawCameraFrame(captureContext, video, { x: sx, y: sy, width: sw, height: sh }, canvas.width, canvas.height);
             const blob = await new Promise<Blob>((resolve, reject) =>
               canvas.toBlob(
                 (value) =>
@@ -277,6 +268,8 @@ export default function IdCameraCapture({
                   ref={videoRef}
                   muted
                   playsInline
+                  style={{ transform: "none" }}
+                  data-orientation="unmirrored"
                   className="h-full w-full object-contain"
                 />
                 <VideoGuide
@@ -343,7 +336,7 @@ export default function IdCameraCapture({
                 }
                 className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
               >
-                <FlipHorizontal2 size={18} />
+                <SwitchCamera size={18} />
                 Switch camera
               </button>
             )}

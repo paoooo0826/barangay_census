@@ -12,6 +12,7 @@ import {
 import * as faceapi from "face-api.js";
 import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
+import { drawCameraFrame } from "../lib/cameraFrame";
 
 export type LivenessAction =
   | "blink_twice"
@@ -663,7 +664,7 @@ export default function FaceIdentityVerification({
         throw new Error("The live camera has no image. Restart verification.");
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Unable to capture the live face.");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      drawCameraFrame(ctx, video, { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight }, canvas.width, canvas.height);
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
         scoreThreshold: 0.55,
@@ -913,10 +914,12 @@ export default function FaceIdentityVerification({
                 ref={videoRef}
                 muted
                 playsInline
+                style={{ transform: "none" }}
+                data-orientation="unmirrored"
                 className={
                   cameraOpen
                     ? "h-full w-full object-contain"
-                    : "aspect-[4/3] min-h-[320px] w-full object-cover sm:min-h-[460px]"
+                    : "aspect-[4/3] min-h-[320px] w-full object-contain sm:min-h-[460px]"
                 }
               />
             )}

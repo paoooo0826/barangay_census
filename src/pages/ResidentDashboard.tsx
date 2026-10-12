@@ -1,6 +1,8 @@
 import AnnouncementDetail, {
   AnnouncementImage,
 } from "../components/AnnouncementDetail";
+import FullscreenImageViewer from "../components/FullscreenImageViewer";
+import { loadAnnouncementImages, type AnnouncementView } from "../lib/announcementImages";
 import type { AnnouncementDetailData } from "../components/AnnouncementDetail";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -59,7 +61,6 @@ type Tab =
   | "profile"
   | "record"
   | "housing";
-type AnnouncementView = Announcement & { imageUrl?: string | null };
 interface ResidentCategoryView {
   name: string;
   indigenous_group?: string | null;
@@ -310,22 +311,8 @@ export default function ResidentDashboard({
             new Date(announcement.expires_at).getTime() > Date.now(),
         );
         const signedAnnouncements = await Promise.all(
-          active.map(async (announcement) => {
-            if (!announcement.image_path)
-              return { ...announcement, imageUrl: null };
-            const { data, error: imageError } = await Promise.resolve(
-              supabase.storage
-                .from("announcement-images")
-                .createSignedUrl(announcement.image_path, 300),
-            ).catch(() => ({
-              data: null,
-              error: { message: "Image unavailable" },
-            }));
-            return {
-              ...announcement,
-              imageUrl: imageError ? null : (data?.signedUrl ?? null),
-            };
-          }),
+          active.map((announcement) => loadAnnouncementImages(announcement, 300)),
+
         );
         if (request !== loadRequest.current) return;
         setAnnouncements(signedAnnouncements);
@@ -411,11 +398,6 @@ export default function ResidentDashboard({
     () => setMobileOpen(false),
     768,
   );
-  const imagePreviewRef = useDialogFocus<HTMLDivElement>(
-    Boolean(previewImage),
-    () => setPreviewImage(null),
-    null,
-  );
   const goHome = () => {
     navigateToTab("home");
     setMobileOpen(false);
@@ -429,7 +411,6 @@ export default function ResidentDashboard({
     );
   const status = resident?.status ?? "pending_review";
   const statusConfig = STATUS_CONFIG[status];
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <a
@@ -793,16 +774,18 @@ export default function ResidentDashboard({
                               onClick={() =>
                                 setPreviewImage({
                                   title: a.title,
-                                  url: a.imageUrl ?? "",
+                                  url: a.originalImageUrl ?? a.imageUrl ?? "",
                                 })
                               }
-                              className="mb-4 block w-full overflow-hidden rounded-2xl bg-white/70"
+                              aria-label={`View Full Screen: ${a.title}`}
+                              className="relative mb-4 block w-full overflow-hidden rounded-2xl bg-white/70"
                             >
                               <AnnouncementImage
                                 src={a.imageUrl}
                                 alt={`Attached image for ${a.title}`}
                                 className="aspect-[16/7] w-full object-cover"
                               />
+                              <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">View Full Screen</span>
                             </button>
                           )}
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1008,33 +991,7 @@ export default function ResidentDashboard({
           onClose={() => setDetail(null)}
         />
       )}
-      {previewImage && (
-        <div
-          ref={imagePreviewRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${previewImage.title} image preview`}
-          tabIndex={-1}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setPreviewImage(null);
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Close image preview"
-            onClick={() => setPreviewImage(null)}
-            className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-900"
-          >
-            <X size={20} />
-          </button>
-          <img
-            src={previewImage.url}
-            alt={previewImage.title}
-            className="max-h-[calc(100dvh-9rem)] max-w-full rounded-2xl object-contain"
-          />
-        </div>
-      )}
+      {previewImage && <FullscreenImageViewer src={previewImage.url} title={previewImage.title} onClose={() => setPreviewImage(null)} />}
     </div>
   );
 }

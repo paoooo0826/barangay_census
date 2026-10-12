@@ -1,5 +1,7 @@
 import AnnouncementDetail, { AnnouncementImage } from "./AnnouncementDetail";
 import type { AnnouncementDetailData } from "./AnnouncementDetail";
+import FullscreenImageViewer from "./FullscreenImageViewer";
+import { loadAnnouncementImages, type AnnouncementView } from "../lib/announcementImages";
 import { useImageCrop } from "./ImageCropDialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -21,7 +23,6 @@ import SortControls from "./SortControls";
 import PaginationControls from "./PaginationControls";
 import AnnouncementSections from "./AnnouncementSections";
 import { usePagedQuery } from "../hooks/usePagedQuery";
-import { useDialogFocus } from "../hooks/useDialogFocus";
 import { type SortDirection } from "../lib/sorting";
 import type {
   Announcement,
@@ -33,7 +34,6 @@ interface Props {
   adminProfileId?: string;
   refreshKey?: number;
 }
-type AnnouncementView = Announcement & { imageUrl?: string | null };
 type AnnouncementTab = "active" | "archived";
 type FieldErrors = Partial<
   Record<"title" | "message" | "priority" | "audience" | "expiresAt", string>
@@ -95,6 +95,8 @@ export default function AdminAnnouncements({
   const [audience, setAudience] = useState<AnnouncementAudience>("all");
   const [expiresAt, setExpiresAt] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [originalImage, setOriginalImage] = useState<File | null>(null);
+  const [originalPreview, setOriginalPreview] = useState("");
   const [imagePreview, setImagePreview] = useState("");
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(
@@ -123,11 +125,7 @@ export default function AdminAnnouncements({
     url: string;
   } | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
-  const imagePreviewRef = useDialogFocus<HTMLDivElement>(
-    Boolean(previewImage),
-    () => setPreviewImage(null),
-    null,
-  );
+
 
   const [counts, setCounts] = useState({ active: 0, archived: 0 });
   const imageRequest = useRef(0);
@@ -191,18 +189,7 @@ export default function AdminAnnouncements({
     const generation = ++imageRequest.current;
     setAnnouncements(rows.map((row) => ({ ...row, imageUrl: null })));
     void Promise.all(
-      rows.map(async (row) => {
-        if (!row.image_path) return { ...row, imageUrl: null };
-        const { data, error: e } = await Promise.resolve(
-          supabase.storage
-            .from("announcement-images")
-            .createSignedUrl(row.image_path, 3600),
-        ).catch(() => ({
-          data: null,
-          error: { message: "Image unavailable" },
-        }));
-        return { ...row, imageUrl: e ? null : (data?.signedUrl ?? null) };
-      }),
+      rows.map((row) => loadAnnouncementImages(row, 3600)),
     )
       .then((withImages) => {
         if (generation === imageRequest.current) setAnnouncements(withImages);
@@ -234,6 +221,10 @@ export default function AdminAnnouncements({
     [imagePreview],
   );
 
+  useEffect(() => () => {
+    if (originalPreview.startsWith("blob:")) URL.revokeObjectURL(originalPreview);
+  }, [originalPreview]);
+
   const visible = announcements;
 
   async function chooseImage(file?: File) {
@@ -245,6 +236,8 @@ export default function AdminAnnouncements({
       if (generation !== imageGeneration.current || !cropped) return;
       if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
       setImage(cropped);
+      setOriginalImage(file);
+      setOriginalPreview(URL.createObjectURL(file));
       setRemoveExistingImage(false);
       setImagePreview(URL.createObjectURL(cropped));
       setError(null);
@@ -264,6 +257,8 @@ export default function AdminAnnouncements({
     setRemoveExistingImage(true);
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
     setImage(null);
+    setOriginalImage(null);
+    setOriginalPreview("");
     setImagePreview("");
   }
   function validate() {
@@ -329,6 +324,7 @@ export default function AdminAnnouncements({
     setPriority(a.priority);
     setAudience(a.audience);
     setImagePreview(a.imageUrl ?? "");
+    setOriginalPreview(a.originalImageUrl ?? a.imageUrl ?? "");
     if (a.expires_at) {
       const local = new Date(a.expires_at);
       local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
@@ -348,6 +344,8 @@ export default function AdminAnnouncements({
     setSuccess(null);
     const announcementId = editing?.id ?? crypto.randomUUID();
     let uploadedPath: string | null = null;
+    let uploadedOriginalPath: string | null = null;
+    const uploaded: string[] = [];
     let committed = false;
     try {
       if (image) {
@@ -360,10 +358,20 @@ export default function AdminAnnouncements({
             upsert: false,
           });
         if (uploadError) throw uploadError;
+        uploaded.push(uploadedPath);
+        if (!originalImage) throw new Error("The original announcement image is missing. Select the photo again.");
+        const extension = originalImage.type === "image/png" ? "png" : originalImage.type === "image/webp" ? "webp" : "jpg";
+        uploadedOriginalPath = `${adminProfileId ?? "admin"}/${announcementId}-${crypto.randomUUID()}-original.${extension}`;
+        const { error: originalError } = await supabase.storage.from("announcement-images").upload(uploadedOriginalPath, originalImage, {
+          contentType: originalImage.type, cacheControl: "3600", upsert: false,
+        });
+        if (originalError) throw originalError;
+        uploaded.push(uploadedOriginalPath);
       }
       const imagePath =
         uploadedPath ??
         (removeExistingImage ? null : (editing?.image_path ?? null));
+      const originalPath = uploadedOriginalPath ?? (removeExistingImage ? null : editing?.image_original_path ?? null);
       const values = {
         title: title.trim(),
         message: message.trim(),
@@ -371,6 +379,7 @@ export default function AdminAnnouncements({
         audience,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
         image_path: imagePath,
+        image_original_path: originalPath,
         updated_at: new Date().toISOString(),
       };
       const result = editing
@@ -396,10 +405,17 @@ export default function AdminAnnouncements({
             .single();
       if (result.error) throw result.error;
       committed = true;
-      if (editing?.image_path && editing.image_path !== imagePath)
-        await supabase.storage
-          .from("announcement-images")
-          .remove([editing.image_path]);
+      const replaced = [
+        editing?.image_path !== imagePath ? editing?.image_path : null,
+        editing?.image_original_path !== originalPath ? editing?.image_original_path : null,
+      ].filter((path): path is string => Boolean(path));
+      let cleanupFailed = false;
+      if (replaced.length) {
+        try {
+          const cleanup = await supabase.storage.from("announcement-images").remove([...new Set(replaced)]);
+          cleanupFailed = Boolean(cleanup.error);
+        } catch { cleanupFailed = true; }
+      }
       const wasEditing = Boolean(editing);
       resetForm();
       setTab("active");
@@ -408,15 +424,20 @@ export default function AdminAnnouncements({
           ? "Announcement updated successfully."
           : "Announcement published successfully.",
       );
+      if (cleanupFailed) setError("The announcement was saved, but an older image could not be removed from storage.");
       await loadAnnouncements();
     } catch (caught) {
-      if (uploadedPath && !committed)
-        await supabase.storage
-          .from("announcement-images")
-          .remove([uploadedPath]);
+      let cleanupFailed = false;
+      if (uploaded.length && !committed) {
+        try {
+          const cleanup = await supabase.storage.from("announcement-images").remove(uploaded);
+          cleanupFailed = Boolean(cleanup.error);
+        } catch { cleanupFailed = true; }
+      }
       setError(
-        (caught as { message?: string })?.message ??
-          "Announcement could not be saved. Refresh if another administrator changed it.",
+        committed
+          ? "The announcement was saved, but the list could not be refreshed. Refresh to load the latest version."
+          : ((caught as { message?: string })?.message ?? "Announcement could not be saved. Refresh if another administrator changed it.") + (cleanupFailed ? " An unused upload could not be removed from storage." : ""),
       );
     } finally {
       mutationLock.current = false;
@@ -506,10 +527,11 @@ export default function AdminAnnouncements({
       setError(deleteError.message);
       return;
     }
-    if (a.image_path) {
+    const removedImages = [...new Set([a.image_path, a.image_original_path].filter((path): path is string => Boolean(path)))];
+    if (removedImages.length) {
       const { error: cleanupError } = await supabase.storage
         .from("announcement-images")
-        .remove([a.image_path]);
+        .remove(removedImages);
       if (cleanupError)
         setError(
           "The archived announcement was deleted, but its image could not be removed from storage.",
@@ -595,6 +617,7 @@ export default function AdminAnnouncements({
                 title: title.trim() || "Announcement preview",
                 message: message || "Your announcement text appears here.",
                 imageUrl: imagePreview,
+                originalImageUrl: originalPreview,
                 priority,
               })
             }
@@ -750,8 +773,7 @@ export default function AdminAnnouncements({
                   </div>
                 )}
                 <p className="mt-2 text-xs text-slate-500">
-                  Images are center-cropped to the same 16:7 banner shape
-                  residents will see.
+                  The confirmed crop is shown as a 16:7 banner. The full photo is also saved for View Full Screen.
                 </p>
               </div>
             </div>
@@ -841,16 +863,18 @@ export default function AdminAnnouncements({
                           onClick={() =>
                             setPreviewImage({
                               title: a.title,
-                              url: a.imageUrl ?? "",
+                              url: a.originalImageUrl ?? a.imageUrl ?? "",
                             })
                           }
-                          className="block aspect-[16/7] w-full overflow-hidden bg-white/70"
+                          aria-label={`View Full Screen: ${a.title}`}
+                          className="relative block aspect-[16/7] w-full overflow-hidden bg-white/70"
                         >
                           <AnnouncementImage
                             src={a.imageUrl}
                             alt={`Attached image for ${a.title}`}
                             className="h-full w-full object-cover"
                           />
+                          <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">View Full Screen</span>
                         </button>
                       )}
                       <div className="p-4">
@@ -991,33 +1015,7 @@ export default function AdminAnnouncements({
           onClose={() => setDetail(null)}
         />
       )}
-      {previewImage && (
-        <div
-          ref={imagePreviewRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${previewImage.title} image preview`}
-          tabIndex={-1}
-          className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 p-4"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setPreviewImage(null);
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Close image preview"
-            onClick={() => setPreviewImage(null)}
-            className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-900"
-          >
-            <X size={20} />
-          </button>
-          <img
-            src={previewImage.url}
-            alt={previewImage.title}
-            className="max-h-[calc(100dvh-9rem)] max-w-full rounded-2xl object-contain"
-          />
-        </div>
-      )}
+      {previewImage && <FullscreenImageViewer src={previewImage.url} title={previewImage.title} onClose={() => setPreviewImage(null)} />}
     </section>
   );
 }

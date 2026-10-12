@@ -34,7 +34,7 @@ async function render(source, api = "export const supabase = {};") {
             path: "auth",
             namespace: "ui-test",
           }));
-          build.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+          build.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
             path: "api",
             namespace: "ui-test",
           }));
@@ -442,7 +442,7 @@ async function render(source, api = "export const supabase = {};") {
     "Clicking inside the image preview does not dismiss it",
   );
   const closePhoto = photoDialog.querySelector(
-    '[aria-label="Close image preview"]',
+    '[aria-label="Close full-screen image"]',
   );
   await preview.tick(() =>
     pd.dispatchEvent(
@@ -480,7 +480,7 @@ async function render(source, api = "export const supabase = {};") {
   );
   await preview.tick(() => photoButton.click());
   await preview.tick(() =>
-    pd.querySelector('[aria-label="Close image preview"]').click(),
+    pd.querySelector('[aria-label="Close full-screen image"]').click(),
   );
   check(
     !pd.querySelector('[role="dialog"]'),

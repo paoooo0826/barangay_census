@@ -115,7 +115,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                   loader: "tsx",
                 }));
               }
-              build.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+              build.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
                 path: "supabase",
                 namespace: "mock",
               }));
@@ -172,7 +172,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
           get: () => 960,
         });
         w.HTMLMediaElement.prototype.play = () => Promise.resolve();
-        w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
+        w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {}, save() {}, restore() {}, setTransform() {} });
         w.HTMLCanvasElement.prototype.toBlob = function (callback) {
           const finish = () =>
             callback(
@@ -213,7 +213,7 @@ async function routeChecks() {
     const session=()=>({user:{id:'resident',email:'resident@test.invalid'}});
     window.__refresh=()=>{window.__hold=true;listener('TOKEN_REFRESHED',session())};
     window.__release=()=>held?.({data:null,error:null});window.__reads=()=>reads;
-    export const supabase={auth:{getSession:async()=>({data:{session:session()},error:null}),
+    export const supabase={rpc:async()=>({data:{document:null,acceptance:{user_id:'resident',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}},error:null}),auth:{getSession:async()=>({data:{session:session()},error:null}),
       onAuthStateChange:callback=>{listener=callback;return{data:{subscription:{unsubscribe(){}}}}}},
       from:table=>({select(){return this},eq(){return this},maybeSingle(){if(table==='residents'){
         reads++;if(window.__hold)return new Promise(resolve=>held=resolve)}return Promise.resolve({data:null,error:null})}})};`;
@@ -246,7 +246,7 @@ async function routeChecks() {
   t.dom.window.close();
 
   const adminMock = `window.__fail=true;const session={user:{id:'admin',email:'admin@test.invalid'}};
-    export const supabase={auth:{getSession:async()=>({data:{session},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
+    export const supabase={rpc:async()=>({data:{document:null,acceptance:{user_id:'admin',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}},error:null}),auth:{getSession:async()=>({data:{session},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
       from:()=>({select(){return this},eq(){return this},maybeSingle(){return window.__fail?
         Promise.reject(new Error('Temporary profile failure')):Promise.resolve({data:{user_id:'admin',is_active:true},error:null})}})};`;
   const a = await render(
@@ -478,7 +478,7 @@ async function cameraChecks() {
 
 async function registrationSaveChecks() {
   const mock = `window.__uploads=[];window.__removals=[];const session={user:{id:'resident',email:'resident@test.invalid'}};
-    export const supabase={auth:{getSession:async()=>({data:{session},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
+    export const supabase={rpc:async()=>({data:{document:null,acceptance:{user_id:'admin',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}},error:null}),auth:{getSession:async()=>({data:{session},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
       from:()=>({select(){return this},eq(){return this},maybeSingle:async()=>({data:null,error:null})}),
       storage:{from:()=>({upload:async path=>{window.__uploads.push(path);return window.__uploadMode==='hold'?new Promise(resolve=>window.__finishUpload=()=>resolve({error:null})):
         window.__uploadMode==='fail' && path.includes('id-back')?{error:new Error('Back photo upload failed')}:{error:null}},

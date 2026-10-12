@@ -34,7 +34,7 @@ async function render(source, api = "export const supabase = {};") {
             path: "auth",
             namespace: "ui-test",
           }));
-          build.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+          build.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
             path: "api",
             namespace: "ui-test",
           }));
@@ -145,7 +145,7 @@ window.__pending=[];const rpc=supabase.rpc;supabase.rpc=(name,args)=>new Promise
 
   const appSource = `import {createRoot} from 'react-dom/client';import App from './src/App';const root=createRoot(document.getElementById('root'));window.location.hash='/resident/census';window.__mount=()=>root.render(<App/>);window.__unmount=()=>root.unmount();`;
   const appApi = `window.__draftCalls=[];window.__pending=[];window.__failDraft=false;window.confirm=()=>false;
-export const supabase={from:table=>({select(){return this},eq(){return this},order(){return this},maybeSingle:async()=>({data:null,error:null}),then:resolve=>Promise.resolve({data:[],error:null}).then(resolve)}),rpc:(name,args)=>{window.__draftCalls.push({name,args});return new Promise(resolve=>window.__pending.push(()=>resolve(window.__failDraft?{data:null,error:{message:'Connection lost'}}:{data:{revision:args.p_expected_revision+1,saved_at:'2026-10-09T00:00:00Z'},error:null})))}};`;
+export const supabase={from:table=>({select(){return this},eq(){return this},order(){return this},maybeSingle:async()=>({data:null,error:null}),then:resolve=>Promise.resolve({data:[],error:null}).then(resolve)}),rpc:(name,args)=>{if(name==='get_account_terms')return Promise.resolve({data:{document:null,acceptance:{user_id:'u0',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}},error:null});window.__draftCalls.push({name,args});return new Promise(resolve=>window.__pending.push(()=>resolve(window.__failDraft?{data:null,error:{message:'Connection lost'}}:{data:{revision:args.p_expected_revision+1,saved_at:'2026-10-09T00:00:00Z'},error:null})))}};`;
   const app = await render(appSource, appApi);
   await app.tick(() => changeInput(app.w, app.w.document.querySelector('#census-first_name'), "Saved before exit"));
   const unload = new app.w.Event('beforeunload', { cancelable: true });

@@ -35,7 +35,7 @@ async function render(
       {
         name: "api",
         setup(b) {
-          b.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+          b.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
             path: "api",
             namespace: "mock",
           }));
@@ -280,7 +280,7 @@ const button = (w, text) =>
   );
   await t.tick(() => button(t.w, "Reset").click());
   check(t.w.__draws.at(-1)[2] === 1200, "Reset restores the full ID image");
-  await t.tick(() => button(t.w, "Confirm Crop").click());
+  await t.tick(() => button(t.w, "Crop / Save").click());
   check(
     t.w.__confirmed?.type === "image/jpeg" && t.w.__confirmed.size > 0,
     "Confirmed crop produces a nonempty image file",
@@ -319,7 +319,7 @@ const button = (w, text) =>
     "Undecodable images show a useful error",
   );
   check(
-    button(t.w, "Confirm Crop").disabled,
+    button(t.w, "Crop / Save").disabled,
     "Failed image decode cannot be confirmed",
   );
   await t.close();

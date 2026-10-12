@@ -34,7 +34,7 @@ async function render(source, api = "export const supabase = {};") {
             path: "auth",
             namespace: "ui-test",
           }));
-          build.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+          build.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
             path: "api",
             namespace: "ui-test",
           }));

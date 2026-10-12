@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 
+const dialogs: HTMLElement[] = [];
+let bodyOverflow = "";
+
 export function useDialogFocus<T extends HTMLElement>(
   open: boolean,
   onClose: () => void,
@@ -14,7 +17,8 @@ export function useDialogFocus<T extends HTMLElement>(
     if (!open || !ref.current) return;
     const panel = ref.current;
     const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
+    if (dialogs.length === 0) bodyOverflow = document.body.style.overflow;
+    dialogs.push(panel);
     document.body.style.overflow = "hidden";
     const focusable = () =>
       Array.from(
@@ -27,6 +31,7 @@ export function useDialogFocus<T extends HTMLElement>(
       );
     (focusable()[0] ?? panel).focus();
     const onKey = (event: KeyboardEvent) => {
+      if (dialogs.at(-1) !== panel) return;
       if (event.key === "Escape") {
         event.preventDefault();
         closeRef.current();
@@ -70,8 +75,11 @@ export function useDialogFocus<T extends HTMLElement>(
     return () => {
       document.removeEventListener("keydown", onKey);
       desktop?.removeEventListener("change", onResize);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
+      const wasTop = dialogs.at(-1) === panel;
+      const index = dialogs.indexOf(panel);
+      if (index !== -1) dialogs.splice(index, 1);
+      if (dialogs.length === 0) document.body.style.overflow = bodyOverflow;
+      if (wasTop && previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus();
     };
   }, [open, desktopWidth]);

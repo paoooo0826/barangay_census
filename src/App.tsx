@@ -2,6 +2,7 @@ import { useIdleSession } from "./hooks/useIdleSession";
 import { useAppNavigation } from "./hooks/useAppNavigation";
 import SessionWarning from "./components/SessionWarning";
 import SessionTimer from "./components/SessionTimer";
+import TermsGate from "./components/TermsGate";
 import { useDialogFocus } from "./hooks/useDialogFocus";
 import { navigateHash } from "./hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -405,7 +406,10 @@ export default function App() {
           user && (residentProtected || adminProtected) ? "pb-20" : undefined
         }
       >
-        {page}
+        {userId && !loading && !isPasswordReset &&
+          (residentProtected || (adminProtected && isActiveAdmin)) ? (
+            <TermsGate key={userId} userId={userId} onLeave={handleLogout}>{page}</TermsGate>
+          ) : page}
       </div>
       {(idle.expiring || logoutPending) && user && (
         <div

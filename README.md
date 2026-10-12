@@ -129,6 +129,34 @@ is applied before cropping. Cancelling preserves the previous photo. There is
 currently no separate profile-picture upload field, so no new avatar feature was
 added. Live face verification stays separate from uploaded photo editing.
 
+Announcement cards and detail views offer View Full Screen in both panels. The
+viewer fits the entire saved picture, supports button/slider/pinch zoom and
+drag/keyboard panning, and closes with X, outside clicks or Escape. New uploads
+save an uncropped original alongside the confirmed banner. Both use the same
+private storage audience rules. Old cropped uploads cannot recover content that
+was never saved; re-upload their original photo to restore it. Editing/removing
+photos cleans both stored images, and partial upload failures do not publish.
+ID uploads additionally offer landscape-card and free crop modes with separate
+width/height controls. Preview and saved JPEG use the same source rectangle and
+white background. Cancel, including during encoding, preserves the previous file.
+
+## One-time Terms and Conditions
+
+The project owner's supplied privacy notice is stored verbatim as approved
+version `2026-10-12`. Both administrators and residents must check I agree and
+confirm before protected pages mount. New accounts pass this gate before ID
+verification/census entry; existing accounts pass it before their dashboard.
+`account_terms_acceptances` stores one account-linked receipt, its document and
+server-generated acceptance date. Reading the database on login/refresh and on
+another device avoids repeating an accepted popup. Published notice versions are
+retained; later versions do not silently invalidate this one-time acceptance.
+Clients cannot accept for another account, forge dates, update/delete receipts or
+edit the approved notice. Missing approved content and failed reads/saves block
+proceeding and show Retry/Log Out rather than creating an empty acceptance.
+The migration `20261012122129_announcement_originals_and_account_terms.sql` has
+been applied to the connected Supabase project. Its transaction-backed regression
+test is `supabase/tests/terms_and_announcement_media.sql`; all test data rolls back.
+
 ## Session and navigation
 
 Both roles default to 15 minutes of inactivity. Set

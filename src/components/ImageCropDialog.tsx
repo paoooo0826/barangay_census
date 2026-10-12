@@ -9,10 +9,11 @@ export function cropRectangle(
   zoom: number,
   x: number,
   y: number,
+  selection?: { width: number; height: number },
 ) {
   const baseWidth = Math.min(width, height * ratio),
-    w = baseWidth / zoom,
-    h = w / ratio;
+    w = (selection ? width * selection.width : baseWidth) / zoom,
+    h = selection ? (height * selection.height) / zoom : w / ratio;
   return {
     x: Math.max(0, Math.min(1, x)) * (width - w),
     y: Math.max(0, Math.min(1, y)) * (height - h),
@@ -78,21 +79,32 @@ export default function ImageCropDialog({
     [zoom, setZoom] = useState(1),
     [position, setPosition] = useState({ x: 0.5, y: 0.5 }),
     [error, setError] = useState(""),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [aspect, setAspect] = useState("original"),
+    [selection, setSelection] = useState({ width: 1, height: 1 });
   const canvas = useRef<HTMLCanvasElement>(null),
     drag = useRef<{ x: number; y: number; px: number; py: number } | null>(
       null,
     ),
     active = useRef(true);
-  const ref = useDialogFocus<HTMLDivElement>(true, onCancel, null);
+  const cancel = () => {
+    active.current = false;
+    onCancel();
+  };
+  const ref = useDialogFocus<HTMLDivElement>(true, cancel, null);
   const ratio =
     kind === "announcement"
       ? 16 / 7
-      : kind === "profile"
+      : kind === "profile" || aspect === "square"
         ? 1
+        : aspect === "id-card"
+          ? 85.6 / 53.98
+          : aspect === "landscape"
+            ? 4 / 3
         : image
-          ? image.width / image.height
+          ? (image.width * (aspect === "free" ? selection.width : 1)) / (image.height * (aspect === "free" ? selection.height : 1))
           : 4 / 3;
+  const freeSelection = aspect === "free" ? selection : undefined;
   useEffect(() => {
     let mounted = true;
     active.current = true;
@@ -136,10 +148,12 @@ export default function ImageCropDialog({
         zoom,
         position.x,
         position.y,
+        freeSelection,
       ),
       c = canvas.current;
-    c.width = Math.min(1200, Math.round(r.width));
-    c.height = Math.round(c.width / ratio);
+    const factor = Math.min(1, 1200 / Math.max(r.width, r.height));
+    c.width = Math.max(1, Math.round(r.width * factor));
+    c.height = Math.max(1, Math.round(r.height * factor));
     const ctx = c.getContext("2d");
     if (!ctx) {
       setError(
@@ -147,6 +161,8 @@ export default function ImageCropDialog({
       );
       return;
     }
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(
       image.source,
       r.x,
@@ -158,7 +174,7 @@ export default function ImageCropDialog({
       c.width,
       c.height,
     );
-  }, [image, ratio, zoom, position]);
+  }, [image, ratio, zoom, position, aspect, selection]);
   async function confirm() {
     if (!image || saving || !canvas.current) return;
     const r = cropRectangle(
@@ -168,6 +184,7 @@ export default function ImageCropDialog({
       zoom,
       position.x,
       position.y,
+      freeSelection,
     );
     if (r.width < 240 || r.height < 150) {
       setError(
@@ -179,8 +196,10 @@ export default function ImageCropDialog({
     setError("");
     try {
       const output = document.createElement("canvas");
-      output.width = Math.min(kind === "id" ? 2400 : 1600, Math.round(r.width));
-      output.height = Math.round(output.width / ratio);
+      const factor = Math.min(1, (kind === "id" ? 2400 : 1600) / Math.max(r.width, r.height));
+      output.width = Math.max(1, Math.round(r.width * factor));
+      output.height = Math.max(1, Math.round(r.height * factor));
+      if (output.width < 240 || output.height < 150) throw new Error("The saved crop would be too small. Use a wider crop or a clearer image.");
       const ctx = output.getContext("2d");
       if (!ctx) throw new Error("Unable to prepare the crop.");
       ctx.fillStyle = "#fff";
@@ -207,9 +226,10 @@ export default function ImageCropDialog({
         ),
       );
       if (!active.current) return;
-      onConfirm(
-        new File([blob], `${kind}-${Date.now()}.jpg`, { type: "image/jpeg" }),
-      );
+      const confirmed = new File([blob], `${kind}-${Date.now()}.jpg`, { type: "image/jpeg" });
+      validateResidentImage(confirmed);
+      if (kind === "announcement" && confirmed.size > 5 * 1024 * 1024) throw new Error("The cropped banner exceeds 5 MB. Use a smaller or simpler image.");
+      onConfirm(confirmed);
     } catch (e) {
       if (active.current)
         setError(e instanceof Error ? e.message : "Unable to save image.");
@@ -221,7 +241,7 @@ export default function ImageCropDialog({
     <div
       className="fixed inset-0 z-[280] flex items-center justify-center bg-black/75 p-3"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
+        if (e.target === e.currentTarget) cancel();
       }}
     >
       <div
@@ -236,15 +256,15 @@ export default function ImageCropDialog({
           <h2 id="crop-title" className="text-xl font-bold">
             Crop{" "}
             {kind === "id"
-              ? "identification image"
+              ? "Identification Image"
               : kind === "announcement"
-                ? "announcement banner"
-                : "photo"}
+                ? "Announcement Banner"
+                : "Photo"}
           </h2>
           <button
             type="button"
             aria-label="Close crop"
-            onClick={onCancel}
+            onClick={cancel}
             className="btn-secondary"
           >
             ✕
@@ -256,6 +276,22 @@ export default function ImageCropDialog({
           {kind === "id" &&
             " Keep the entire ID and all readable details visible. Reset shows the full image."}
         </p>
+        {kind === "announcement" || kind === "profile" ? (
+          <p className="mb-3 text-xs font-semibold text-pine-700">{kind === "announcement" ? "Banner Proportions: 16:7" : "Profile Proportions: 1:1"}</p>
+        ) : (
+          <label className="label mb-3 block">Aspect Ratio
+            <select aria-label="Crop Aspect Ratio" className="input mt-2" value={aspect} disabled={!image || saving} onChange={e => { setAspect(e.target.value); setZoom(1); setPosition({ x: 0.5, y: 0.5 }); setError(""); }}>
+              <option value="original">Original Proportions</option>
+              {kind === "id" ? <option value="id-card">ID Card (Landscape)</option> : <><option value="landscape">Landscape (4:3)</option><option value="square">Square (1:1)</option></>}
+              <option value="free">Free Crop</option>
+            </select>
+          </label>
+        )}
+        {aspect === "free" && <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          {(["width", "height"] as const).map(dimension => <label key={dimension} className="label">Crop {dimension === "width" ? "Width" : "Height"}: {Math.round(selection[dimension] * 100)}%
+            <input type="range" aria-label={`Crop ${dimension === "width" ? "Width" : "Height"}`} min="0.05" max="1" step="0.01" value={selection[dimension]} disabled={saving} onChange={e => setSelection(current => ({ ...current, [dimension]: Number(e.target.value) }))} className="mt-2 w-full" />
+          </label>)}
+        </div>}
         {!image && !error && (
           <p role="status">Preparing image and correcting orientation…</p>
         )}
@@ -264,8 +300,8 @@ export default function ImageCropDialog({
             ref={canvas}
             aria-label="Crop preview; drag or use arrow keys to position"
             tabIndex={0}
-            className="mx-auto max-h-[50dvh] w-full touch-none rounded-xl bg-slate-100 object-contain outline-pine-700"
-            style={{ aspectRatio: ratio }}
+            className="mx-auto max-h-[50dvh] max-w-full touch-none rounded-xl bg-slate-100 object-contain outline-pine-700"
+            style={{ aspectRatio: ratio, width: `min(100%, ${50 * ratio}dvh)` }}
             onPointerDown={(e) => {
               drag.current = {
                 x: e.clientX,
@@ -284,6 +320,7 @@ export default function ImageCropDialog({
                   zoom,
                   position.x,
                   position.y,
+                  freeSelection,
                 ),
                 box = e.currentTarget.getBoundingClientRect();
               setPosition({
@@ -378,13 +415,16 @@ export default function ImageCropDialog({
             className="btn-secondary"
             onClick={() => {
               setZoom(1);
+              setAspect("original");
+              setSelection({ width: 1, height: 1 });
               setPosition({ x: 0.5, y: 0.5 });
               setError("");
             }}
+            disabled={!image || saving}
           >
             Reset
           </button>
-          <button type="button" className="btn-secondary" onClick={onCancel}>
+          <button type="button" className="btn-secondary" onClick={cancel}>
             Cancel
           </button>
           <button
@@ -393,7 +433,7 @@ export default function ImageCropDialog({
             disabled={!image || saving}
             onClick={() => void confirm()}
           >
-            {saving ? "Preparing…" : "Confirm Crop"}
+            {saving ? "Preparing…" : "Crop / Save"}
           </button>
         </div>
       </div>
@@ -401,10 +441,11 @@ export default function ImageCropDialog({
   );
 }
 export function useImageCrop() {
-  const [pending, setPending] = useState<{ file: File; kind: CropKind } | null>(
+  const [pending, setPending] = useState<{ file: File; kind: CropKind; id: number } | null>(
       null,
     ),
     resolver = useRef<((file: File | null) => void) | null>(null);
+  const serial = useRef(0);
   useEffect(
     () => () => {
       resolver.current?.(null);
@@ -412,7 +453,8 @@ export function useImageCrop() {
     },
     [],
   );
-  function finish(file: File | null) {
+  function finish(file: File | null, id: number) {
+    if (id !== serial.current) return;
     resolver.current?.(file);
     resolver.current = null;
     setPending(null);
@@ -422,7 +464,7 @@ export function useImageCrop() {
     if (kind === "announcement" && file.size > 5 * 1024 * 1024)
       throw new Error("Announcement images must be 5 MB or smaller.");
     resolver.current?.(null);
-    setPending({ file, kind });
+    setPending({ file, kind, id: ++serial.current });
     return new Promise((resolve) => {
       resolver.current = resolve;
     });
@@ -431,11 +473,11 @@ export function useImageCrop() {
     crop,
     cropDialog: pending ? (
       <ImageCropDialog
-        key={pending.file.name + pending.file.lastModified}
+        key={pending.id}
         file={pending.file}
         kind={pending.kind}
-        onConfirm={finish}
-        onCancel={() => finish(null)}
+        onConfirm={(file) => finish(file, pending.id)}
+        onCancel={() => finish(null, pending.id)}
       />
     ) : null,
   };

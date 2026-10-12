@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useDialogFocus } from "../hooks/useDialogFocus";
+import FullscreenImageViewer from "./FullscreenImageViewer";
 export interface AnnouncementDetailData {
   id?: string;
   title: string;
   message: string;
   imageUrl?: string | null;
   image_path?: string | null;
+  originalImageUrl?: string | null;
+  image_original_path?: string | null;
   published_at?: string;
   priority?: string;
 }
@@ -58,9 +61,10 @@ export default function AnnouncementDetail({
   announcement: AnnouncementDetailData;
   onClose: () => void;
 }) {
-  const ref = useDialogFocus<HTMLDivElement>(true, onClose, null),
-    [full, setFull] = useState(false);
+  const [full, setFull] = useState(false);
+  const ref = useDialogFocus<HTMLDivElement>(!full, onClose, null);
   return (
+    <>
     <div
       className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 p-3"
       onClick={(e) => {
@@ -73,7 +77,7 @@ export default function AnnouncementDetail({
         role="dialog"
         aria-modal="true"
         aria-labelledby="announcement-detail-title"
-        className={`max-h-[95dvh] w-full overflow-y-auto rounded-2xl bg-white p-5 sm:p-7 ${full ? "max-w-6xl" : "max-w-3xl"}`}
+        className="max-h-[95dvh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 sm:p-7"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -107,7 +111,7 @@ export default function AnnouncementDetail({
           <button
             type="button"
             aria-label="Open full announcement image"
-            onClick={() => setFull((v) => !v)}
+            onClick={() => setFull(true)}
             className="mt-5 block w-full rounded-xl bg-slate-100"
           >
             <AnnouncementImage
@@ -115,6 +119,7 @@ export default function AnnouncementDetail({
               alt={`Attached image for ${announcement.title}`}
               className="max-h-[70dvh] w-full rounded-xl object-contain"
             />
+            <span className="block px-4 py-3 text-sm font-semibold text-pine-700">View Full Screen</span>
           </button>
         )}
         <p className="mt-5 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
@@ -125,5 +130,7 @@ export default function AnnouncementDetail({
         </button>
       </article>
     </div>
+    {full && <FullscreenImageViewer src={announcement.originalImageUrl ?? announcement.imageUrl ?? ""} title={announcement.title} onClose={() => setFull(false)} />}
+    </>
   );
 }

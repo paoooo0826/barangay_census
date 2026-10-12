@@ -196,6 +196,14 @@
     min-height: min(40dvh, 200px);
   }
 
+  .camera-preview video,
+  .camera-preview img {
+    transform: none !important;
+    scale: 1;
+    rotate: 0deg;
+    image-orientation: from-image;
+  }
+
   .menu-backdrop {
     animation: backdrop-enter 180ms ease-out;
   }

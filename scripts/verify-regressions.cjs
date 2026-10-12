@@ -44,7 +44,7 @@ async function render(source, mock = "", cameraStub = false) {
                   loader: "tsx",
                 }));
               }
-              build.onResolve({ filter: /\/lib\/supabase$/ }, () => ({
+              build.onResolve({ filter: /(?:^\.\/|\/lib\/)supabase$/ }, () => ({
                 path: "supabase",
                 namespace: "mock",
               }));

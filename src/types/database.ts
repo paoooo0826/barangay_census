@@ -181,6 +181,7 @@ export interface Announcement {
   published_at: string;
   expires_at?: string | null;
   image_path?: string | null;
+  image_original_path?: string | null;
   archived?: boolean;
   archived_at?: string | null;
   archived_by?: string | null;
@@ -251,6 +252,8 @@ export interface Database {
       service_payments: AnyTable;
       admin_profiles: AnyTable;
       announcements: AnyTable;
+      terms_documents: AnyTable;
+      account_terms_acceptances: AnyTable;
       appointments: AnyTable;
       residency_periods: AnyTable;
       boarding_houses: AnyTable;
@@ -267,6 +270,8 @@ export interface Database {
       admin_resident_history: AnyTable;
     };
     Functions: {
+      get_account_terms: { Args: Record<string, never>; Returns: Json };
+      accept_account_terms: { Args: { p_document_id: string; p_agreed: boolean }; Returns: Json };
       admin_system_analytics: { Args: { p_from?: string | null; p_to?: string | null; p_status?: string }; Returns: Json };
       get_service_catalog: { Args: Record<string, never>; Returns: Json };
       save_census_draft: {
