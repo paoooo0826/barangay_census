@@ -1,10 +1,12 @@
 import type { BoardingStatus, Resident } from "../types/database";
 
+const NOT_BOARDING_LABEL = "Not a Boarder or Landlord/Landlady";
+
 export const BOARDING_OPTIONS: Array<{ value: BoardingStatus; label: string }> =
   [
     { value: "boarder", label: "Boarder" },
     { value: "landlord", label: "Landlord/Landlady" },
-    { value: "neither", label: "Neither" },
+    { value: "neither", label: NOT_BOARDING_LABEL },
   ];
 
 export interface BoardingFormData {
@@ -97,7 +99,7 @@ export function validateBoarding(
 export function boardingStatusLabel(value?: string | null) {
   return (
     BOARDING_OPTIONS.find((option) => option.value === value)?.label ??
-    "Neither"
+    NOT_BOARDING_LABEL
   );
 }
 

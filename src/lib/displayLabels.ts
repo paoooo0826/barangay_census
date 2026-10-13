@@ -1,4 +1,5 @@
 import type { EducationStatus } from "../types/database";
+import { BOARDING_OPTIONS } from "./boarding";
 
 export const EDUCATION_STATUS_OPTIONS: Array<{
   value: EducationStatus;
@@ -49,6 +50,10 @@ const TITLE_CONNECTORS = new Set([
 ]);
 
 export function analyticsLabel(value: string) {
+  const boardingRole = BOARDING_OPTIONS.find(
+    (option) => option.value === value.trim().toLowerCase(),
+  );
+  if (boardingRole) return boardingRole.label;
   return value
     .replaceAll("_", " ")
     .replace(/\s+/g, " ")

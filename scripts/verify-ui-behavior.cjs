@@ -739,9 +739,9 @@ async function render(source, api = "export const supabase = {};") {
   await dashboard.tick(() => profileButton.click());
   check(
     bd.body.textContent.includes("Boarding Status") &&
-      bd.body.textContent.includes("Neither") &&
+      bd.body.textContent.includes("Not a Boarder or Landlord/Landlady") &&
       !bd.body.textContent.includes("Reported house"),
-    "Profile shows Neither without stale boarding details or empty boarding cards",
+    "Profile shows the non-boarding label without stale boarding details or empty boarding cards",
   );
   check(
     dashboard.errors.length === 0,

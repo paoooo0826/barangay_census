@@ -660,7 +660,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                         ? "Boarders"
                         : option.value === "landlord"
                           ? "Landlords/Landladies"
-                          : "Neither"}
+                          : option.label}
                     </option>
                   ))}
                 </select>
