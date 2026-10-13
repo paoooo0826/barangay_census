@@ -77,6 +77,50 @@ interface PreviewImage {
 
 const VERIFICATION_BUCKET = "resident-verification";
 const HOUSEHOLD_IMAGES_BUCKET = "household-images";
+const REQUIRED_REMARKS_MESSAGE = "Please provide remarks before continuing.";
+
+const REJECTION_REASONS = [
+  {
+    value: "unreadable_id",
+    label: "Unclear or Unreadable ID Photo",
+    message: "The uploaded ID photo is blurry, dark, cropped, or unreadable. Please upload a clear photo showing the entire ID and its details.",
+  },
+  {
+    value: "wrong_or_missing_id",
+    label: "Wrong or Missing ID Images",
+    message: "The required ID images are missing or do not show the selected ID type. Please upload the correct front and back images of your selected ID.",
+  },
+  {
+    value: "mismatched_details",
+    label: "ID and Census Details Do Not Match",
+    message: "The details on the uploaded ID do not match the census information. Please review and correct the details or upload the correct ID images.",
+  },
+  {
+    value: "identity_verification",
+    label: "Identity Could Not Be Confirmed",
+    message: "We could not confirm your identity from the submitted ID and live verification photo. Please review your images or contact the barangay office for assistance.",
+  },
+  {
+    value: "incomplete_information",
+    label: "Incomplete Census Information",
+    message: "Some required census information is missing or incomplete. Please complete the missing details and resubmit your record.",
+  },
+  {
+    value: "incorrect_information",
+    label: "Incorrect or Conflicting Information",
+    message: "Some census details are incorrect or inconsistent. Please review your submitted information, correct any errors, and contact the barangay office if you need clarification.",
+  },
+  {
+    value: "residency_clarification",
+    label: "Address or Residency Needs Clarification",
+    message: "Your address or residency details need clarification. Please review your address and residence start date, or contact the barangay office for assistance.",
+  },
+  {
+    value: "possible_duplicate",
+    label: "Possible Duplicate Census Record",
+    message: "A possible duplicate census record was found. Please contact the barangay office to clarify your existing record.",
+  },
+];
 
 const STATUS_CONFIG: Record<ResidentStatus, StatusConfig> = {
   pending_review: {
@@ -223,6 +267,11 @@ export default function AdminReview({
   const imagePreviewRef = useDialogFocus<HTMLDivElement>(
     Boolean(previewImage),
     () => setPreviewImage(null),
+    null,
+  );
+  const remarksModalRef = useDialogFocus<HTMLDivElement>(
+    showRemarksModal,
+    () => closeActionModal(),
     null,
   );
 
@@ -410,7 +459,7 @@ export default function AdminReview({
     }
 
     if (selectedAction !== "approve" && !remarkText.trim()) {
-      setError("Please provide remarks before continuing.");
+      setError(REQUIRED_REMARKS_MESSAGE);
       return;
     }
 
@@ -1139,7 +1188,7 @@ export default function AdminReview({
                     </span>
                   </div>
 
-                  <p className="mt-4 text-sm leading-6 text-slate-700">
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">
                     {remark.remark_text}
                   </p>
                 </article>
@@ -1197,7 +1246,14 @@ export default function AdminReview({
             }
           }}
         >
-          <div className="dialog-panel w-full max-w-lg rounded-3xl border border-white/20 bg-white shadow-2xl">
+          <div
+            ref={remarksModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-action-title"
+            tabIndex={-1}
+            className="dialog-panel w-full max-w-lg rounded-3xl border border-white/20 bg-white shadow-2xl"
+          >
             <div className="border-b border-slate-100 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
@@ -1212,7 +1268,7 @@ export default function AdminReview({
                   </div>
 
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">
+                    <h2 id="review-action-title" className="text-xl font-bold text-slate-900">
                       {selectedActionConfig.title}
                     </h2>
 
@@ -1226,6 +1282,7 @@ export default function AdminReview({
                   type="button"
                   onClick={closeActionModal}
                   disabled={actionLoading}
+                  aria-label="Close review dialog"
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
                 >
                   <X className="h-5 w-5" />
@@ -1238,6 +1295,47 @@ export default function AdminReview({
                 <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
                   <p>{error}</p>
+                </div>
+              )}
+
+              {selectedAction === "reject" && (
+                <div className="mb-5">
+                  <label htmlFor="review-quick-reason" className="text-sm font-semibold text-slate-800">
+                    Quick Rejection Reasons
+                  </label>
+                  <select
+                    id="review-quick-reason"
+                    value=""
+                    disabled={actionLoading}
+                    aria-describedby="review-quick-reason-help"
+                    className="input mt-2 w-full"
+                    onChange={(event) => {
+                      const selected = event.target.value;
+                      if (selected === "custom") {
+                        document.getElementById("review-remarks")?.focus();
+                        return;
+                      }
+                      const reason = REJECTION_REASONS.find(item => item.value === selected);
+                      if (!reason) return;
+                      setError(current => current === REQUIRED_REMARKS_MESSAGE ? null : current);
+                      setRemarkText(current =>
+                        current.includes(reason.message)
+                          ? current
+                          : current.trim()
+                            ? `${current.trimEnd()}\n\n${reason.message}`
+                            : reason.message,
+                      );
+                    }}
+                  >
+                    <option value="">Select a Reason to Add</option>
+                    {REJECTION_REASONS.map(reason => (
+                      <option key={reason.value} value={reason.value}>{reason.label}</option>
+                    ))}
+                    <option value="custom">Other (Write Your Own)</option>
+                  </select>
+                  <p id="review-quick-reason-help" className="mt-2 text-xs leading-5 text-slate-500">
+                    Add one or more reasons, then edit the remarks with any specific details for the resident.
+                  </p>
                 </div>
               )}
 
@@ -1260,7 +1358,14 @@ export default function AdminReview({
               <textarea
                 id="review-remarks"
                 value={remarkText}
-                onChange={(event) => setRemarkText(event.target.value)}
+                disabled={actionLoading}
+                aria-required={selectedAction === "reject"}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setRemarkText(value);
+                  if (value.trim())
+                    setError(current => current === REQUIRED_REMARKS_MESSAGE ? null : current);
+                }}
                 placeholder={
                   selectedAction === "approve"
                     ? "Optional approval message"

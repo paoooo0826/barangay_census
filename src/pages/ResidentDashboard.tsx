@@ -936,7 +936,7 @@ export default function ResidentDashboard({
                               {formatDate(r.created_at)}
                             </time>
                           </div>
-                          <p className="mt-2 text-sm text-slate-700">
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
                             {r.remark_text}
                           </p>
                         </article>

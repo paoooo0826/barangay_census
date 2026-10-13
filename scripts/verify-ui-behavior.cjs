@@ -1060,13 +1060,14 @@ async function render(source, api = "export const supabase = {};") {
     `import {createRoot} from 'react-dom/client';import AdminReview from './src/pages/AdminReview';const root=createRoot(document.getElementById('root'));window.__decisions=0;window.__mount=()=>root.render(<AdminReview residentId="r0" onBack={()=>{}} onDecisionComplete={()=>{window.__decisions++}}/>);window.__unmount=()=>root.unmount();`,
     api +
       `
-window.__reviewCalls=[];window.__conflict=true;const originalRpc=supabase.rpc;supabase.rpc=async(name,args)=>{if(name!=='review_resident')return originalRpc(name,args);window.__reviewCalls.push(args);if(window.__conflict){residents[0].first_name='FreshRecord';residents[0].updated_at='2026-10-07T08:00:00.123456+00:00';return{data:null,error:{code:'40001',message:'Concurrent review'}}}return{data:{status:'verified'},error:null}};`,
+window.__reviewCalls=[];window.__conflict=true;const originalRpc=supabase.rpc;supabase.rpc=async(name,args)=>{if(name!=='review_resident')return originalRpc(name,args);window.__reviewCalls.push(args);if(window.__conflict){residents[0].first_name='FreshRecord';residents[0].updated_at='2026-10-07T08:00:00.123456+00:00';return{data:null,error:{code:'40001',message:'Concurrent review'}}}if(window.__holdReview)await new Promise(resolve=>window.__releaseReview=resolve);if(window.__failReview)return{data:null,error:{message:'Unable to save review'}};return{data:{status:args.p_action==='reject'?'rejected':'verified'},error:null}};`,
   );
   const approve = () =>
     [...reviewTest.w.document.querySelectorAll("button")]
       .filter((b) => b.textContent.includes("Approve Record"))
       .at(-1);
   await reviewTest.tick(() => approve().click());
+  check(!reviewTest.w.document.querySelector('#review-quick-reason'), 'Approval dialogs keep optional remarks without rejection shortcuts');
   await reviewTest.tick(() => approve().click());
   check(
     reviewTest.w.__reviewCalls[0].p_expected_updated_at ===
@@ -1094,6 +1095,48 @@ window.__reviewCalls=[];window.__conflict=true;const originalRpc=supabase.rpc;su
     reviewTest.errors.length === 0,
     "Conflict recovery has no React errors",
   );
+  {
+    const rd = reviewTest.w.document;
+    const reject = () => [...rd.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Reject Record').at(-1);
+    const changeReviewField = (field, value) => {
+      const proto = field.tagName === 'SELECT' ? reviewTest.w.HTMLSelectElement.prototype : reviewTest.w.HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(field, value);
+      field.dispatchEvent(new reviewTest.w.Event(field.tagName === 'SELECT' ? 'change' : 'input', {bubbles:true}));
+    };
+    await reviewTest.tick(() => reject().click());
+    let quickReason = rd.querySelector('#review-quick-reason');
+    let remark = rd.querySelector('#review-remarks');
+    check(quickReason?.options.length === 10 && rd.querySelector('[role=dialog]')?.contains(rd.activeElement) && rd.body.style.overflow === 'hidden', 'Rejection opens an accessible scrollable dialog with eight common reasons and a custom option');
+    await reviewTest.tick(() => reject().click());
+    check(reviewTest.w.__reviewCalls.length === 2 && rd.body.textContent.includes('Please provide remarks'), 'An empty rejection still requires a written reason before any database request');
+    await reviewTest.tick(() => changeReviewField(quickReason, 'unreadable_id'));
+    const idReason = remark.value;
+    check(idReason.includes('blurry, dark, cropped, or unreadable') && reviewTest.w.__reviewCalls.length === 2 && quickReason.value === '' && !rd.body.textContent.includes('Please provide remarks'), 'Choosing a quick reason clears required-field feedback and fills the editable remarks without submitting or changing the record status');
+    await reviewTest.tick(() => changeReviewField(remark, idReason + '\n\nPlease retake the back image in better lighting.'));
+    await reviewTest.tick(() => changeReviewField(quickReason, 'incomplete_information'));
+    const combined = remark.value;
+    await reviewTest.tick(() => changeReviewField(quickReason, 'unreadable_id'));
+    check(remark.value === combined && combined.includes('better lighting.') && combined.includes('required census information'), 'Adding multiple reasons preserves administrator details and prevents duplicate preset text');
+    await reviewTest.tick(() => changeReviewField(quickReason, 'custom'));
+    check(remark.value === combined && rd.activeElement === remark, 'The custom-reason option keeps existing text and focuses the remarks box');
+    reviewTest.w.confirm = () => false;
+    await reviewTest.tick(() => rd.dispatchEvent(new reviewTest.w.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true})));
+    check(Boolean(rd.querySelector('[role=dialog]')) && remark.value === combined, 'Cancelling discard keeps the selected reasons and custom remarks intact');
+    reviewTest.w.__failReview = true;
+    await reviewTest.tick(() => reject().click());
+    check(rd.body.textContent.includes('Unable to save review') && remark.value === combined && reviewTest.w.__decisions === 1, 'A failed rejection save retains the full draft and does not report a completed decision');
+    reviewTest.w.__failReview = false;
+    reviewTest.w.__holdReview = true;
+    await reviewTest.tick(() => reject().click());
+    check(quickReason.disabled && remark.disabled && rd.querySelector('[aria-label="Close review dialog"]').disabled, 'Rejection reason and remarks controls stay locked while the submitted review is being saved');
+    await reviewTest.tick(() => reviewTest.w.__releaseReview());
+    check(reviewTest.w.__reviewCalls.at(-1).p_action === 'reject' && reviewTest.w.__reviewCalls.at(-1).p_remark === combined && reviewTest.w.__decisions === 2 && !rd.querySelector('[role=dialog]') && rd.body.style.overflow === '', 'Explicit rejection saves the complete edited remarks through the existing review RPC and releases scrolling');
+    await reviewTest.tick(() => reject().click());
+    quickReason = rd.querySelector('#review-quick-reason');
+    remark = rd.querySelector('#review-remarks');
+    check(quickReason.value === '' && remark.value === '', 'Reopening the rejection dialog starts with clean reason and remarks fields');
+    check(reviewTest.errors.filter(message => message !== 'Action error: [object Object]').length === 0, 'Preset, custom, failed-save and successful rejection flows have no unexpected React errors');
+  }
   await reviewTest.close();
 
   console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
