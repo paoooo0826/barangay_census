@@ -19,6 +19,7 @@ import {
 import FaceIdentityVerification from "../components/FaceVerificationLoader";
 import type { FaceVerificationResult } from "../components/FaceIdentityVerification";
 import IdCameraCapture from "../components/IdCameraCapture";
+import { GOVERNMENT_ID_TYPES } from "../lib/idDocument";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -48,14 +49,7 @@ interface StoredVerification {
 }
 
 const STORAGE_BUCKET = "resident-verification";
-const ID_TYPES = [
-  "PhilSys ID",
-  "Driver's License",
-  "Passport",
-  "UMID",
-  "Postal ID",
-  "Voter's ID",
-];
+const ID_TYPES = GOVERNMENT_ID_TYPES;
 
 function fileExtension(file: File) {
   const fromName = file.name.split(".").pop()?.toLowerCase();
@@ -479,6 +473,7 @@ export default function ResidentRegistration({
             {step === 2 && (
               <div className="space-y-5">
                 <FaceIdentityVerification
+                  idType={idType}
                   idFrontFile={frontImage}
                   idFrontPreview={frontPreview}
                   autoStart

@@ -29,6 +29,7 @@ import type {
 } from "../types/database";
 import FaceIdentityVerification from "../components/FaceVerificationLoader";
 import type { FaceVerificationResult } from "../components/FaceIdentityVerification";
+import { GOVERNMENT_ID_TYPES } from "../lib/idDocument";
 import IdCameraCapture from "../components/IdCameraCapture";
 import { categoryLabel, EDUCATION_STATUS_OPTIONS } from "../lib/displayLabels";
 import BoardingFormFields from "../components/BoardingFormFields";
@@ -187,14 +188,7 @@ const TENURIAL_STATUS_OPTIONS: TenurialStatus[] = [
   "Caretaker",
   "Renter",
 ];
-const GOVERNMENT_ID_OPTIONS = [
-  "PhilSys ID",
-  "Driver's License",
-  "Passport",
-  "UMID",
-  "Postal ID",
-  "Voter's ID",
-] as const;
+const GOVERNMENT_ID_OPTIONS = GOVERNMENT_ID_TYPES;
 const CATEGORY_CONFIG = {
   main: ["Senior Citizen", "Youth", "PWD", "FHONA"],
   other: [
@@ -1924,6 +1918,11 @@ export default function CensusForm({
               className={`mt-5 rounded-2xl ${fieldErrors.liveVerification ? "border border-red-500 bg-red-50 p-3" : ""}`}
             >
               <FaceIdentityVerification
+                idType={
+                  governmentIdType === "Other"
+                    ? otherGovernmentIdType.trim()
+                    : governmentIdType
+                }
                 idFrontFile={governmentIdFront}
                 idFrontPreview={governmentIdFrontPreview}
                 disabled={loading}

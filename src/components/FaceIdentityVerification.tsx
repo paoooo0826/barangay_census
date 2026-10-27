@@ -16,6 +16,8 @@ import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
 import { detectsHeadTurn, mirrorCameraPreview } from "../lib/cameraOrientation";
+import { checkIdDocument } from "../lib/idDocumentOcr";
+import type { IdDocumentCheck } from "../lib/idDocument";
 
 export type LivenessAction =
   | "blink_twice"
@@ -44,6 +46,7 @@ export interface FaceVerificationResult {
 }
 
 export interface FaceVerificationProps {
+  idType?: string;
   idFrontFile: File | null;
   idFrontPreview?: string;
   disabled?: boolean;
@@ -145,6 +148,7 @@ function analyzePixels(image: HTMLImageElement) {
 }
 
 export default function FaceIdentityVerification({
+  idType = "",
   idFrontFile,
   idFrontPreview,
   disabled,
@@ -158,6 +162,8 @@ export default function FaceIdentityVerification({
   const idDescriptorRef = useRef<Float32Array | null>(null);
   const idQualityRef = useRef<FaceVerificationResult["idQuality"] | null>(null);
   const idFaceAvailableRef = useRef(false);
+  const documentCheckRef = useRef<IdDocumentCheck | null>(null);
+  const documentAbortRef = useRef<AbortController | null>(null);
   const blinkClosedRef = useRef(false);
   const blinkCountRef = useRef(0);
   const baselineAreaRef = useRef<number | null>(null);
@@ -205,6 +211,7 @@ export default function FaceIdentityVerification({
     return () => {
       mountedRef.current = false;
       attemptRef.current += 1;
+      documentAbortRef.current?.abort();
       stopCamera();
       exitBrowserFullscreen();
       clearCapturePreview();
@@ -213,17 +220,24 @@ export default function FaceIdentityVerification({
   useEffect(() => {
     resetVerification();
     autoStartKeyRef.current = "";
-  }, [idFrontFile, idFrontPreview]);
+  }, [idType, idFrontFile, idFrontPreview]);
   useEffect(() => {
-    const key = idFrontFile
+    const imageKey = idFrontFile
       ? `${idFrontFile.name}:${idFrontFile.size}:${idFrontFile.lastModified}`
       : (idFrontPreview ?? "");
-    if (!autoStart || disabled || !key || autoStartKeyRef.current === key)
+    const key = `${idType}:${imageKey}`;
+    if (
+      !autoStart ||
+      disabled ||
+      !idType.trim() ||
+      !imageKey ||
+      autoStartKeyRef.current === key
+    )
       return;
     autoStartKeyRef.current = key;
     const timer = window.setTimeout(() => void validateIdAndStart(), 350);
     return () => window.clearTimeout(timer);
-  }, [autoStart, disabled, idFrontFile, idFrontPreview]);
+  }, [autoStart, disabled, idType, idFrontFile, idFrontPreview]);
 
   function stopCamera() {
     monitorSessionRef.current += 1;
@@ -270,6 +284,9 @@ export default function FaceIdentityVerification({
 
   function resetVerification() {
     attemptRef.current += 1;
+    documentAbortRef.current?.abort();
+    documentAbortRef.current = null;
+    documentCheckRef.current = null;
     validatingRef.current = false;
     stopCamera();
     exitBrowserFullscreen();
@@ -310,6 +327,13 @@ export default function FaceIdentityVerification({
     if (disabled || validatingRef.current) return;
     validatingRef.current = true;
     const attempt = ++attemptRef.current;
+    documentAbortRef.current?.abort();
+    const documentAbort = new AbortController();
+    documentAbortRef.current = documentAbort;
+    documentCheckRef.current = null;
+    idDescriptorRef.current = null;
+    idQualityRef.current = null;
+    idFaceAvailableRef.current = false;
     setCameraOpen(true);
     setMirroredPreview(facingRef.current === "user");
     setPendingResult(null);
@@ -321,12 +345,40 @@ export default function FaceIdentityVerification({
     try {
       await enterBrowserFullscreen();
       if (!activeAttempt(attempt)) return;
-      await loadModels();
-      if (!activeAttempt(attempt)) return;
-      setStatus("Checking the ID image quality and detected faces...");
+      if (!idType.trim())
+        throw new Error(
+          "Select the government ID type before checking the picture.",
+        );
+      setStatus("Checking the ID image quality…");
       const image = await sourceToImage(idFrontFile, idFrontPreview);
       if (!activeAttempt(attempt)) return;
       const pixelQuality = analyzePixels(image);
+      if (pixelQuality.brightness < 55)
+        throw new Error(
+          "The ID image is too dark. Retake it in brighter, even lighting.",
+        );
+      if (pixelQuality.brightness > 235)
+        throw new Error(
+          "The ID image is overexposed. Retake it without strong glare.",
+        );
+      if (pixelQuality.blurVariance < 45)
+        throw new Error(
+          "The ID image appears blurry. Hold the camera steady and retake it.",
+        );
+
+      const documentCheck = await checkIdDocument(
+        image,
+        idType,
+        documentAbort.signal,
+        (message) => {
+          if (activeAttempt(attempt)) setStatus(message);
+        },
+      );
+      if (!activeAttempt(attempt)) return;
+      documentCheckRef.current = documentCheck;
+      await loadModels();
+      if (!activeAttempt(attempt)) return;
+      setStatus("Checking the photograph on the ID…");
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
         scoreThreshold: 0.5,
@@ -339,18 +391,6 @@ export default function FaceIdentityVerification({
       if (faces.length > 1)
         throw new Error(
           "More than one face was detected on the ID. Only the cardholder photo should be visible.",
-        );
-      if (pixelQuality.brightness < 55)
-        throw new Error(
-          "The ID image is too dark. Retake it in brighter, even lighting.",
-        );
-      if (pixelQuality.brightness > 235)
-        throw new Error(
-          "The ID image is overexposed. Retake it without strong glare.",
-        );
-      if (pixelQuality.blurVariance < 45)
-        throw new Error(
-          "The ID image appears blurry. Hold the camera steady and retake it.",
         );
 
       let faceAreaRatio = 0;
@@ -378,7 +418,9 @@ export default function FaceIdentityVerification({
       setActions(selected);
       setStatus(
         faces.length === 1
-          ? "ID accepted. Starting live camera liveness check..."
+          ? documentCheck.status === "manual_review"
+            ? "ID details need administrator review. Starting live verification…"
+            : "ID details detected. Starting live verification; administrator approval is still required…"
           : "No face photo was found on the ID. Liveness will continue and the application will require manual administrator review.",
       );
       await startCamera(selected, attempt);
@@ -656,6 +698,7 @@ export default function FaceIdentityVerification({
       const idQuality = idQualityRef.current;
       const idDescriptor = idDescriptorRef.current;
       const idFaceAvailable = idFaceAvailableRef.current;
+      const documentCheck = documentCheckRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       if (!canvas.width || !canvas.height)
@@ -733,8 +776,14 @@ export default function FaceIdentityVerification({
           recommendation: "manual_review",
           idQuality,
           verificationStatus: "passed",
-          verificationReason:
+          verificationReason: [
+            documentCheck?.status === "manual_review"
+              ? documentCheck.reason
+              : "",
             "Government ID has no usable face photograph. Face comparison was skipped.",
+          ]
+            .filter(Boolean)
+            .join(" "),
           deviceType: deviceType(),
         });
         if (!activeAttempt(attempt)) return;
@@ -748,6 +797,7 @@ export default function FaceIdentityVerification({
       const distance = faceapi.euclideanDistance(idDescriptor, liveDescriptor);
       const similarityScore = Math.max(0, Math.min(100, (1 - distance) * 100));
       const recommendation: FaceVerificationResult["recommendation"] =
+        documentCheck?.status !== "manual_review" &&
         distance <= STRONG_MATCH_THRESHOLD
           ? "match"
           : distance <= MATCH_THRESHOLD
@@ -775,6 +825,10 @@ export default function FaceIdentityVerification({
         recommendation,
         idQuality,
         verificationStatus: "passed",
+        verificationReason:
+          documentCheck?.status === "manual_review"
+            ? documentCheck.reason
+            : undefined,
         deviceType: deviceType(),
       });
       if (!activeAttempt(attempt)) return;
@@ -816,8 +870,9 @@ export default function FaceIdentityVerification({
             Live identity and liveness verification
           </h3>
           <p className="mt-1 text-sm text-slate-600">
-            The live camera is required. Gallery uploads are disabled for the
-            applicant face.
+            Your ID type and printed details are checked before the required
+            live face capture. Selfies and unrelated pictures cannot be used as
+            an ID. Final ID approval is done by the administrator.
           </p>
         </div>
       </div>
@@ -849,9 +904,14 @@ export default function FaceIdentityVerification({
       {!cameraReady && !complete && !cameraUnavailable && (
         <button
           type="button"
-          disabled={busy || disabled || (!idFrontFile && !idFrontPreview)}
+          disabled={
+            busy ||
+            disabled ||
+            !idType.trim() ||
+            (!idFrontFile && !idFrontPreview)
+          }
           onClick={() => void validateIdAndStart()}
-          className={`${autoStart ? "sr-only" : "mt-4 inline-flex"} items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50`}
+          className={`${autoStart && !error ? "sr-only" : "mt-4 inline-flex"} items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50`}
         >
           {busy ? (
             <Loader2 className="animate-spin" size={18} />

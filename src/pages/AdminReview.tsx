@@ -56,7 +56,9 @@ interface ResidentCategoryData {
   indigenous_group?: string | null;
   other_description?: string | null;
   categories?:
-    { name?: string | null } | Array<{ name?: string | null }> | null;
+    | { name?: string | null }
+    | Array<{ name?: string | null }>
+    | null;
 }
 
 type ReviewAction = "approve" | "reject";
@@ -83,42 +85,50 @@ const REJECTION_REASONS = [
   {
     value: "unreadable_id",
     label: "Unclear or Unreadable ID Photo",
-    message: "The uploaded ID photo is blurry, dark, cropped, or unreadable. Please upload a clear photo showing the entire ID and its details.",
+    message:
+      "The uploaded ID photo is blurry, dark, cropped, or unreadable. Please upload a clear photo showing the entire ID and its details.",
   },
   {
     value: "wrong_or_missing_id",
     label: "Wrong or Missing ID Images",
-    message: "The required ID images are missing or do not show the selected ID type. Please upload the correct front and back images of your selected ID.",
+    message:
+      "The required ID images are missing or do not show the selected ID type. Please upload the correct front and back images of your selected ID.",
   },
   {
     value: "mismatched_details",
     label: "ID and Census Details Do Not Match",
-    message: "The details on the uploaded ID do not match the census information. Please review and correct the details or upload the correct ID images.",
+    message:
+      "The details on the uploaded ID do not match the census information. Please review and correct the details or upload the correct ID images.",
   },
   {
     value: "identity_verification",
     label: "Identity Could Not Be Confirmed",
-    message: "We could not confirm your identity from the submitted ID and live verification photo. Please review your images or contact the barangay office for assistance.",
+    message:
+      "We could not confirm your identity from the submitted ID and live verification photo. Please review your images or contact the barangay office for assistance.",
   },
   {
     value: "incomplete_information",
     label: "Incomplete Census Information",
-    message: "Some required census information is missing or incomplete. Please complete the missing details and resubmit your record.",
+    message:
+      "Some required census information is missing or incomplete. Please complete the missing details and resubmit your record.",
   },
   {
     value: "incorrect_information",
     label: "Incorrect or Conflicting Information",
-    message: "Some census details are incorrect or inconsistent. Please review your submitted information, correct any errors, and contact the barangay office if you need clarification.",
+    message:
+      "Some census details are incorrect or inconsistent. Please review your submitted information, correct any errors, and contact the barangay office if you need clarification.",
   },
   {
     value: "residency_clarification",
     label: "Address or Residency Needs Clarification",
-    message: "Your address or residency details need clarification. Please review your address and residence start date, or contact the barangay office for assistance.",
+    message:
+      "Your address or residency details need clarification. Please review your address and residence start date, or contact the barangay office for assistance.",
   },
   {
     value: "possible_duplicate",
     label: "Possible Duplicate Census Record",
-    message: "A possible duplicate census record was found. Please contact the barangay office to clarify your existing record.",
+    message:
+      "A possible duplicate census record was found. Please contact the barangay office to clarify your existing record.",
   },
 ];
 
@@ -879,6 +889,11 @@ export default function AdminReview({
                     .map(formatLabel)
                     .join(", ") || "Not recorded"}
                 </p>
+                {data.faceVerification.verification_reason && (
+                  <p className="mt-2 text-sm text-pine-900">
+                    Review note: {data.faceVerification.verification_reason}
+                  </p>
+                )}
               </div>
             </section>
           )}
@@ -1149,7 +1164,11 @@ export default function AdminReview({
           )}
         </section>
 
-        <ResidentRecordHistory key={residentId} residentId={residentId} refreshKey={data.resident.updated_at} />
+        <ResidentRecordHistory
+          key={residentId}
+          residentId={residentId}
+          refreshKey={data.resident.updated_at}
+        />
         {data.remarks.length > 0 && (
           <section className="mb-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="mb-6 flex items-start justify-between">
@@ -1268,7 +1287,10 @@ export default function AdminReview({
                   </div>
 
                   <div>
-                    <h2 id="review-action-title" className="text-xl font-bold text-slate-900">
+                    <h2
+                      id="review-action-title"
+                      className="text-xl font-bold text-slate-900"
+                    >
                       {selectedActionConfig.title}
                     </h2>
 
@@ -1300,7 +1322,10 @@ export default function AdminReview({
 
               {selectedAction === "reject" && (
                 <div className="mb-5">
-                  <label htmlFor="review-quick-reason" className="text-sm font-semibold text-slate-800">
+                  <label
+                    htmlFor="review-quick-reason"
+                    className="text-sm font-semibold text-slate-800"
+                  >
                     Quick Rejection Reasons
                   </label>
                   <select
@@ -1315,10 +1340,14 @@ export default function AdminReview({
                         document.getElementById("review-remarks")?.focus();
                         return;
                       }
-                      const reason = REJECTION_REASONS.find(item => item.value === selected);
+                      const reason = REJECTION_REASONS.find(
+                        (item) => item.value === selected,
+                      );
                       if (!reason) return;
-                      setError(current => current === REQUIRED_REMARKS_MESSAGE ? null : current);
-                      setRemarkText(current =>
+                      setError((current) =>
+                        current === REQUIRED_REMARKS_MESSAGE ? null : current,
+                      );
+                      setRemarkText((current) =>
                         current.includes(reason.message)
                           ? current
                           : current.trim()
@@ -1328,13 +1357,19 @@ export default function AdminReview({
                     }}
                   >
                     <option value="">Select a Reason to Add</option>
-                    {REJECTION_REASONS.map(reason => (
-                      <option key={reason.value} value={reason.value}>{reason.label}</option>
+                    {REJECTION_REASONS.map((reason) => (
+                      <option key={reason.value} value={reason.value}>
+                        {reason.label}
+                      </option>
                     ))}
                     <option value="custom">Other (Write Your Own)</option>
                   </select>
-                  <p id="review-quick-reason-help" className="mt-2 text-xs leading-5 text-slate-500">
-                    Add one or more reasons, then edit the remarks with any specific details for the resident.
+                  <p
+                    id="review-quick-reason-help"
+                    className="mt-2 text-xs leading-5 text-slate-500"
+                  >
+                    Add one or more reasons, then edit the remarks with any
+                    specific details for the resident.
                   </p>
                 </div>
               )}
@@ -1364,7 +1399,9 @@ export default function AdminReview({
                   const value = event.target.value;
                   setRemarkText(value);
                   if (value.trim())
-                    setError(current => current === REQUIRED_REMARKS_MESSAGE ? null : current);
+                    setError((current) =>
+                      current === REQUIRED_REMARKS_MESSAGE ? null : current,
+                    );
                 }}
                 placeholder={
                   selectedAction === "approve"

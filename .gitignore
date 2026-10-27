@@ -27,3 +27,6 @@ dist-ssr
 *.sw?
 
 supabase/.temp/
+
+# Generated from pinned OCR dependencies by the dev/build command.
+public/ocr/

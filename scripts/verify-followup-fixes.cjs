@@ -35,6 +35,20 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
             name: "mock-supabase",
             setup(build) {
               if (options.camera) {
+                build.onResolve({ filter: /\/lib\/idDocumentOcr$/ }, () => ({
+                  path: "document",
+                  namespace: "document-test",
+                }));
+                build.onLoad(
+                  { filter: /.*/, namespace: "document-test" },
+                  () => ({
+                    loader: "ts",
+                    contents: `export async function checkIdDocument(_image,_type,signal){window.__documentCalls=(window.__documentCalls||0)+1;window.__documentSignal=signal;
+                  if(window.__documentMode==='invalid')throw new Error('A readable government ID was not found. Retake the ID.');
+                  if(window.__documentMode==='wait')return new Promise(resolve=>window.__finishDocument=()=>resolve({status:'recognized',reason:'ID details detected'}));
+                  return {status:window.__documentMode==='manual'?'manual_review':'recognized',reason:'ID text needs administrator review.'};}`,
+                  }),
+                );
                 build.onResolve({ filter: /VideoGuide$/ }, () => ({
                   path: "guide",
                   namespace: "guide-test",
@@ -50,10 +64,10 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                 build.onLoad({ filter: /.*/, namespace: "face-test" }, () => ({
                   loader: "ts",
                   contents: `
-                  export const nets={};export async function bufferToImage(){return null};export function euclideanDistance(){return 0};
+                  const net={loadFromUri:async()=>{}};export const nets={tinyFaceDetector:net,faceLandmark68Net:net,faceRecognitionNet:net,faceExpressionNet:net};export async function bufferToImage(){return {naturalWidth:1200,naturalHeight:800}};export function euclideanDistance(){return 0};
                   export class TinyFaceDetectorOptions{}
                   export function detectAllFaces(){return {withFaceLandmarks(){return this},withFaceExpressions(){return this},
-                    withFaceDescriptors(){return new Promise(resolve=>window.__facePending.push(resolve))}}}
+                    withFaceDescriptors(){return window.__idGate?Promise.resolve([]):new Promise(resolve=>window.__facePending.push(resolve))}}}
                 `,
                 }));
                 build.onLoad(
@@ -64,8 +78,8 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                     contents: fs.readFileSync(args.path, "utf8").replace(
                       "const currentAction = actions[actionIndex];",
                       `
-                    window.__camera={start:(facing='user')=>{facingRef.current=facing;return startCamera(['blink_twice','turn_left','smile'])},reset:resetVerification,
-                      capture:()=>captureAndCompare(['blink_twice','turn_left','smile']),complete:()=>complete,
+                    window.__camera={validate:validateIdAndStart,start:(facing='user')=>{facingRef.current=facing;return startCamera(['blink_twice','turn_left','smile'])},reset:resetVerification,
+                      capture:()=>captureAndCompare(['blink_twice','turn_left','smile']),complete:()=>complete,pending:()=>pendingResult,
                       seed:()=>{idQualityRef.current={brightness:128,blurVariance:100,faceAreaRatio:0.1,detectedFaces:0};
                         idFaceAvailableRef.current=false;idDescriptorRef.current=null;}};
                     const currentAction = actions[actionIndex];
@@ -173,7 +187,23 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
           get: () => 960,
         });
         w.HTMLMediaElement.prototype.play = () => Promise.resolve();
-        w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {}, save() {}, restore() {}, setTransform() {} });
+        w.HTMLCanvasElement.prototype.getContext = () => ({
+          drawImage() {},
+          save() {},
+          restore() {},
+          setTransform() {},
+          getImageData(_x, _y, width, height) {
+            const data = new w.Uint8ClampedArray(width * height * 4);
+            for (let i = 0; i < data.length; i += 4) {
+              const value = (i / 4) % 2 === 0 ? 80 : 180;
+              data[i] = value;
+              data[i + 1] = value;
+              data[i + 2] = value;
+              data[i + 3] = 255;
+            }
+            return { data };
+          },
+        });
         w.HTMLCanvasElement.prototype.toBlob = function (callback) {
           const finish = () =>
             callback(
@@ -372,20 +402,56 @@ async function cameraChecks() {
     w.__trackStops === 1 && !w.document.querySelector("video"),
     "Permission result arriving after Reset is stopped and cannot reopen camera",
   );
-  check(w.document.body.style.overflow === "", "Resetting the face camera restores page scrolling after pending permission");
+  check(
+    w.document.body.style.overflow === "",
+    "Resetting the face camera restores page scrolling after pending permission",
+  );
   await open();
-  check(w.document.querySelector('[aria-label="Fullscreen identity capture"]').parentElement===w.document.body && w.document.querySelector('[aria-label="Fullscreen identity capture"]').className.includes('camera-edge-to-edge'), 'Live face capture uses a full-screen body portal outside census card borders');
-  check(!/border|rounded/.test(w.document.querySelector('.camera-preview').className), 'Live face preview has no outer border or rounded card frame');
-  check(w.document.querySelector('.capture-header [aria-label="Exit full-screen camera"]') && w.document.querySelector('.capture-controls'), 'Borderless face capture retains accessible overlay controls');
-  check(w.document.querySelector('video')?.style.transform === 'scaleX(-1)' && w.document.querySelector('[aria-label="Mirror Preview"]')?.getAttribute('aria-pressed') === 'true', 'Front-facing live verification uses the familiar selfie preview direction');
-  await tick(() => w.document.querySelector('[aria-label="Mirror Preview"]').click());
-  check(w.document.querySelector('video')?.style.transform === 'none', 'Face verification allows a normal preview without changing captured image orientation');
-  await tick(() => w.document.querySelector('[aria-label="Mirror Preview"]').click());
+  check(
+    w.document.querySelector('[aria-label="Fullscreen identity capture"]')
+      .parentElement === w.document.body &&
+      w.document
+        .querySelector('[aria-label="Fullscreen identity capture"]')
+        .className.includes("camera-edge-to-edge"),
+    "Live face capture uses a full-screen body portal outside census card borders",
+  );
+  check(
+    !/border|rounded/.test(
+      w.document.querySelector(".camera-preview").className,
+    ),
+    "Live face preview has no outer border or rounded card frame",
+  );
+  check(
+    w.document.querySelector(
+      '.capture-header [aria-label="Exit full-screen camera"]',
+    ) && w.document.querySelector(".capture-controls"),
+    "Borderless face capture retains accessible overlay controls",
+  );
+  check(
+    w.document.querySelector("video")?.style.transform === "scaleX(-1)" &&
+      w.document
+        .querySelector('[aria-label="Mirror Preview"]')
+        ?.getAttribute("aria-pressed") === "true",
+    "Front-facing live verification uses the familiar selfie preview direction",
+  );
+  await tick(() =>
+    w.document.querySelector('[aria-label="Mirror Preview"]').click(),
+  );
+  check(
+    w.document.querySelector("video")?.style.transform === "none",
+    "Face verification allows a normal preview without changing captured image orientation",
+  );
+  await tick(() =>
+    w.document.querySelector('[aria-label="Mirror Preview"]').click(),
+  );
   await tick(() => {
     w.__capture = w.__camera.capture();
   });
   await tick(() => w.__camera.reset());
-  check(w.document.body.style.overflow === "", "Closing active face verification restores scrolling for subsequent panels");
+  check(
+    w.document.body.style.overflow === "",
+    "Closing active face verification restores scrolling for subsequent panels",
+  );
   await tick(() => w.__finishFace());
   await w.__capture;
   check(
@@ -414,8 +480,16 @@ async function cameraChecks() {
     "Concurrent automatic captures produce only one final detection",
   );
   await tick(() => w.__finishFace());
-  check(w.__verified.length === 0 && w.document.body.textContent.includes("Confirm Photo"), "Capture waits for explicit confirmation before uploading");
-  await tick(() => [...w.document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Confirm Photo").click());
+  check(
+    w.__verified.length === 0 &&
+      w.document.body.textContent.includes("Confirm Photo"),
+    "Capture waits for explicit confirmation before uploading",
+  );
+  await tick(() =>
+    [...w.document.querySelectorAll("button")]
+      .find((b) => b.textContent.trim() === "Confirm Photo")
+      .click(),
+  );
   check(
     w.__verified.length === 1 &&
       w.__verified[0].file.size > 0 &&
@@ -461,7 +535,11 @@ async function cameraChecks() {
   await capture();
   await w.__capture;
   await tick();
-  await tick(() => [...w.document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Confirm Photo").click());
+  await tick(() =>
+    [...w.document.querySelectorAll("button")]
+      .find((b) => b.textContent.trim() === "Confirm Photo")
+      .click(),
+  );
   check(
     !w.__camera.complete() &&
       w.document.body.textContent.includes("Upload failed. Please retry."),
@@ -482,6 +560,96 @@ async function cameraChecks() {
   check(
     t.errors.length === 0,
     "Camera cancellation/capture tests have no React/runtime errors",
+  );
+  t.dom.window.close();
+}
+
+async function idGateChecks() {
+  const source = `import {createRoot} from 'react-dom/client';import Face from './src/components/FaceIdentityVerification';
+    const root=createRoot(document.getElementById('root'));window.__file=new File(['id'],'id.jpg',{type:'image/jpeg'});window.__idType='PhilSys ID';
+    window.__mount=()=>root.render(<Face idType={window.__idType} idFrontFile={window.__file} autoStart={false} onVerified={()=>{}}/>);window.__unmount=()=>root.unmount();`;
+  const t = await render(source, "export const supabase={}", false, {
+      camera: true,
+    }),
+    { w, tick } = t;
+  w.__idGate = true;
+  w.__documentMode = "invalid";
+  await tick(() => {
+    w.__validating = w.__camera.validate();
+  });
+  await w.__validating;
+  check(
+    w.__documentCalls === 1 &&
+      !w.__releaseCamera &&
+      w.document.body.textContent.includes("readable government ID"),
+    "A selfie/unrelated image fails the ID screen before the live camera can open",
+  );
+  check(
+    [...w.document.querySelectorAll("button")].some(
+      (b) =>
+        b.textContent.trim() === "Validate ID and start camera" &&
+        !b.className.includes("sr-only"),
+    ),
+    "ID-screen errors retain a visible retry control",
+  );
+  await tick(() => w.__camera.reset());
+  w.__documentMode = "wait";
+  await tick(() => {
+    w.__validating = w.__camera.validate();
+  });
+  await tick(() => {
+    w.__idType = "Passport";
+    w.__mount();
+  });
+  check(
+    w.__documentSignal.aborted && !w.document.querySelector("[role=dialog]"),
+    "Changing the selected ID type resets verification and cancels the old ID check",
+  );
+  await tick(() => w.__finishDocument());
+  await w.__validating;
+  check(
+    !w.__releaseCamera,
+    "An ID result arriving after an ID-type change cannot open live verification",
+  );
+  w.__documentMode = "manual";
+  await tick(() => {
+    w.__validating = w.__camera.validate();
+  });
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  await w.__validating;
+  check(
+    Boolean(w.document.querySelector("video")),
+    "A plausible ID with uncertain details may continue to the existing live verification",
+  );
+  w.__idGate = false;
+  await tick(() => {
+    w.__capture = w.__camera.capture();
+  });
+  await tick(() => w.__finishFace());
+  await w.__capture;
+  check(
+    w.__camera.pending()?.recommendation === "manual_review" &&
+      w.__camera
+        .pending()
+        .verificationReason.includes("ID text needs administrator review"),
+    "Uncertain ID text stays attached to the result as mandatory administrator review",
+  );
+  await tick(() => w.__camera.reset());
+  w.__documentMode = "wait";
+  await tick(() => {
+    w.__validating = w.__camera.validate();
+  });
+  await tick(() => w.__unmount());
+  check(
+    w.__documentSignal.aborted,
+    "Navigating away cancels an active ID content check",
+  );
+  await tick(() => w.__finishDocument());
+  await w.__validating;
+  check(
+    t.errors.length === 0,
+    "ID validation, cancellation, type changes, and retry have no React/runtime errors",
   );
   t.dom.window.close();
 }
@@ -566,6 +734,7 @@ async function registrationSaveChecks() {
 (async () => {
   await routeChecks();
   await cameraChecks();
+  await idGateChecks();
   await registrationSaveChecks();
   console.log(
     JSON.stringify({ passed: results.length, checks: results }, null, 2),
