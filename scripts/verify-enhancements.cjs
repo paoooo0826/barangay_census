@@ -567,7 +567,7 @@ const button = (w, text) =>
     "Back navigation and auth route tests have no runtime errors",
   );
   await t.close();
-  const residentApi = `window.__status='pending';window.__owners=[];export const supabase={rpc:async name=>({data:name==='get_service_catalog'?[]:230,error:null}),from:()=>({select(){return this},eq(k,v){if(k==='user_id')window.__owners.push(v);return this},order(){return this},then(resolve){return Promise.resolve({data:[{id:'a1',resident_id:'r0',user_id:'u0',service_type:'barangay_clearance',purpose:'Employment request',fee:230,status:window.__status,appointment_date:'2026-11-02',appointment_time:'09:00',completed_at:window.__status==='completed'?'2026-10-10T03:00:00Z':null}],error:null}).then(resolve)}})};`;
+  const residentApi = `window.__status='pending';window.__owners=[];export const supabase={rpc:async name=>({data:name==='get_service_catalog'?[]:230,error:null}),from:()=>({select(){return this},eq(k,v){if(k==='user_id')window.__owners.push(v);return this},order(){return this},then(resolve){return Promise.resolve({data:[{id:'a1',resident_id:'r0',user_id:'u0',service_type:'barangay_clearance',purpose:'Employment request',fee:230,status:window.__status,appointment_date:'2026-11-02',appointment_time:'09:00',has_valid_receipt:window.__status==='completed',receipt_verified_at:window.__status==='completed'?'2026-10-10T03:00:00Z':null,completed_at:window.__status==='completed'?'2026-10-10T03:00:00Z':null}],error:null}).then(resolve)}})};`;
   t = await render(
     `import A from './src/components/ResidentAppointments';import {useHashRoute} from './src/hooks/useHashRoute';function Test(){const route=useHashRoute(),mode=route.includes('completed')?'completed':'active';return <A key={mode} mode={mode} resident={{id:'r0'}}/>}`,
     residentApi,
@@ -586,8 +586,8 @@ const button = (w, text) =>
     t.w.dispatchEvent(new t.w.Event("focus"));
   });
   check(
-    t.w.document.body.textContent.includes("No appointments in this category."),
-    "A background status change removes a completed request from the active page",
+    t.w.document.body.textContent.includes("Completed") && t.w.document.querySelector("article"),
+    "The Recent Appointments page retains requests after status changes",
   );
   await t.tick(() => {
     t.w.location.hash = "/resident/dashboard?tab=completed";

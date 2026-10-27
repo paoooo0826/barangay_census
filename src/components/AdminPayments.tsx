@@ -172,7 +172,7 @@ export default function AdminPayments() {
           ],
           ["Paid requests", currentSummary?.paid_requests ?? "—"],
           ["Voided records", currentSummary?.voided_records ?? "—"],
-          ["Free requests received", currentSummary?.free_requests ?? "—"],
+          ["Zero-Fee Releases Issued", currentSummary?.free_requests ?? "—"],
         ].map(([label, value]) => (
           <div
             key={label}
@@ -235,7 +235,12 @@ export default function AdminPayments() {
                   </p>
                   <p className="mt-1 break-words text-sm">
                     Receipt: {payment.receipt_number} · {money(payment.amount)}{" "}
-                    · {payment.status === "posted" ? "Paid" : "Voided"}
+                    ·{" "}
+                    {payment.status === "posted"
+                      ? Number(payment.amount) === 0
+                        ? "Zero-Fee Release"
+                        : "Paid"
+                      : "Voided"}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
                     {paymentTime(payment.paid_at)} · {payment.cashier_name}
@@ -264,6 +269,7 @@ export default function AdminPayments() {
           appointment={detail}
           onClose={close}
           onPaymentChanged={() => {
+            close();
             void reload();
             void loadSummary();
           }}

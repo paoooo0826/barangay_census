@@ -1,7 +1,10 @@
 import AnnouncementDetail, { AnnouncementImage } from "./AnnouncementDetail";
 import type { AnnouncementDetailData } from "./AnnouncementDetail";
 import FullscreenImageViewer from "./FullscreenImageViewer";
-import { loadAnnouncementImages, type AnnouncementView } from "../lib/announcementImages";
+import {
+  loadAnnouncementImages,
+  type AnnouncementView,
+} from "../lib/announcementImages";
 import { useImageCrop } from "./ImageCropDialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -126,7 +129,6 @@ export default function AdminAnnouncements({
   } | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
-
   const [counts, setCounts] = useState({ active: 0, archived: 0 });
   const imageRequest = useRef(0);
   const announcementQuery = useCallback(
@@ -138,7 +140,9 @@ export default function AdminAnnouncements({
             ? "audience_label"
             : sortField === "created_at" && tab === "archived"
               ? "archive_sort"
-              : sortField;
+              : sortField === "created_at"
+                ? "timeline_sort"
+                : sortField;
       return supabase
         .from("admin_announcement_list")
         .select("*", { count: "exact" })
@@ -147,7 +151,7 @@ export default function AdminAnnouncements({
           ascending: sortDirection === "asc",
           nullsFirst: false,
         })
-        .order("id")
+        .order("id", { ascending: false })
         .range(from, to);
     },
     [sortField, sortDirection, tab],
@@ -188,9 +192,7 @@ export default function AdminAnnouncements({
   useEffect(() => {
     const generation = ++imageRequest.current;
     setAnnouncements(rows.map((row) => ({ ...row, imageUrl: null })));
-    void Promise.all(
-      rows.map((row) => loadAnnouncementImages(row, 3600)),
-    )
+    void Promise.all(rows.map((row) => loadAnnouncementImages(row, 3600)))
       .then((withImages) => {
         if (generation === imageRequest.current) setAnnouncements(withImages);
       })
@@ -221,9 +223,13 @@ export default function AdminAnnouncements({
     [imagePreview],
   );
 
-  useEffect(() => () => {
-    if (originalPreview.startsWith("blob:")) URL.revokeObjectURL(originalPreview);
-  }, [originalPreview]);
+  useEffect(
+    () => () => {
+      if (originalPreview.startsWith("blob:"))
+        URL.revokeObjectURL(originalPreview);
+    },
+    [originalPreview],
+  );
 
   const visible = announcements;
 
@@ -359,19 +365,33 @@ export default function AdminAnnouncements({
           });
         if (uploadError) throw uploadError;
         uploaded.push(uploadedPath);
-        if (!originalImage) throw new Error("The original announcement image is missing. Select the photo again.");
-        const extension = originalImage.type === "image/png" ? "png" : originalImage.type === "image/webp" ? "webp" : "jpg";
+        if (!originalImage)
+          throw new Error(
+            "The original announcement image is missing. Select the photo again.",
+          );
+        const extension =
+          originalImage.type === "image/png"
+            ? "png"
+            : originalImage.type === "image/webp"
+              ? "webp"
+              : "jpg";
         uploadedOriginalPath = `${adminProfileId ?? "admin"}/${announcementId}-${crypto.randomUUID()}-original.${extension}`;
-        const { error: originalError } = await supabase.storage.from("announcement-images").upload(uploadedOriginalPath, originalImage, {
-          contentType: originalImage.type, cacheControl: "3600", upsert: false,
-        });
+        const { error: originalError } = await supabase.storage
+          .from("announcement-images")
+          .upload(uploadedOriginalPath, originalImage, {
+            contentType: originalImage.type,
+            cacheControl: "3600",
+            upsert: false,
+          });
         if (originalError) throw originalError;
         uploaded.push(uploadedOriginalPath);
       }
       const imagePath =
         uploadedPath ??
         (removeExistingImage ? null : (editing?.image_path ?? null));
-      const originalPath = uploadedOriginalPath ?? (removeExistingImage ? null : editing?.image_original_path ?? null);
+      const originalPath =
+        uploadedOriginalPath ??
+        (removeExistingImage ? null : (editing?.image_original_path ?? null));
       const values = {
         title: title.trim(),
         message: message.trim(),
@@ -407,37 +427,55 @@ export default function AdminAnnouncements({
       committed = true;
       const replaced = [
         editing?.image_path !== imagePath ? editing?.image_path : null,
-        editing?.image_original_path !== originalPath ? editing?.image_original_path : null,
+        editing?.image_original_path !== originalPath
+          ? editing?.image_original_path
+          : null,
       ].filter((path): path is string => Boolean(path));
       let cleanupFailed = false;
       if (replaced.length) {
         try {
-          const cleanup = await supabase.storage.from("announcement-images").remove([...new Set(replaced)]);
+          const cleanup = await supabase.storage
+            .from("announcement-images")
+            .remove([...new Set(replaced)]);
           cleanupFailed = Boolean(cleanup.error);
-        } catch { cleanupFailed = true; }
+        } catch {
+          cleanupFailed = true;
+        }
       }
       const wasEditing = Boolean(editing);
       resetForm();
       setTab("active");
+      setPage(1);
       setSuccess(
         wasEditing
           ? "Announcement updated successfully."
           : "Announcement published successfully.",
       );
-      if (cleanupFailed) setError("The announcement was saved, but an older image could not be removed from storage.");
+      if (cleanupFailed)
+        setError(
+          "The announcement was saved, but an older image could not be removed from storage.",
+        );
       await loadAnnouncements();
     } catch (caught) {
       let cleanupFailed = false;
       if (uploaded.length && !committed) {
         try {
-          const cleanup = await supabase.storage.from("announcement-images").remove(uploaded);
+          const cleanup = await supabase.storage
+            .from("announcement-images")
+            .remove(uploaded);
           cleanupFailed = Boolean(cleanup.error);
-        } catch { cleanupFailed = true; }
+        } catch {
+          cleanupFailed = true;
+        }
       }
       setError(
         committed
           ? "The announcement was saved, but the list could not be refreshed. Refresh to load the latest version."
-          : ((caught as { message?: string })?.message ?? "Announcement could not be saved. Refresh if another administrator changed it.") + (cleanupFailed ? " An unused upload could not be removed from storage." : ""),
+          : ((caught as { message?: string })?.message ??
+              "Announcement could not be saved. Refresh if another administrator changed it.") +
+              (cleanupFailed
+                ? " An unused upload could not be removed from storage."
+                : ""),
       );
     } finally {
       mutationLock.current = false;
@@ -464,6 +502,7 @@ export default function AdminAnnouncements({
       .single();
     if (updateError) setError(updateError.message);
     else {
+      if (next) setPage(1);
       setSuccess(next ? "Announcement published." : "Announcement hidden.");
       await loadAnnouncements();
     }
@@ -527,7 +566,13 @@ export default function AdminAnnouncements({
       setError(deleteError.message);
       return;
     }
-    const removedImages = [...new Set([a.image_path, a.image_original_path].filter((path): path is string => Boolean(path)))];
+    const removedImages = [
+      ...new Set(
+        [a.image_path, a.image_original_path].filter((path): path is string =>
+          Boolean(path),
+        ),
+      ),
+    ];
     if (removedImages.length) {
       const { error: cleanupError } = await supabase.storage
         .from("announcement-images")
@@ -773,7 +818,8 @@ export default function AdminAnnouncements({
                   </div>
                 )}
                 <p className="mt-2 text-xs text-slate-500">
-                  The confirmed crop is shown as a 16:7 banner. The full photo is also saved for View Full Screen.
+                  The confirmed crop is shown as a 16:7 banner. The full photo
+                  is also saved for View Full Screen.
                 </p>
               </div>
             </div>
@@ -827,7 +873,10 @@ export default function AdminAnnouncements({
               options={[
                 {
                   value: "created_at",
-                  label: tab === "archived" ? "Date archived" : "Created date",
+                  label:
+                    tab === "archived"
+                      ? "Date Archived"
+                      : "Publication / Draft Creation Date",
                 },
                 { value: "title", label: "Title" },
                 { value: "priority", label: "Priority" },
@@ -846,7 +895,7 @@ export default function AdminAnnouncements({
             <div className="mt-5 space-y-4">
               <AnnouncementSections
                 items={visible}
-                groupRecent={tab === "active"}
+                groupRecent={false}
                 earlierLabel="Other Announcements"
               >
                 {(a, recent) => {
@@ -874,7 +923,9 @@ export default function AdminAnnouncements({
                             alt={`Attached image for ${a.title}`}
                             className="h-full w-full object-cover"
                           />
-                          <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">View Full Screen</span>
+                          <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">
+                            View Full Screen
+                          </span>
                         </button>
                       )}
                       <div className="p-4">
@@ -1015,7 +1066,13 @@ export default function AdminAnnouncements({
           onClose={() => setDetail(null)}
         />
       )}
-      {previewImage && <FullscreenImageViewer src={previewImage.url} title={previewImage.title} onClose={() => setPreviewImage(null)} />}
+      {previewImage && (
+        <FullscreenImageViewer
+          src={previewImage.url}
+          title={previewImage.title}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </section>
   );
 }

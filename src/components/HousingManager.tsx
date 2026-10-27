@@ -1,49 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../context/AuthContext";
 import type { Resident } from "../types/database";
-import { searchPattern } from "../hooks/usePagedQuery";
-import { useDialogFocus } from "../hooks/useDialogFocus";
-import PaginationControls from "./PaginationControls";
-import CopyableTrackingNumber from "./CopyableTrackingNumber";
+import { useAuth } from "../context/AuthContext";
 import { canAccessBoarding } from "../lib/boarding";
-
+import { errorMessage, titleCase } from "../lib/community";
+import { manilaDate, paymentTime } from "../lib/payments";
+import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
+import { useDialogFocus } from "../hooks/useDialogFocus";
+import { useHashRoute } from "../hooks/useHashRoute";
+import PaginationControls from "./PaginationControls";
 interface House {
   id: string;
   name: string;
   address: string;
-  owner_resident_id: string;
-  owner_user_id: string;
   owner_name: string;
+  owner_resident_id: string;
   active: boolean;
 }
-interface Stay {
-  id: string;
-  boarding_house_id: string;
-  resident_id: string;
-  resident_name: string;
-  tracking_number: string;
-  move_in_date: string;
-  departure_date: string | null;
-  status: "staying" | "moved_out";
-  updater_name: string;
-  updated_at: string;
-}
-interface Event {
+interface CountEvent {
   id: string;
   action: string;
+  quantity: number;
+  before_count: number | null;
+  after_count: number;
   effective_date: string;
-  updater_name: string;
   recorded_at: string;
+  actor_role: string;
 }
-const PAGE_SIZE = 10;
-const today = () =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+interface Summary {
+  registered: { current: number; arrivals: number; departures: number };
+  reported: {
+    current: number | null;
+    version: number;
+    effective_date: string | null;
+    arrivals: number;
+    departures: number;
+    corrections: number;
+  } | null;
+  can_manage: boolean;
+  events: CountEvent[];
+  history_total: number;
+}
 const blankHouse = {
   name: "",
   address: "",
@@ -57,713 +54,695 @@ export default function HousingManager({
   admin?: boolean;
   resident?: Resident;
 }) {
-  const { user } = useAuth();
-  const userId = user?.id;
-  const residentId = resident?.id;
-  const boardingStatus = resident?.boarding_status;
+  const { user } = useAuth(),
+    route = useHashRoute(),
+    requested = new URLSearchParams(route.split("?")[1] ?? "").get("house");
   const authorized = Boolean(
-    userId && (admin || canAccessBoarding(boardingStatus)),
+    user && (admin || canAccessBoarding(resident?.boarding_status)),
   );
-  const mutationLock = useRef(false);
-  const stayRequest = useRef(0);
-  const eventRequest = useRef(0);
-  const [houses, setHouses] = useState<House[]>([]);
-  const [houseId, setHouseId] = useState("");
-  const [stays, setStays] = useState<Stay[]>([]);
-  const [status, setStatus] = useState<"staying" | "moved_out">("staying");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [houseId, setHouseId] = useState(requested ?? ""),
+    [search, setSearch] = useState(""),
+    [page, setPage] = useState(1),
+    [summary, setSummary] = useState<Summary | null>(null),
+    [historyPage, setHistoryPage] = useState(1),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState("");
+  const [error, setError] = useState(""),
+    [success, setSuccess] = useState(""),
+    [loading, setLoading] = useState(false),
+    [busy, setBusy] = useState(false),
+    [action, setAction] = useState("baseline"),
+    [quantity, setQuantity] = useState(""),
+    [date, setDate] = useState(manilaDate());
   const [houseForm, setHouseForm] = useState<
     (typeof blankHouse & { id?: string }) | null
   >(null);
-  const [ownerSearch, setOwnerSearch] = useState("");
-  const [residents, setResidents] = useState<Resident[]>([]);
-  const selectedOwnerId = houseForm?.owner_resident_id;
-  const choosingOwner = Boolean(houseForm);
+  const generation = useRef(0),
+    lock = useRef(false),
+    mounted = useRef(true),
+    retry = useRef<{ payload: string; key: string } | null>(null);
   useEffect(() => {
-    if (!admin || !choosingOwner) return;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      ++generation.current;
+    };
+  }, []);
+  const query = useCallback(
+    (start: number, end: number) => {
+      let q = supabase
+        .from("boarding_houses")
+        .select("id,name,address,owner_name,owner_resident_id,active", {
+          count: "exact",
+        });
+      if (search.trim()) q = q.ilike("name", searchPattern(search));
+      return q
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(start, end);
+    },
+    [search],
+  );
+  const list = usePagedQuery<House>({
+    page,
+    pageSize: 10,
+    onPageChange: setPage,
+    query,
+    enabled: authorized,
+  });
+  const selected =
+    list.rows.find((h) => h.id === houseId) ??
+    (!houseId ? list.rows[0] : undefined);
+  const selectedId = selected?.id;
+  useEffect(() => {
+    setPage(1);
+    setHouseId("");
+  }, [search]);
+  const load = useCallback(async () => {
+    const serial = ++generation.current;
+    if (!selectedId) {
+      setSummary(null);
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await supabase.rpc("boarding_count_summary", {
+        p_house_id: selectedId,
+        p_from: from || null,
+        p_to: to || null,
+        p_offset: (historyPage - 1) * 10,
+        p_limit: 10,
+      });
+      if (serial !== generation.current) return;
+      setLoading(false);
+      if (r.error) {
+        setError(r.error.message);
+        return;
+      }
+      setSummary(r.data as unknown as Summary);
+      setError("");
+    } catch (e) {
+      if (serial === generation.current) {
+        setError(errorMessage(e));
+        setSummary(null);
+        setLoading(false);
+      }
+    }
+  }, [selectedId, from, to, historyPage]);
+  useEffect(() => {
+    void load();
+    const refresh = () => {
+      if (!document.hidden) void load();
+    };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      ++generation.current;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load]);
+  useEffect(() => {
+    setHistoryPage(1);
+    setQuantity("");
+    setSuccess("");
+    retry.current = null;
+  }, [selectedId, from, to]);
+  async function saveCount(event: React.FormEvent) {
+    event.preventDefault();
+    if (lock.current || !selectedId || !summary?.can_manage) return;
+    const value = Number(quantity);
+    const chosen =
+      summary.reported?.current == null
+        ? "baseline"
+        : action === "baseline"
+          ? "arrival"
+          : action;
+    if (
+      !quantity.trim() ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > 100000 ||
+      ((chosen === "arrival" || chosen === "departure") && value === 0)
+    ) {
+      setError(
+        "Enter a valid whole count. Arrivals and departures must be greater than zero.",
+      );
+      return;
+    }
+    const args = {
+      p_house_id: selectedId,
+      p_action: chosen,
+      p_quantity: value,
+      p_date: date,
+      p_expected_version: summary.reported?.version ?? 0,
+    };
+    const payload = JSON.stringify(args);
+    if (retry.current?.payload !== payload)
+      retry.current = { payload, key: crypto.randomUUID() };
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await supabase.rpc("record_boarding_count", {
+        ...args,
+        p_request_key: retry.current.key,
+      });
+      if (r.error) throw r.error;
+      if (!(r.data as { id?: string })?.id)
+        throw new Error(
+          "Count update was not confirmed. Retry the same entry.",
+        );
+      if (!mounted.current) return;
+      retry.current = null;
+      setQuantity("");
+      setSuccess("Reported count saved with its audit history.");
+      await load();
+    } catch (e) {
+      if (mounted.current) setError(errorMessage(e));
+    } finally {
+      lock.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+  if (!authorized) return null;
+  return (
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold">Boarding House Counts</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Registered stays and landlord-reported counts are separate sources.
+          Never add them together or add aggregate boarder counts to the census
+          resident total. These views return counts without a named boarder
+          roster.
+        </p>
+      </div>
+      {(error || list.error) && (
+        <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">
+          {error || list.error}
+        </p>
+      )}
+      {success && (
+        <p role="status" className="rounded-xl bg-pine-50 p-4">
+          {success}
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="label flex-1">
+          Find a Boarding House
+          <input
+            type="search"
+            className="input mt-2"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        {admin && (
+          <button
+            type="button"
+            onClick={() => setHouseForm(blankHouse)}
+            className="rounded-xl bg-pine-700 px-4 py-3 font-bold text-white"
+          >
+            Assign Boarding House
+          </button>
+        )}
+      </div>
+      {list.loading ? (
+        <p role="status">Loading boarding houses…</p>
+      ) : !list.rows.length ? (
+        <p className="rounded-2xl border border-dashed p-8 text-slate-500">
+          No assigned boarding house is available. Contact the barangay office
+          to check the assignment.
+        </p>
+      ) : (
+        <>
+          <label className="label">
+            Boarding House
+            <select
+              className="input mt-2"
+              value={selectedId ?? ""}
+              onChange={(e) => {
+                setHouseId(e.target.value);
+                setHistoryPage(1);
+              }}
+            >
+              <option value="" disabled>
+                Select a House
+              </option>
+              {list.rows.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                  {h.active ? "" : " (Inactive)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <PaginationControls
+            page={page}
+            totalItems={list.total}
+            pageSize={10}
+            onPageChange={(value) => {
+              setPage(value);
+              setHouseId("");
+            }}
+          />
+          {selected && (
+            <div className="rounded-2xl border bg-white p-5">
+              <h3 className="text-lg font-bold">{selected.name}</h3>
+              <p className="mt-1 break-words text-sm">{selected.address}</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Landlord/Landlady: {selected.owner_name}
+              </p>
+              {admin && (
+                <button
+                  type="button"
+                  className="mt-3 text-sm font-bold text-pine-700 underline"
+                  onClick={() =>
+                    setHouseForm({
+                      id: selected.id,
+                      name: selected.name,
+                      address: selected.address,
+                      owner_resident_id: selected.owner_resident_id,
+                      active: selected.active,
+                    })
+                  }
+                >
+                  Edit Assignment
+                </button>
+              )}
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="label">
+              Activity From
+              <input
+                type="date"
+                className="input mt-2"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label className="label">
+              Activity Through
+              <input
+                type="date"
+                min={from}
+                className="input mt-2"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </label>
+          </div>
+          {loading ? (
+            <p role="status">Loading counts…</p>
+          ) : (
+            summary && (
+              <>
+                <CountCards
+                  title="Registered Stay Records"
+                  current={summary.registered.current}
+                  arrivals={summary.registered.arrivals}
+                  departures={summary.registered.departures}
+                />
+                <p className="text-xs text-slate-500">
+                  Current registered boarders are distinct residents with an
+                  active stay. Arrivals and departures count recorded stays in
+                  the selected period.
+                </p>
+                {summary.can_manage && summary.reported && (
+                  <>
+                    <CountCards
+                      title="Landlord-Reported Counts"
+                      current={summary.reported.current}
+                      arrivals={summary.reported.arrivals}
+                      departures={summary.reported.departures}
+                    />
+                    <p className="text-xs text-slate-500">
+                      Current reported count is the latest ledger balance
+                      {summary.reported.effective_date
+                        ? ` as of ${summary.reported.effective_date}`
+                        : "; no initial count has been recorded"}
+                      . Period activity excludes initial balances and
+                      corrections; {summary.reported.corrections} corrections in
+                      this period. Existing census-reported tenant fields are
+                      retained separately and are not automatically imported.
+                    </p>
+                    {selected?.active && (
+                      <form
+                        onSubmit={(e) => void saveCount(e)}
+                        className="space-y-3 rounded-2xl border bg-white p-5"
+                      >
+                        <h4 className="font-bold">Update Reported Counts</h4>
+                        <label className="label">
+                          Action
+                          <select
+                            className="input mt-2"
+                            disabled={busy || summary.reported.current == null}
+                            value={
+                              summary.reported.current == null
+                                ? "baseline"
+                                : action === "baseline"
+                                  ? "arrival"
+                                  : action
+                            }
+                            onChange={(e) => setAction(e.target.value)}
+                          >
+                            {summary.reported.current == null ? (
+                              <option value="baseline">
+                                Initial Current Count
+                              </option>
+                            ) : (
+                              <>
+                                <option value="arrival">Record Arrivals</option>
+                                <option value="departure">
+                                  Record Departures
+                                </option>
+                                <option value="correction">
+                                  Correct Current Count
+                                </option>
+                              </>
+                            )}
+                          </select>
+                        </label>
+                        <label className="label">
+                          {summary.reported.current == null ||
+                          action === "correction"
+                            ? "New Current Count"
+                            : "Number of Arrivals / Departures"}
+                          <input
+                            required
+                            type="number"
+                            min="0"
+                            max="100000"
+                            step="1"
+                            className="input mt-2"
+                            value={quantity}
+                            disabled={busy}
+                            onChange={(e) => setQuantity(e.target.value)}
+                          />
+                        </label>
+                        <label className="label">
+                          Effective Date
+                          <input
+                            required
+                            type="date"
+                            min={
+                              summary.reported.effective_date ?? "1900-01-01"
+                            }
+                            max={manilaDate()}
+                            className="input mt-2"
+                            value={date}
+                            disabled={busy}
+                            onChange={(e) => setDate(e.target.value)}
+                          />
+                        </label>
+                        <p className="text-xs text-slate-500">
+                          Corrections set the balance and retain prior entries.
+                          Departures cannot make the balance negative.
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="rounded-xl bg-pine-700 px-4 py-3 font-bold text-white disabled:opacity-50"
+                        >
+                          {busy ? "Saving…" : "Save Count Update"}
+                        </button>
+                      </form>
+                    )}
+                    <div className="rounded-2xl border bg-white p-5">
+                      <h4 className="font-bold">Reported Count History</h4>
+                      {!summary.events.length && (
+                        <p className="mt-3 text-sm text-slate-500">
+                          No count entries in the selected period.
+                        </p>
+                      )}
+                      {summary.events.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="mt-3 border-t pt-3 text-sm"
+                        >
+                          <strong>
+                            {titleCase(entry.action)}: {entry.quantity}
+                          </strong>
+                          <p>
+                            Balance: {entry.before_count ?? "Not Set"} →{" "}
+                            {entry.after_count} · Effective{" "}
+                            {entry.effective_date}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {entry.actor_role} ·{" "}
+                            {paymentTime(entry.recorded_at)}
+                          </p>
+                        </div>
+                      ))}
+                      <PaginationControls
+                        page={historyPage}
+                        totalItems={summary.history_total}
+                        pageSize={10}
+                        onPageChange={setHistoryPage}
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )
+          )}
+        </>
+      )}
+      {houseForm && (
+        <HouseEditor
+          initial={houseForm}
+          close={() => setHouseForm(null)}
+          saved={() => {
+            setHouseForm(null);
+            void list.reload();
+            void load();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+function CountCards({
+  title,
+  current,
+  arrivals,
+  departures,
+}: {
+  title: string;
+  current: number | null;
+  arrivals: number;
+  departures: number;
+}) {
+  return (
+    <section className="rounded-2xl border bg-white p-5">
+      <h3 className="font-bold">{title}</h3>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {[
+          ["Current Boarders", current ?? "Not Reported"],
+          ["Arrivals During Selected Period", arrivals],
+          ["Departures During Selected Period", departures],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-xl bg-slate-50 p-4">
+            <p className="text-xs text-slate-500">{label}</p>
+            <p className="mt-2 text-2xl font-bold text-pine-800">{value}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+function HouseEditor({
+  initial,
+  close,
+  saved,
+}: {
+  initial: typeof blankHouse & { id?: string };
+  close: () => void;
+  saved: () => void;
+}) {
+  const [form, setForm] = useState(initial),
+    [search, setSearch] = useState(""),
+    [owners, setOwners] = useState<
+      Pick<Resident, "id" | "first_name" | "last_name">[]
+    >([]),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const lock = useRef(false),
+    mounted = useRef(true);
+  const dialog = useDialogFocus<HTMLDivElement>(
+    true,
+    () => {
+      if (!busy) close();
+    },
+    null,
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
     let active = true;
     const timer = window.setTimeout(async () => {
-      let query = supabase
+      let q = supabase
         .from("admin_resident_records")
-        .select("id,user_id,first_name,last_name,tracking_number")
+        .select("id,first_name,last_name")
         .eq("boarding_status", "landlord")
         .not("user_id", "is", null);
-      if (ownerSearch.trim())
-        query = query.ilike("search_text", searchPattern(ownerSearch));
-      const [options, selected] = await Promise.all([
-        query.order("last_name").order("id").limit(20),
-        selectedOwnerId
+      if (search.trim()) q = q.ilike("search_text", searchPattern(search));
+      const results = await Promise.all([
+        q.order("last_name").order("id").limit(20),
+        form.owner_resident_id
           ? supabase
-              .from("residents")
-              .select("id,user_id,first_name,last_name,tracking_number")
-              .eq("id", selectedOwnerId)
+              .from("admin_resident_records")
+              .select("id,first_name,last_name")
+              .eq("id", form.owner_resident_id)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (!active) return;
-      if (options.error || selected.error)
-        setError(
-          options.error?.message ||
-            selected.error?.message ||
-            "Unable to load owners.",
-        );
-      else {
-        const rows = (options.data ?? []) as Resident[];
-        const currentOwner = selected.data;
-        if (currentOwner && !rows.some((r) => r.id === currentOwner.id))
-          rows.unshift(currentOwner as Resident);
-        setResidents(rows);
+      const failure = results.find((r) => r.error);
+      if (failure?.error) {
+        setError(failure.error.message);
+        return;
       }
-    }, 300);
+      const options = results[0].data ?? [];
+      const selected = results[1].data;
+      if (selected && !options.some((o) => o.id === selected.id))
+        options.unshift(selected);
+      setOwners(options);
+    }, 250);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [admin, choosingOwner, selectedOwnerId, ownerSearch]);
-  const [tracking, setTracking] = useState("");
-  const [moveIn, setMoveIn] = useState("");
-  const [departing, setDeparting] = useState<Stay | null>(null);
-  const [departure, setDeparture] = useState("");
-  const [events, setEvents] = useState<Event[]>([]);
-  const [eventStay, setEventStay] = useState<Stay | null>(null);
-  const house = houses.find((h) => h.id === houseId);
-  const canManage = Boolean(
-    house &&
-    (admin ||
-      (resident?.boarding_status === "landlord" &&
-        house.owner_user_id === user?.id)),
-  );
-  const loadHouses = useCallback(async () => {
-    if (!authorized) return;
-    let query = supabase.from("boarding_houses").select("*");
-    if (!admin && boardingStatus === "landlord")
-      query = query.eq("owner_user_id", userId!);
-    const { data, error: e } = await query.order("name").limit(500);
-    if (e) setError(e.message);
-    else {
-      setHouses((data ?? []) as House[]);
-      setHouseId((id) =>
-        data?.some((h) => h.id === id) ? id : data?.[0]?.id || "",
-      );
-    }
-  }, [authorized, admin, boardingStatus, userId]);
-  const loadStays = useCallback(async () => {
-    const request = ++stayRequest.current;
-    if (!houseId || !authorized) {
-      setStays([]);
-      setTotal(0);
-      return;
-    }
-    setLoading(true);
-    let q = supabase
-      .from("boarder_stays")
-      .select("*", { count: "exact" })
-      .eq("boarding_house_id", houseId)
-      .eq("status", status);
-    if (!admin && boardingStatus === "boarder")
-      q = q.eq("resident_id", residentId);
-    const clean = search.replace(/[^\p{L}\p{N}\s-]/gu, "").trim();
-    if (clean)
-      q = q.or(
-        `resident_name.ilike.%${clean}%,tracking_number.ilike.%${clean}%`,
-      );
-    const {
-      data,
-      error: e,
-      count,
-    } = await q
-      .order("move_in_date", { ascending: false })
-      .order("id")
-      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-    if (request !== stayRequest.current) return;
-    if (e) setError(e.message);
-    else {
-      setStays((data ?? []) as Stay[]);
-      setTotal(count ?? 0);
-    }
-    setLoading(false);
-  }, [
-    houseId,
-    status,
-    search,
-    page,
-    authorized,
-    admin,
-    residentId,
-    boardingStatus,
-  ]);
-  useEffect(() => {
-    void loadHouses();
-  }, [loadHouses]);
-  useEffect(() => {
-    void loadStays();
-  }, [loadStays]);
-  useEffect(() => {
-    if (page > Math.max(1, Math.ceil(total / PAGE_SIZE)))
-      setPage(Math.max(1, Math.ceil(total / PAGE_SIZE)));
-  }, [page, total]);
-  async function mutate(
-    action: string,
-    payload: Record<string, string | boolean>,
-  ) {
-    if (mutationLock.current || !authorized || (!admin && !canManage))
-      return false;
-    mutationLock.current = true;
+  }, [search, form.owner_resident_id]);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     setError("");
-    setSuccess("");
     try {
-      const { error: e } = await supabase.rpc("manage_boarding", {
-        p_action: action,
-        p_payload: payload,
+      const r = await supabase.rpc("manage_boarding", {
+        p_action: "save_house",
+        p_payload: form,
       });
-      if (e) throw e;
-      setSuccess(
-        action === "save_house"
-          ? "Boarding house assignment saved."
-          : action === "move_in"
-            ? "Move-in recorded."
-            : "Departure recorded. Previous stay is preserved.",
-      );
-      await loadHouses();
-      await loadStays();
-      return true;
+      if (r.error) throw r.error;
+      if (mounted.current) saved();
     } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : ((e as { message?: string })?.message ??
-              "Unable to save occupancy."),
-      );
-      return false;
+      if (mounted.current) setError(errorMessage(e));
     } finally {
-      mutationLock.current = false;
-      setBusy(false);
+      lock.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
-  async function showHistory(stay: Stay) {
-    const request = ++eventRequest.current;
-    setError("");
-    setEventStay(stay);
-    setEvents([]);
-    const { data, error: e } = await supabase
-      .from("boarder_occupancy_history")
-      .select("*")
-      .eq("stay_id", stay.id)
-      .order("recorded_at", { ascending: false });
-    if (request !== eventRequest.current) return;
-    if (e) setError(e.message);
-    else setEvents((data ?? []) as Event[]);
-  }
-  function closeDeparture() {
-    if (
-      !busy &&
-      (!departure || window.confirm("Discard the unsaved departure date?"))
-    ) {
-      setDeparting(null);
-      setDeparture("");
-    }
-  }
-  function closeHouse() {
-    if (!busy && window.confirm("Discard unsaved boarding-house changes?"))
-      setHouseForm(null);
-  }
-  const houseDialogRef = useDialogFocus<HTMLDivElement>(
-    Boolean(houseForm),
-    closeHouse,
-    null,
-  );
-  const departureDialogRef = useDialogFocus<HTMLDivElement>(
-    Boolean(departing),
-    closeDeparture,
-    null,
-  );
-  const historyDialogRef = useDialogFocus<HTMLDivElement>(
-    Boolean(eventStay),
-    () => setEventStay(null),
-    null,
-  );
-  if (!authorized) return null;
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">
-            {admin
-              ? "Boarding Houses and Boarder Records"
-              : resident?.boarding_status === "landlord"
-                ? "Boarding House Management"
-                : "My Boarding House"}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Occupancy records are separate from barangay residency. Only
-            assigned owners and administrators can update stays.
+    <div
+      ref={dialog}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Boarding house assignment"
+      tabIndex={-1}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) close();
+      }}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
+    >
+      <form
+        onSubmit={(e) => void submit(e)}
+        className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
+      >
+        <h3 className="text-xl font-bold">
+          {form.id ? "Edit" : "Assign"} Boarding House
+        </h3>
+        {error && (
+          <p role="alert" className="text-red-700">
+            {error}
           </p>
-        </div>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => {
-            void loadHouses();
-            void loadStays();
-          }}
-        >
-          Refresh
-        </button>
-      </div>
-      {error && (
-        <p
-          role="alert"
-          className="my-4 rounded-xl bg-red-50 p-3 text-sm text-red-700"
-        >
-          {error}
-        </p>
-      )}
-      {success && (
-        <p
-          role="status"
-          className="my-4 rounded-xl bg-sage-50 p-3 text-sm text-sage-800"
-        >
-          {success}
-        </p>
-      )}
-      {admin && (
-        <button
-          type="button"
-          className="btn-primary mt-4"
-          onClick={() => setHouseForm({ ...blankHouse })}
-        >
-          Assign Boarding House
-        </button>
-      )}
-      <label className="label mt-5 block">
-        Boarding house
-        <select
-          className="input mt-2"
-          value={houseId}
-          onChange={(e) => {
-            setHouseId(e.target.value);
-            setPage(1);
-            setEventStay(null);
-          }}
-        >
-          {houses.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name} — {h.owner_name}
-              {h.active ? "" : " (inactive)"}
-            </option>
-          ))}
-        </select>
-      </label>
-      {!houses.length && (
-        <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-600">
-          {admin
-            ? "No boarding houses have been assigned yet."
-            : boardingStatus === "boarder"
-              ? "Your reported boarding information is shown above. No recorded stay is linked yet; ask your landlord/landlady or the barangay to link your stay."
-              : "No boarding house is assigned to your account yet. Ask the barangay administrator to assign your house before managing its boarders."}
-        </p>
-      )}
-      {house && (
-        <>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-pine-50 p-4 text-sm">
-            <div>
-              <strong>{house.name}</strong>
-              <p>{house.address}</p>
-              <p>Landlord/Landlady: {house.owner_name}</p>
-            </div>
-            {admin && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() =>
-                  setHouseForm({
-                    id: house.id,
-                    name: house.name,
-                    address: house.address,
-                    owner_resident_id: house.owner_resident_id,
-                    active: house.active,
-                  })
-                }
-              >
-                Edit Assignment
-              </button>
-            )}
-          </div>
-          {canManage && house.active && (
-            <form
-              aria-label="Record a boarder move-in"
-              className="boarding-move-in mt-5 grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (
-                  await mutate("move_in", {
-                    house_id: houseId,
-                    tracking_number: tracking.trim(),
-                    move_in_date: moveIn,
-                  })
-                ) {
-                  setTracking("");
-                  setMoveIn("");
-                  setStatus("staying");
-                  setPage(1);
-                }
-              }}
-            >
-              <label className="label min-w-0">
-                Resident tracking number <span className="text-red-600">*</span>
-                <input
-                  className="input mt-2"
-                  required
-                  value={tracking}
-                  onChange={(e) => setTracking(e.target.value)}
-                  placeholder="BC-2026-…"
-                />
-              </label>
-              <label className="label min-w-0">
-                Move-in date <span className="text-red-600">*</span>
-                <input
-                  className="input mt-2"
-                  type="date"
-                  required
-                  max={today()}
-                  value={moveIn}
-                  onChange={(e) => setMoveIn(e.target.value)}
-                />
-              </label>
-              <button
-                disabled={busy}
-                className="btn-primary min-h-12 w-full self-end sm:col-span-2 xl:col-span-1"
-                type="submit"
-              >
-                {busy ? "Saving…" : "Record Move-in"}
-              </button>
-            </form>
-          )}
-          <div className="mt-5 flex flex-wrap gap-2">
-            {(["staying", "moved_out"] as const).map((v) => (
-              <button
-                type="button"
-                key={v}
-                onClick={() => {
-                  setStatus(v);
-                  setPage(1);
-                }}
-                className={`rounded-xl px-4 py-2 text-sm font-bold ${status === v ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-700"}`}
-              >
-                {v === "staying" ? "Currently Staying" : "Departure History"}
-              </button>
-            ))}
-          </div>
+        )}
+        <label className="label">
+          House Name
+          <input
+            required
+            minLength={2}
+            maxLength={150}
+            className="input mt-2"
+            value={form.name}
+            disabled={busy}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </label>
+        <label className="label">
+          Address
+          <input
+            required
+            minLength={3}
+            maxLength={500}
+            className="input mt-2"
+            value={form.address}
+            disabled={busy}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+          />
+        </label>
+        <label className="label">
+          Find Registered Landlord/Landlady
           <input
             type="search"
-            aria-label="Search boarders"
-            className="input my-4"
+            className="input mt-2"
             value={search}
-            placeholder="Search boarder name or tracking number"
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            disabled={busy}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          <p className="mb-3 text-sm text-slate-500">
-            {total} matching{" "}
-            {status === "staying" ? "current boarders" : "past stays"}
-          </p>
-          {loading ? (
-            <p className="text-sm text-slate-500">Loading boarders…</p>
-          ) : (
-            stays.map((s) => (
-              <article
-                key={s.id}
-                className="mb-3 flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 p-4 sm:flex-row"
-              >
-                <div>
-                  <p className="font-bold">{s.resident_name}</p>
-                  <p className="text-sm text-slate-600">
-                    {admin ? (
-                      s.tracking_number
-                    ) : (
-                      <CopyableTrackingNumber
-                        trackingNumber={s.tracking_number}
-                      />
-                    )}{" "}
-                    · Move-in: {s.move_in_date}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {s.status === "staying"
-                      ? "Currently staying"
-                      : `Moved out: ${s.departure_date}`}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Updated by {s.updater_name} ·{" "}
-                    {new Date(s.updated_at).toLocaleString("en-PH")}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => void showHistory(s)}
-                  >
-                    View History
-                  </button>
-                  {admin && (
-                    <a
-                      className="btn-secondary"
-                      href={`#/admin/review/${s.resident_id}`}
-                    >
-                      Resident Details
-                    </a>
-                  )}
-                  {canManage && s.status === "staying" && (
-                    <button
-                      type="button"
-                      className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-bold text-amber-900"
-                      disabled={busy}
-                      onClick={() => {
-                        setDeparting(s);
-                        setDeparture("");
-                      }}
-                    >
-                      Mark Moved Out
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))
-          )}
-          {!loading && !stays.length && (
-            <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">
-              No matching boarder records.
-            </p>
-          )}
-          <PaginationControls
-            page={page}
-            totalItems={total}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPage}
-          />
-        </>
-      )}
-      {houseForm && (
-        <div
-          ref={houseDialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={
-            houseForm.id ? "Edit boarding house" : "Assign boarding house"
-          }
-          tabIndex={-1}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeHouse();
-          }}
-        >
-          <form
-            className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (await mutate("save_house", houseForm)) setHouseForm(null);
-            }}
+        </label>
+        <label className="label">
+          Assigned Account
+          <select
+            required
+            className="input mt-2"
+            value={form.owner_resident_id}
+            disabled={busy}
+            onChange={(e) =>
+              setForm({ ...form, owner_resident_id: e.target.value })
+            }
           >
-            <h3 className="text-xl font-bold">
-              {houseForm.id ? "Edit" : "Assign"} Boarding House
-            </h3>
-            <label className="label block">
-              House name <span className="text-red-600">*</span>
-              <input
-                required
-                minLength={2}
-                maxLength={150}
-                className="input mt-2"
-                value={houseForm.name}
-                onChange={(e) =>
-                  setHouseForm({ ...houseForm, name: e.target.value })
-                }
-              />
-            </label>
-            <label className="label block">
-              Address <span className="text-red-600">*</span>
-              <input
-                required
-                minLength={3}
-                maxLength={500}
-                className="input mt-2"
-                value={houseForm.address}
-                onChange={(e) =>
-                  setHouseForm({ ...houseForm, address: e.target.value })
-                }
-              />
-            </label>
-            <label className="label block">
-              Assigned landlord/landlady <span className="text-red-600">*</span>
-              <input
-                className="input mt-2"
-                placeholder="Search owner's name or tracking number"
-                value={ownerSearch}
-                onChange={(e) => setOwnerSearch(e.target.value)}
-              />
-              <span className="mt-1 block text-xs text-slate-500">
-                Showing up to 20 matches. Search to find another owner.
-              </span>
-              <select
-                required
-                className="input mt-2"
-                value={houseForm.owner_resident_id}
-                onChange={(e) =>
-                  setHouseForm({
-                    ...houseForm,
-                    owner_resident_id: e.target.value,
-                  })
-                }
-              >
-                <option value="">Choose registered owner</option>
-                {residents
-                  .filter((r) => r.user_id)
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.first_name} {r.last_name} — {r.tracking_number}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={houseForm.active}
-                onChange={(e) =>
-                  setHouseForm({ ...houseForm, active: e.target.checked })
-                }
-              />
-              Active boarding house
-            </label>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                disabled={busy}
-                type="button"
-                className="btn-secondary"
-                onClick={closeHouse}
-              >
-                Close
-              </button>
-              <button disabled={busy} type="submit" className="btn-primary">
-                Save Assignment
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      {departing && (
-        <div
-          ref={departureDialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Record departure"
-          tabIndex={-1}
-          className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeDeparture();
-          }}
-        >
-          <form
-            className="dialog-panel w-full max-w-lg space-y-4 rounded-3xl bg-white p-6"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (
-                await mutate("move_out", {
-                  stay_id: departing.id,
-                  departure_date: departure,
-                })
-              ) {
-                setDeparting(null);
-                setDeparture("");
-              }
-            }}
-          >
-            <h3 className="text-xl font-bold">Record Departure</h3>
-            <p className="text-sm">
-              {departing.resident_name} · {house?.name}
-            </p>
-            <label className="label block">
-              Departure date <span className="text-red-600">*</span>
-              <input
-                required
-                type="date"
-                min={departing.move_in_date}
-                max={today()}
-                className="input mt-2"
-                value={departure}
-                onChange={(e) => setDeparture(e.target.value)}
-              />
-            </label>
-            <p className="text-xs text-slate-500">
-              This closes the stay, keeps its history, and does not change
-              barangay residency.
-            </p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                className="btn-secondary"
-                onClick={closeDeparture}
-              >
-                Close
-              </button>
-              <button type="submit" disabled={busy} className="btn-primary">
-                Save Departure
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      {eventStay && (
-        <div
-          ref={historyDialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Stay history"
-          tabIndex={-1}
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/60 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setEventStay(null);
-          }}
-        >
-          <div className="dialog-panel w-full max-w-lg space-y-3 rounded-3xl bg-white p-6">
-            <h3 className="text-xl font-bold">
-              Stay History — {eventStay.resident_name}
-            </h3>
-            {events.map((e) => (
-              <article
-                className="rounded-xl bg-slate-50 p-3 text-sm"
-                key={e.id}
-              >
-                <strong>
-                  {e.action === "move_in" ? "Moved in" : "Moved out"}:{" "}
-                  {e.effective_date}
-                </strong>
-                <p>Updated by {e.updater_name}</p>
-                <p className="text-xs text-slate-500">
-                  Recorded {new Date(e.recorded_at).toLocaleString("en-PH")}
-                </p>
-              </article>
+            <option value="">Select an Account</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.first_name} {o.last_name}
+              </option>
             ))}
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setEventStay(null)}
-            >
-              Close
-            </button>
-          </div>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.active}
+            disabled={busy}
+            onChange={(e) => setForm({ ...form, active: e.target.checked })}
+          />
+          Active
+        </label>
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-xl bg-pine-700 px-4 py-3 font-bold text-white"
+          >
+            {busy ? "Saving…" : "Save Assignment"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={close}
+            className="rounded-xl border px-4 py-3"
+          >
+            Cancel
+          </button>
         </div>
-      )}
-    </section>
+      </form>
+    </div>
   );
 }

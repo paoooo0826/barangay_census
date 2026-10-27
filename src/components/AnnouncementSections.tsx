@@ -27,7 +27,7 @@ export default function AnnouncementSections<T extends Announcement>({
   if (!groupRecent)
     return (
       <div className="space-y-4">
-        {items.map((item) => children(item, false))}
+        {items.map((item) => children(item, isRecentAnnouncement(item, now)))}
       </div>
     );
   const recent: T[] = [];

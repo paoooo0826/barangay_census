@@ -189,7 +189,7 @@ const canvasSetup = w => {
     await t.tick(()=>t.w.document.querySelector('[aria-label^="View Full Screen:"]').click());
     const picture=t.w.document.querySelector('[role=dialog] img');
     check(picture?.src.includes('-original.png'),`${role}: the panel's View Full Screen action loads the uncropped original`);
-    check(t.w.__signed.includes('test/0-original.png'),`${role}: original images load through the same authorized signed-storage URLs`);
+    check(t.w.__signed.some(path=>picture.src.endsWith(path) && path.endsWith('-original.png')),`${role}: original images load through the same authorized signed-storage URLs`);
     await t.tick(()=>picture.dispatchEvent(new t.w.Event('load')));
     await t.tick(()=>t.w.document.querySelector('[aria-label="Zoom In"]').click());
     check(picture.style.transform.includes('scale(1.25)'),`${role}: fullscreen zoom is available from the panel`);

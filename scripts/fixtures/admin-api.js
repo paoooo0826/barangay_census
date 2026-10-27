@@ -159,7 +159,7 @@ export const supabase = {
   rpc: async (name) => ({
     error: null,
     data:
-      name === "get_account_terms" ? {document:null,acceptance:{user_id:'u0',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}} : name === "get_service_catalog" ? [] : name === "admin_system_analytics" ? { residentTotal: 27, recordTotal: 27, duplicateRecords: 0, addressGroups: 18, postedPayments: 0, charts: [
+      name === "admin_notification_feed" ? {items:[],unread_count:0,total:0} : name === "get_account_terms" ? {document:null,acceptance:{user_id:'u0',terms_document_id:'fixture-terms',accepted_at:'2026-10-12T00:00:00Z'}} : name === "get_service_catalog" ? [] : name === "admin_system_analytics" ? { residentTotal: 27, recordTotal: 27, duplicateRecords: 0, addressGroups: 18, postedPayments: 0, charts: [
         { section: "Residents", title: "Residents by Registration Status", unit: "residents", period: false, kind: "bar", rows: [{label:"verified",count:18},{label:"pending review",count:9}] },
         ...["Residents by Age Group","Residents by Sex","Residents by Civil Status"].map(title=>({section:"Demographics", title,unit:"residents",period:false,kind:"bar",rows:[{label:"Example",count:27}]})),
         {section:"Education and Work",title:"Residents by Highest Education",unit:"residents",period:false,kind:"bar",rows:[{label:"College",count:18}]}
@@ -178,7 +178,7 @@ export const supabase = {
               total: 25,
               today: 0,
               completedToday: 0,
-              pending: 13,
+              pending: 13, accepted:12, completed:0, cancelled:0, rejected:0, legacy:0,
             },
             announcements: { active: 8, archived: 1, published: 8 },
             recentResidents: residents.slice(0, 5),

@@ -1,3 +1,6 @@
+import AdminNotifications from "../components/AdminNotifications";
+import CommunityCases from "../components/CommunityCases";
+import BoardingMessages from "../components/BoardingMessages";
 import AdminPayments from "../components/AdminPayments";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -50,6 +53,12 @@ type AdminTab =
   | "records"
   | "analytics"
   | "announcements"
+  | "accepted"
+  | "rejected"
+  | "legacy"
+  | "feedback"
+  | "incidents"
+  | "messages"
   | "appointments"
   | "completed"
   | "cancelled"
@@ -68,7 +77,13 @@ const PRIMARY_TABS: Array<{
   { value: "records", label: "Resident Records", icon: Users },
   { value: "analytics", label: "Analytics", icon: Activity },
   { value: "announcements", label: "Announcements", icon: BellRing },
-  { value: "appointments", label: "Appointments", icon: CalendarDays },
+  { value: "appointments", label: "Recent Appointments", icon: CalendarDays },
+  { value: "accepted", label: "Accepted Appointments", icon: CalendarDays },
+  { value: "rejected", label: "Rejected Appointments", icon: CalendarDays },
+  { value: "legacy", label: "Receipt Reconciliation", icon: Receipt },
+  { value: "feedback", label: "Written Feedback", icon: FileSearch },
+  { value: "incidents", label: "Incident Reports", icon: FileSearch },
+  { value: "messages", label: "Landlord Messages", icon: BellRing },
   { value: "completed", label: "Completed Appointments", icon: CalendarDays },
   { value: "cancelled", label: "Cancelled Appointments", icon: CalendarDays },
   { value: "history", label: "Appointment History", icon: CalendarDays },
@@ -131,7 +146,10 @@ function AdminNavLinks({
           <a
             key={item.value}
             href={`#/admin/dashboard?tab=${item.value}`}
-            onClick={onSelect}
+            onClick={() => {
+              onSelect?.();
+              window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+            }}
             aria-current={activeTab === item.value ? "page" : undefined}
             className={`nav-item ${activeTab === item.value ? "nav-item-active" : ""}`}
           >
@@ -312,6 +330,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             </a>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <AdminNotifications />
             <button
               type="button"
               onClick={() => void refresh()}
@@ -448,10 +467,59 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Stat label="Total Residents" value={stats.total} />
-              <Stat label="Approved" value={stats.verified} />
-              <Stat label="Pending Review" value={stats.pending} />
-              <Stat label="Rejected" value={stats.rejected} />
+              <Stat label="Census Records" value={stats.total} href="records" />
+              <Stat
+                label="Approved Census Applications"
+                value={stats.verified}
+                href="records&status=verified"
+              />
+              <Stat
+                label="Pending Census Applications"
+                value={stats.pending}
+                href="records&status=pending_review"
+              />
+              <Stat
+                label="Rejected Census Applications"
+                value={stats.rejected}
+                href="records&status=rejected"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Stat
+                label="Pending Appointments"
+                value={summary.appointments.pending}
+                href="appointments&status=pending"
+              />
+              <Stat
+                label="Accepted Appointments"
+                value={summary.appointments.accepted}
+                href="accepted"
+              />
+              <Stat
+                label="Completed Appointments"
+                value={summary.appointments.completed}
+                href="completed"
+              />
+              <Stat
+                label="Completed Appointments Today"
+                value={summary.appointments.completedToday}
+                href="completed&date=today"
+              />
+              <Stat
+                label="Rejected Appointments"
+                value={summary.appointments.rejected}
+                href="rejected"
+              />
+              <Stat
+                label="Cancelled Appointments"
+                value={summary.appointments.cancelled}
+                href="cancelled"
+              />
+              <Stat
+                label="Legacy Completions Missing Receipts"
+                value={summary.appointments.legacy}
+                href="legacy"
+              />
             </div>
             <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
               <div>
@@ -477,7 +545,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                   {
                     label: "View Today’s Appointments",
                     count: todayAppointments,
-                    href: "appointments&date=today",
+                    href: "appointments&date=today&status=open",
                     icon: CalendarDays,
                   },
                   {
@@ -510,6 +578,13 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                     <a
                       key={action.label}
                       href={`#/admin/dashboard?tab=${action.href}`}
+                      onClick={() =>
+                        window.scrollTo({
+                          top: 0,
+                          left: 0,
+                          behavior: "instant",
+                        })
+                      }
                       className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 transition hover:border-pine-300 hover:bg-pine-50"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pine-100 text-pine-700">
@@ -757,9 +832,19 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
           />
         )}{" "}
         {activeTab === "payments" && <AdminPayments />}
+        {activeTab === "feedback" && (
+          <CommunityCases key="feedback" kind="feedback" admin />
+        )}
+        {activeTab === "incidents" && (
+          <CommunityCases key="incident" kind="incident" admin />
+        )}
+        {activeTab === "messages" && <BoardingMessages />}
         {activeTab === "housing" && <HousingManager admin />}
         {activeTab === "services" && <ServiceCatalog />}
         {(activeTab === "appointments" ||
+          activeTab === "accepted" ||
+          activeTab === "rejected" ||
+          activeTab === "legacy" ||
           activeTab === "completed" ||
           activeTab === "cancelled" ||
           activeTab === "history" ||
@@ -769,13 +854,17 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
             onChanged={() => void fetchData(true)}
             refreshKey={refreshKey}
             mode={
-              activeTab === "completed" || activeTab === "cancelled"
+              activeTab === "completed" ||
+              activeTab === "cancelled" ||
+              activeTab === "accepted" ||
+              activeTab === "rejected" ||
+              activeTab === "legacy"
                 ? activeTab
                 : activeTab === "history"
                   ? "history"
                   : activeTab === "services"
                     ? "services"
-                    : "active"
+                    : "recent"
             }
           />
         )}{" "}
@@ -805,12 +894,24 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
     </div>
   );
 }
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: number;
+  href?: string;
+}) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <a
+      href={`#/admin/dashboard?tab=${href ?? "dashboard"}`}
+      onClick={() => window.scrollTo({ top: 0, left: 0, behavior: "instant" })}
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-pine-400"
+    >
       <p className="text-sm font-medium text-slate-500">{label}</p>
       <p className="mt-2 text-3xl font-bold">{value}</p>
-    </article>
+    </a>
   );
 }
 function Mini({ label, value }: { label: string; value: string | number }) {

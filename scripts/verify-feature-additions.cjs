@@ -230,7 +230,7 @@ const draftApi = `window.__saves=[];window.__mode='update';window.__base='2026-1
     pay.w.document.body.textContent.includes("Paid") &&
       pay.w.document.body.textContent.includes("OR-100") &&
       !pay.w.document.querySelector("form"),
-    "Confirmed receipt replaces collection controls without changing appointment status",
+    "Confirmed receipt replaces collection controls and reports completion",
   );
   await pay.tick(() =>
     Array.from(pay.w.document.querySelectorAll("button"))
@@ -286,9 +286,9 @@ const draftApi = `window.__saves=[];window.__mode='update';window.__base='2026-1
   await resident.close();
   const free = await render(paymentSource(true, 0), paymentApi);
   check(
-    free.w.document.body.textContent.includes("Free — no payment required") &&
-      !free.w.document.querySelector("form"),
-    "Free requests never offer a payment collection form",
+    free.w.document.body.textContent.includes("Free — release acknowledgment pending") &&
+      free.w.document.querySelector("form") && free.w.document.body.textContent.includes("Issue Acknowledgment and Complete"),
+    "Zero-fee requests require a release acknowledgment without cash collection",
   );
   await free.close();
   const cancelled = await render(

@@ -189,12 +189,12 @@ export const supabase={from:table=>({select(){return this},eq(){return this},ord
   await review.close();
 
   const appointmentApi = `window.__status='pending';window.__reads=0;window.__timers=new Map();let timer=0;window.setInterval=fn=>{window.__timers.set(++timer,fn);return timer};window.clearInterval=id=>window.__timers.delete(id);window.__defer=false;window.__pending=[];window.__cancelCalls=0;window.confirm=()=>false;
-export const supabase={from:table=>({select(){return this},eq(){return this},order(){return this},then(resolve){if(table==='appointments'){window.__reads++;const row={id:'a0',user_id:'u0',resident_id:'r0',status:window.__status,service_type:'barangay_clearance',fee:230,appointment_date:'2026-10-12',appointment_time:'09:00:00',purpose:'Test service'};const result={data:[row],error:window.__readError?{message:'Appointment connection lost'}:null};return window.__defer?new Promise(done=>window.__pending.push(()=>done(result))).then(resolve):Promise.resolve(result).then(resolve)}return Promise.resolve({data:[],error:null}).then(resolve)}}),rpc:async(name)=>{if(name==="get_service_catalog")return{data:[],error:null};window.__cancelCalls++;return {data:{cancelled:true},error:null}}};`;
+export const supabase={from:table=>({select(){return this},eq(){return this},order(){return this},then(resolve){if(table==='resident_appointment_records'){window.__reads++;const row={id:'a0',user_id:'u0',resident_id:'r0',status:window.__status,service_type:'barangay_clearance',fee:230,appointment_date:'2026-10-12',appointment_time:'09:00:00',purpose:'Test service'};const result={data:[row],error:window.__readError?{message:'Appointment connection lost'}:null};return window.__defer?new Promise(done=>window.__pending.push(()=>done(result))).then(resolve):Promise.resolve(result).then(resolve)}return Promise.resolve({data:[],error:null}).then(resolve)}}),rpc:async(name)=>{if(name==="get_service_catalog")return{data:[],error:null};window.__cancelCalls++;return {data:{cancelled:true},error:null}}};`;
   const appointmentSource = `import {createRoot} from 'react-dom/client';import ResidentAppointments from './src/components/ResidentAppointments';const root=createRoot(document.getElementById('root'));const resident={id:'r0',user_id:'u0'};window.__mount=()=>root.render(<ResidentAppointments resident={resident}/>);window.__unmount=()=>root.unmount();`;
   const appointments = await render(appointmentSource, appointmentApi);
   Object.defineProperty(appointments.w.document, 'hidden', { configurable:true, value:false });
   await appointments.tick(() => { appointments.w.__status='confirmed'; appointments.w.dispatchEvent(new appointments.w.Event('focus')); });
-  check(appointments.w.__reads === 2 && appointments.w.document.body.textContent.includes('confirmed'),
+  check(appointments.w.__reads === 2 && appointments.w.document.body.textContent.includes('Accepted'),
     "Returning to the resident page refreshes an administrator status update");
   const open = [...appointments.w.document.querySelectorAll('button')].find(b=>b.textContent.includes('View Details'));
   open.focus();
@@ -226,10 +226,10 @@ export const supabase={from:table=>({select(){return this},eq(){return this},ord
   await appointments.tick(() => { appointments.w.__status='confirmed'; appointments.w.dispatchEvent(new appointments.w.Event('online')); });
   await appointments.tick(() => appointments.w.__pending[1]());
   await appointments.tick(() => appointments.w.__pending[0]());
-  check(appointments.w.document.body.textContent.includes('confirmed') && !appointments.w.document.body.textContent.includes('pending'),
+  check(appointments.w.document.body.textContent.includes('Accepted') && !appointments.w.document.body.textContent.includes('pending'),
     "A late appointment response cannot overwrite newer status data");
   await appointments.tick(() => { appointments.w.__defer=false; appointments.w.__readError=true; appointments.w.dispatchEvent(new appointments.w.Event('focus')); });
-  check(appointments.w.document.body.textContent.includes('Appointment connection lost') && appointments.w.document.body.textContent.includes('confirmed'),
+  check(appointments.w.document.body.textContent.includes('Appointment connection lost') && appointments.w.document.body.textContent.includes('Accepted'),
     "A failed background refresh reports the error and preserves the last confirmed status");
   await appointments.tick(() => { appointments.w.__readError=false; appointments.w.dispatchEvent(new appointments.w.Event('online')); });
   check(!appointments.w.document.body.textContent.includes('Appointment connection lost'),

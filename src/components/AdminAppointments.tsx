@@ -1,3 +1,4 @@
+import { appointmentLabel } from "../lib/community";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -31,7 +32,16 @@ import PaginationControls from "./PaginationControls";
 
 interface AdminAppointmentsProps {
   refreshKey: number;
-  mode?: "active" | "completed" | "cancelled" | "history" | "services";
+  mode?:
+    | "active"
+    | "recent"
+    | "accepted"
+    | "completed"
+    | "cancelled"
+    | "rejected"
+    | "legacy"
+    | "history"
+    | "services";
   onChanged?: () => void;
 }
 interface AppointmentResident {
@@ -115,7 +125,7 @@ function historyDateRange(date: string) {
 
 export default function AdminAppointments({
   refreshKey,
-  mode = "active",
+  mode = "recent",
   onChanged,
 }: AdminAppointmentsProps) {
   const route = useHashRoute();
@@ -128,25 +138,26 @@ export default function AdminAppointments({
   const allowed =
     mode === "active"
       ? ["all", "pending", "confirmed"]
-      : mode === "completed" || mode === "cancelled"
-        ? ["all", mode]
-        : mode === "history"
-          ? ["all", "completed", "cancelled", "rejected"]
-          : [
-              "all",
-              "pending",
-              "confirmed",
-              "completed",
-              "cancelled",
-              "rejected",
-            ];
-  const statusFilter: "all" | AppointmentStatus = allowed.includes(
-    requestedStatus ?? "",
-  )
-    ? (requestedStatus as "all" | AppointmentStatus)
-    : mode === "history"
-      ? "completed"
-      : "all";
+      : mode === "accepted"
+        ? ["all", "confirmed"]
+        : mode === "completed" || mode === "cancelled" || mode === "rejected"
+          ? ["all", mode]
+          : mode === "history"
+            ? ["all", "completed", "cancelled", "rejected"]
+            : [
+                "all",
+                "pending",
+                "confirmed",
+                "completed",
+                "cancelled",
+                "rejected",
+              ];
+  const statusFilter: "all" | "open" | AppointmentStatus =
+    requestedStatus === "open" || allowed.includes(requestedStatus ?? "")
+      ? (requestedStatus as "all" | "open" | AppointmentStatus)
+      : mode === "history"
+        ? "all"
+        : "all";
   const requestedDate = requestedFilters.get("date") ?? "";
   const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
     ? new Date(`${requestedDate}T12:00:00Z`)
@@ -163,10 +174,8 @@ export default function AdminAppointments({
   const setStatusFilter = (value: string) => updateHashQuery({ status: value });
   const setDateFilter = (value: string) => updateHashQuery({ date: value });
   const setSearchQuery = (value: string) => updateHashQuery({ q: value }, true);
-  const [sortField, setSortField] = useState("appointment_date");
-  const [sortDirection, setSortDirection] = useState<SortDirection>(
-    mode === "active" ? "asc" : "desc",
-  );
+  const [sortField, setSortField] = useState("created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -182,22 +191,30 @@ export default function AdminAppointments({
           "status",
           mode === "active"
             ? ["pending", "confirmed"]
-            : mode === "completed" || mode === "cancelled"
-              ? [mode]
-              : mode === "history"
-                ? ["completed", "cancelled", "rejected"]
-                : [
-                    "pending",
-                    "confirmed",
-                    "completed",
-                    "cancelled",
-                    "rejected",
-                  ],
+            : mode === "accepted"
+              ? ["confirmed"]
+              : mode === "completed" ||
+                  mode === "cancelled" ||
+                  mode === "rejected"
+                ? [mode]
+                : mode === "history"
+                  ? ["completed", "cancelled", "rejected"]
+                  : [
+                      "pending",
+                      "confirmed",
+                      "completed",
+                      "cancelled",
+                      "rejected",
+                    ],
         );
-      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      if (mode === "completed") q = q.eq("has_valid_receipt", true);
+      if (mode === "legacy") q = q.eq("legacy_receipt_missing", true);
+      if (statusFilter === "open") q = q.in("status", ["pending", "confirmed"]);
+      else if (statusFilter !== "all") q = q.eq("status", statusFilter);
       if (dateFilter) {
         if (mode === "completed" || mode === "cancelled") {
-          const column = mode === "completed" ? "completed_at" : "cancelled_at";
+          const column =
+            mode === "completed" ? "receipt_verified_at" : "cancelled_at";
           const range = historyDateRange(dateFilter);
           q = q.gte(column, range.start).lt(column, range.end);
         } else q = q.eq("appointment_date", dateFilter);
@@ -235,7 +252,7 @@ export default function AdminAppointments({
   });
   const loadMetrics = async () => {
     const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
-      p_mode: mode === "completed" || mode === "cancelled" ? "history" : mode,
+      p_mode: mode,
     });
     if (!e) setMetrics((data as unknown as AdminSummary).appointments);
   };
@@ -243,7 +260,7 @@ export default function AdminAppointments({
     let active = true;
     const read = async () => {
       const { data, error: e } = await supabase.rpc("admin_dashboard_summary", {
-        p_mode: mode === "completed" || mode === "cancelled" ? "history" : mode,
+        p_mode: mode,
       });
       if (active && !e)
         setMetrics((data as unknown as AdminSummary).appointments);
@@ -322,7 +339,7 @@ export default function AdminAppointments({
       await loadAppointments();
       return;
     }
-    setSuccess(`Appointment marked as ${status}.`);
+    setSuccess(`Appointment marked as ${appointmentLabel(status)}.`);
     onChanged?.();
     await Promise.all([loadAppointments(), loadMetrics()]);
     if (selectedAppointment?.id === a.id) closeAppointment();
@@ -330,35 +347,25 @@ export default function AdminAppointments({
 
   const cards = [
     {
-      label:
-        mode === "active"
-          ? "Active Appointments"
-          : mode === "completed"
-            ? "Matching Completed Appointments"
-            : mode === "cancelled"
-              ? "Matching Cancelled Appointments"
-              : mode === "history"
-                ? "Previous Appointments"
-                : "All Service Requests",
-      value:
-        mode === "completed" || mode === "cancelled" ? total : metrics.total,
+      label: `Matching ${mode === "accepted" ? "Accepted Appointments" : mode === "completed" ? "Completed Appointments" : mode === "cancelled" ? "Cancelled Appointments" : mode === "rejected" ? "Rejected Appointments" : mode === "legacy" ? "Legacy Completions Missing Receipts" : "Appointment Requests"}`,
+      value: total,
       icon: CalendarClock,
       style: "bg-pine-100 text-pine-700",
     },
     {
-      label: "Today's Schedule",
+      label: "Open Appointments Today (All Requests)",
       value: metrics.today,
       icon: CalendarCheck2,
       style: "bg-pine-100 text-pine-700",
     },
     {
-      label: "Completed Today",
+      label: "Completed Appointments Today",
       value: metrics.completedToday,
       icon: CircleCheckBig,
       style: "bg-sage-100 text-sage-700",
     },
     {
-      label: "Waiting for Confirmation",
+      label: "Pending Appointments",
       value: metrics.pending,
       icon: Clock,
       style: "bg-amber-100 text-amber-700",
@@ -366,7 +373,7 @@ export default function AdminAppointments({
   ].filter((card) =>
     mode === "completed" || mode === "cancelled"
       ? card.label.startsWith("Matching")
-      : mode !== "active" || card.label !== "Completed Today",
+      : mode !== "active" || card.label !== "Completed Appointments Today",
   );
 
   return (
@@ -378,19 +385,25 @@ export default function AdminAppointments({
               Barangay services
             </p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">
-              {mode === "completed"
-                ? "Completed Appointments"
-                : mode === "cancelled"
-                  ? "Cancelled Appointments"
-                  : mode === "history"
-                    ? "Appointment History"
-                    : mode === "services"
-                      ? "Service Requests"
-                      : "Active Appointments"}
+              {mode === "accepted"
+                ? "Accepted Appointments"
+                : mode === "rejected"
+                  ? "Rejected Appointments"
+                  : mode === "legacy"
+                    ? "Legacy Completion Reconciliation"
+                    : mode === "completed"
+                      ? "Completed Appointments"
+                      : mode === "cancelled"
+                        ? "Cancelled Appointments"
+                        : mode === "history"
+                          ? "Appointment History"
+                          : mode === "services"
+                            ? "Service Requests"
+                            : "Recent Appointments"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {mode === "active"
-                ? "Confirm, complete, or reject active resident requests."
+                ? "Accept or reject requests. Issue a receipt from View Details to complete an accepted appointment."
                 : "View recorded services, status, dates, and request details."}
             </p>
           </div>
@@ -483,23 +496,30 @@ export default function AdminAppointments({
               }
               className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
             >
-              <option value="all">All statuses</option>
+              <option value="all">All Statuses</option>
+              {["active", "recent", "services"].includes(mode) && (
+                <option value="open">Pending / Accepted</option>
+              )}
               {(mode === "active"
                 ? ["pending", "confirmed"]
-                : mode === "completed" || mode === "cancelled"
-                  ? [mode]
-                  : mode === "history"
-                    ? ["completed", "cancelled", "rejected"]
-                    : [
-                        "pending",
-                        "confirmed",
-                        "completed",
-                        "cancelled",
-                        "rejected",
-                      ]
+                : mode === "accepted"
+                  ? ["confirmed"]
+                  : mode === "completed" ||
+                      mode === "cancelled" ||
+                      mode === "rejected"
+                    ? [mode]
+                    : mode === "history"
+                      ? ["completed", "cancelled", "rejected"]
+                      : [
+                          "pending",
+                          "confirmed",
+                          "completed",
+                          "cancelled",
+                          "rejected",
+                        ]
               ).map((value) => (
                 <option key={value} value={value}>
-                  {value.charAt(0).toUpperCase() + value.slice(1)}
+                  {appointmentLabel(value)}
                 </option>
               ))}
             </select>
@@ -522,6 +542,7 @@ export default function AdminAppointments({
             field={sortField}
             direction={sortDirection}
             options={[
+              { value: "created_at", label: "Request Date" },
               { value: "appointment_date", label: "Appointment date and time" },
               { value: "resident", label: "Resident last name" },
               { value: "service", label: "Service" },
@@ -565,7 +586,10 @@ export default function AdminAppointments({
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLES[a.status]}`}
                           >
-                            {a.status}
+                            {appointmentLabel(
+                              a.status,
+                              a.legacy_receipt_missing,
+                            )}
                           </span>
                           <span className="rounded-full bg-pine-50 px-2.5 py-1 text-xs font-bold text-pine-700">
                             {formatFee(a.fee)}
@@ -596,16 +620,7 @@ export default function AdminAppointments({
                             onClick={() => void updateStatus(a, "confirmed")}
                             className="rounded-xl bg-pine-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
                           >
-                            Confirm
-                          </button>
-                        )}
-                        {a.status === "confirmed" && (
-                          <button
-                            disabled={busy}
-                            onClick={() => void updateStatus(a, "completed")}
-                            className="rounded-xl bg-sage-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                          >
-                            Complete
+                            Accept
                           </button>
                         )}
                         {["pending", "confirmed"].includes(a.status) && (
@@ -641,6 +656,12 @@ export default function AdminAppointments({
         <AdminAppointmentDetails
           appointment={selectedAppointment}
           onClose={closeAppointment}
+          onPaymentChanged={() => {
+            onChanged?.();
+            void loadAppointments();
+            void loadMetrics();
+            closeAppointment();
+          }}
         />
       )}
     </>
@@ -693,11 +714,24 @@ export function AdminAppointmentDetails({
           </button>
         </div>
         <div className="space-y-5 p-5 sm:p-6">
+          {appointment.legacy_receipt_missing && (
+            <p
+              role="status"
+              className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              Historical status only: no linked receipt was recorded. Reconcile
+              using actual receipt evidence; do not invent payment details. The
+              original completion date is preserved.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_STYLES[appointment.status]}`}
             >
-              {appointment.status}
+              {appointmentLabel(
+                appointment.status,
+                appointment.legacy_receipt_missing,
+              )}
             </span>
             {purpose && (
               <span className="rounded-full bg-pine-50 px-3 py-1 text-xs font-bold text-pine-700">
@@ -720,7 +754,13 @@ export function AdminAppointmentDetails({
               value={formatTime(appointment.appointment_time)}
             />
             <AdminDetail label="Saved Fee" value={formatFee(appointment.fee)} />
-            <AdminDetail label="Status" value={appointment.status} />
+            <AdminDetail
+              label="Status"
+              value={appointmentLabel(
+                appointment.status,
+                appointment.legacy_receipt_missing,
+              )}
+            />
             <AdminDetail
               label="Requested"
               value={new Date(appointment.created_at).toLocaleString("en-PH")}

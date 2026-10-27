@@ -1,8 +1,13 @@
+import CommunityCases from "../components/CommunityCases";
+import BoardingMessages from "../components/BoardingMessages";
 import AnnouncementDetail, {
   AnnouncementImage,
 } from "../components/AnnouncementDetail";
 import FullscreenImageViewer from "../components/FullscreenImageViewer";
-import { loadAnnouncementImages, type AnnouncementView } from "../lib/announcementImages";
+import {
+  loadAnnouncementImages,
+  type AnnouncementView,
+} from "../lib/announcementImages";
 import type { AnnouncementDetailData } from "../components/AnnouncementDetail";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -57,6 +62,10 @@ type Tab =
   | "completed"
   | "cancelled"
   | "rejected"
+  | "accepted"
+  | "feedback"
+  | "incidents"
+  | "messages"
   | "appointments"
   | "profile"
   | "record"
@@ -188,6 +197,10 @@ export default function ResidentDashboard({
   const selectedTab: Tab = [
     "home",
     "appointments",
+    "accepted",
+    "feedback",
+    "incidents",
+    "messages",
     "completed",
     "cancelled",
     "rejected",
@@ -205,7 +218,10 @@ export default function ResidentDashboard({
   };
   const boardingAccess = canAccessBoarding(resident?.boarding_status);
   const tab =
-    selectedTab === "housing" && !boardingAccess ? "home" : selectedTab;
+    (selectedTab === "housing" && !boardingAccess) ||
+    (selectedTab === "messages" && resident?.boarding_status !== "landlord")
+      ? "home"
+      : selectedTab;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useDismissible<HTMLDivElement>(profileOpen, () =>
@@ -273,7 +289,8 @@ export default function ResidentDashboard({
             .eq("is_published", true)
             .eq("archived", false)
             .or(`audience.eq.all,audience.eq.${current.status}`)
-            .order("published_at", { ascending: false }),
+            .order("published_at", { ascending: false })
+            .order("id", { ascending: false }),
           supabase
             .from("government_ids")
             .select("*")
@@ -313,8 +330,9 @@ export default function ResidentDashboard({
             new Date(announcement.expires_at).getTime() > Date.now(),
         );
         const signedAnnouncements = await Promise.all(
-          active.map((announcement) => loadAnnouncementImages(announcement, 300)),
-
+          active.map((announcement) =>
+            loadAnnouncementImages(announcement, 300),
+          ),
         );
         if (request !== loadRequest.current) return;
         setAnnouncements(signedAnnouncements);
@@ -459,6 +477,28 @@ export default function ResidentDashboard({
             </button>
             <ResidentNotifications
               residentId={resident?.id}
+              onOpenItem={(category, id) => {
+                const destination =
+                  category === "appointment"
+                    ? "appointments"
+                    : category === "feedback"
+                      ? "feedback"
+                      : category === "incident"
+                        ? "incidents"
+                        : category === "message"
+                          ? "messages"
+                          : "record";
+                const key =
+                  category === "appointment"
+                    ? "appointment"
+                    : category === "message"
+                      ? "house"
+                      : "item";
+                navigateHash(
+                  `/resident/dashboard?tab=${destination}${id ? `&${key}=${encodeURIComponent(id)}` : ""}`,
+                );
+                window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+              }}
               onOpenAppointments={() => navigateToTab("appointments")}
               onOpenRecord={() => navigateToTab(resident ? "record" : "home")}
             />
@@ -526,10 +566,25 @@ export default function ResidentDashboard({
             </div>
           </div>
         </div>
-        <nav className="mx-auto hidden max-w-6xl gap-2 border-t border-slate-100 px-4 py-3 md:flex sm:px-6">
+        <nav className="mx-auto hidden max-w-6xl flex-wrap gap-2 border-t border-slate-100 px-4 py-3 md:flex sm:px-6">
           {[
             { value: "home" as Tab, label: "Home", icon: Home },
             { value: "profile" as Tab, label: "Profile", icon: User },
+            { value: "feedback" as Tab, label: "Feedback", icon: FileText },
+            {
+              value: "incidents" as Tab,
+              label: "Incident Reports",
+              icon: FileText,
+            },
+            ...(resident?.boarding_status === "landlord"
+              ? [
+                  {
+                    value: "messages" as Tab,
+                    label: "Messages",
+                    icon: FileText,
+                  },
+                ]
+              : []),
             ...(boardingAccess
               ? [
                   {
@@ -600,6 +655,21 @@ export default function ResidentDashboard({
               {[
                 { value: "home" as Tab, label: "Home", icon: Home },
                 { value: "profile" as Tab, label: "Profile", icon: User },
+                { value: "feedback" as Tab, label: "Feedback", icon: FileText },
+                {
+                  value: "incidents" as Tab,
+                  label: "Incident Reports",
+                  icon: FileText,
+                },
+                ...(resident?.boarding_status === "landlord"
+                  ? [
+                      {
+                        value: "messages" as Tab,
+                        label: "Messages",
+                        icon: FileText,
+                      },
+                    ]
+                  : []),
                 ...(boardingAccess
                   ? [
                       {
@@ -695,6 +765,15 @@ export default function ResidentDashboard({
           </div>
         )}
 
+        {tab === "feedback" && (
+          <CommunityCases key="feedback" kind="feedback" />
+        )}
+        {tab === "incidents" && (
+          <CommunityCases key="incident" kind="incident" />
+        )}
+        {tab === "messages" && resident?.boarding_status === "landlord" && (
+          <BoardingMessages />
+        )}
         {tab === "housing" && boardingAccess && resident && (
           <>
             <BoardingDetails resident={resident} />
@@ -708,14 +787,21 @@ export default function ResidentDashboard({
           resident && (
             <ResidencyDetails residentId={resident.id} onRecordStart={onEdit} />
           )}
-        {["appointments", "completed", "cancelled", "rejected"].includes(
-          tab,
-        ) && (
+        {[
+          "appointments",
+          "accepted",
+          "completed",
+          "cancelled",
+          "rejected",
+        ].includes(tab) && (
           <ResidentAppointments
             key={tab}
             resident={resident}
             mode={
-              tab === "completed" || tab === "cancelled" || tab === "rejected"
+              tab === "accepted" ||
+              tab === "completed" ||
+              tab === "cancelled" ||
+              tab === "rejected"
                 ? tab
                 : "active"
             }
@@ -787,7 +873,9 @@ export default function ResidentDashboard({
                                 alt={`Attached image for ${a.title}`}
                                 className="aspect-[16/7] w-full object-cover"
                               />
-                              <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">View Full Screen</span>
+                              <span className="absolute bottom-2 right-2 rounded-lg bg-slate-950/80 px-3 py-2 text-xs font-semibold text-white">
+                                View Full Screen
+                              </span>
                             </button>
                           )}
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -993,7 +1081,13 @@ export default function ResidentDashboard({
           onClose={() => setDetail(null)}
         />
       )}
-      {previewImage && <FullscreenImageViewer src={previewImage.url} title={previewImage.title} onClose={() => setPreviewImage(null)} />}
+      {previewImage && (
+        <FullscreenImageViewer
+          src={previewImage.url}
+          title={previewImage.title}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   );
 }

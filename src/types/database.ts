@@ -9,7 +9,12 @@ export type Json =
 export type Sex = "Male" | "Female";
 
 export type CivilStatus =
-  "Single" | "Married" | "Widowed" | "Separated" | "Divorced" | "Live-in";
+  | "Single"
+  | "Married"
+  | "Widowed"
+  | "Separated"
+  | "Divorced"
+  | "Live-in";
 
 export type EducationLevel =
   | "No Formal Education"
@@ -56,25 +61,43 @@ export type Category =
   | "Pregnant Woman";
 
 export type ResidentStatus =
-  "pending_review" | "verified" | "returned" | "rejected";
+  | "pending_review"
+  | "verified"
+  | "returned"
+  | "rejected";
 
 export type BoardingStatus = "boarder" | "landlord" | "neither";
 
 export type AppointmentService =
-  "barangay_clearance" | "certificate_of_residency";
+  | "barangay_clearance"
+  | "certificate_of_residency";
 
 export type LegacyAppointmentService = "certificate_of_indigency" | "complaint";
 
 export type StoredAppointmentService =
-  AppointmentService | LegacyAppointmentService;
+  | AppointmentService
+  | LegacyAppointmentService;
 
 export type AppointmentPurpose =
-  "low_income" | "good_moral" | "financial" | "medical_assistance";
+  | "low_income"
+  | "good_moral"
+  | "financial"
+  | "medical_assistance";
 
 export type AppointmentStatus =
-  "pending" | "confirmed" | "completed" | "cancelled" | "rejected";
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled"
+  | "rejected";
 
-export type NotificationCategory = "census" | "appointment" | "system";
+export type NotificationCategory =
+  | "census"
+  | "appointment"
+  | "system"
+  | "feedback"
+  | "incident"
+  | "message";
 
 export interface CategoryRow {
   id: number;
@@ -145,7 +168,11 @@ export interface FaceVerification {
   liveness_passed?: boolean | null;
   liveness_actions?: string[] | null;
   verification_recommendation?:
-    "match" | "manual_review" | "retry" | string | null;
+    | "match"
+    | "manual_review"
+    | "retry"
+    | string
+    | null;
   id_quality?: {
     brightness?: number;
     blurVariance?: number;
@@ -169,7 +196,11 @@ export interface Remark {
 export type AnnouncementPriority = "info" | "important" | "urgent";
 
 export type AnnouncementAudience =
-  "all" | "pending_review" | "verified" | "returned" | "rejected";
+  | "all"
+  | "pending_review"
+  | "verified"
+  | "returned"
+  | "rejected";
 
 export interface Announcement {
   id: string;
@@ -203,6 +234,12 @@ export interface Appointment {
   status: AppointmentStatus;
   admin_notes?: string | null;
   completed_at?: string | null;
+  completion_receipt_id?: string | null;
+  receipt_verified_at?: string | null;
+  accepted_at?: string | null;
+  rejected_at?: string | null;
+  has_valid_receipt?: boolean;
+  legacy_receipt_missing?: boolean;
   cancellation_reason?: string | null;
   cancelled_at?: string | null;
   created_at: string;
@@ -240,6 +277,16 @@ type AnyTable = {
 export interface Database {
   public: {
     Tables: {
+      admin_notifications: AnyTable;
+      admin_notification_reads: AnyTable;
+      resident_feedback: AnyTable;
+      incident_reports: AnyTable;
+      incident_attachments: AnyTable;
+      community_case_updates: AnyTable;
+      boarding_count_state: AnyTable;
+      boarding_count_events: AnyTable;
+      boarding_messages: AnyTable;
+      boarding_conversation_reads: AnyTable;
       residents: AnyTable;
       categories: AnyTable;
       resident_categories: AnyTable;
@@ -261,6 +308,7 @@ export interface Database {
       boarder_occupancy_history: AnyTable;
     };
     Views: {
+      resident_appointment_records: AnyTable;
       residency_current: AnyTable;
       residency_history: AnyTable;
       admin_resident_records: AnyTable;
@@ -270,9 +318,86 @@ export interface Database {
       admin_resident_history: AnyTable;
     };
     Functions: {
+      admin_notification_feed: {
+        Args: { p_offset?: number; p_limit?: number; p_unread_only?: boolean };
+        Returns: Json;
+      };
+      mark_admin_notifications_read: {
+        Args: { p_notification_ids?: string[] | null };
+        Returns: Json;
+      };
+      resident_notification_feed: {
+        Args: { p_resident_id: string; p_offset?: number; p_limit?: number };
+        Returns: Json;
+      };
+      submit_resident_feedback: {
+        Args: { p_kind: string; p_content: string; p_request_key: string };
+        Returns: Json;
+      };
+      submit_incident_report: {
+        Args: {
+          p_category: string;
+          p_description: string;
+          p_location: string;
+          p_occurred_at: string;
+          p_image_paths: string[];
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      review_community_case: {
+        Args: {
+          p_kind: string;
+          p_id: string;
+          p_expected_updated_at: string;
+          p_status: string;
+          p_response: string;
+        };
+        Returns: Json;
+      };
+      boarding_count_summary: {
+        Args: {
+          p_house_id: string;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_offset?: number;
+          p_limit?: number;
+        };
+        Returns: Json;
+      };
+      record_boarding_count: {
+        Args: {
+          p_house_id: string;
+          p_action: string;
+          p_quantity: number;
+          p_date: string;
+          p_expected_version: number;
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      send_boarding_message: {
+        Args: { p_house_id: string; p_body: string; p_request_key: string };
+        Returns: Json;
+      };
+      boarding_conversations: { Args: Record<string, never>; Returns: Json };
+      mark_boarding_conversation_read: {
+        Args: { p_house_id: string; p_through: string };
+        Returns: Json;
+      };
       get_account_terms: { Args: Record<string, never>; Returns: Json };
-      accept_account_terms: { Args: { p_document_id: string; p_agreed: boolean }; Returns: Json };
-      admin_system_analytics: { Args: { p_from?: string | null; p_to?: string | null; p_status?: string }; Returns: Json };
+      accept_account_terms: {
+        Args: { p_document_id: string; p_agreed: boolean };
+        Returns: Json;
+      };
+      admin_system_analytics: {
+        Args: {
+          p_from?: string | null;
+          p_to?: string | null;
+          p_status?: string;
+        };
+        Returns: Json;
+      };
       get_service_catalog: { Args: Record<string, never>; Returns: Json };
       save_census_draft: {
         Args: {
@@ -345,7 +470,7 @@ export interface Database {
         Returns: Json;
       };
       mark_resident_notifications_read: {
-        Args: { p_notification_ids: string[] };
+        Args: { p_notification_ids: string[] | null };
         Returns: number;
       };
       preview_appointment_fee: {
@@ -409,7 +534,7 @@ export interface ServicePayment {
   receipt_number: string;
   cashier_user_id: string;
   cashier_name: string;
-  method: "cash";
+  method: "cash" | "zero_fee_acknowledgment";
   status: "posted" | "voided";
   paid_at: string;
   voided_at: string | null;

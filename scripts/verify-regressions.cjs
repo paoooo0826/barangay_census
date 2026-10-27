@@ -295,10 +295,10 @@ async function adminPageChecks() {
         r.table === "admin_service_records" &&
         r.filters.some(
           ([k, v]) =>
-            k === "status" && JSON.stringify(v) === '["pending","confirmed"]',
+            k === "status" && JSON.stringify(v) === '["pending","confirmed","completed","cancelled","rejected"]',
         ),
     ),
-    "Active Appointments requests only active statuses",
+    "Recent Appointments includes the complete status history",
   );
   await tick(() => w.__tab("announcements"));
   await tick();

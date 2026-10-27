@@ -1,3 +1,4 @@
+import { appointmentLabel } from "../lib/community";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { serviceLabel, RESIDENCY_PURPOSES } from "./ResidentAppointments";
@@ -16,10 +17,10 @@ export default function RecentServices({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     const { data, error: e } = await supabase
-      .from("appointments")
-      .select("*, residents(first_name,last_name,suffix)")
+      .from("admin_service_records")
+      .select("*")
       .order("created_at", { ascending: false })
-      .order("id")
+      .order("id", {ascending:false})
       .limit(5);
     if (e) setError(e.message);
     else {
@@ -83,7 +84,7 @@ export default function RecentServices({ refreshKey }: { refreshKey: number }) {
                 </p>
                 <p className="text-xs text-slate-500">
                   Requested {new Date(row.created_at).toLocaleString("en-PH")} ·{" "}
-                  <span className="font-semibold capitalize">{row.status}</span>
+                  <span className="font-semibold capitalize">{appointmentLabel(row.status,row.legacy_receipt_missing)}</span>
                 </p>
               </div>
               <a

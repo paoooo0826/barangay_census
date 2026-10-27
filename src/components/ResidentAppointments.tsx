@@ -1,3 +1,5 @@
+import { appointmentLabel } from "../lib/community";
+import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { navigateHash } from "../hooks/useHashRoute";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
@@ -18,7 +20,10 @@ import {
   XCircle,
 } from "lucide-react";
 
-import ServiceCatalog, { catalogFeeLabel, useServiceCatalog } from "./ServiceCatalog";
+import ServiceCatalog, {
+  catalogFeeLabel,
+  useServiceCatalog,
+} from "./ServiceCatalog";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import PaginationControls, { pageSlice } from "./PaginationControls";
@@ -34,7 +39,7 @@ import type {
 interface ResidentAppointmentsProps {
   resident: Resident | null;
   initialService?: AppointmentService | null;
-  mode?: "active" | "completed" | "cancelled" | "rejected";
+  mode?: "active" | "accepted" | "completed" | "cancelled" | "rejected";
 }
 
 interface ServiceDefinition {
@@ -58,6 +63,7 @@ interface BookingResult {
 }
 
 type AppointmentCategory =
+  | "confirmed"
   | "upcoming"
   | "completed"
   | "rejected"
@@ -201,6 +207,10 @@ export default function ResidentAppointments({
   mode = "active",
 }: ResidentAppointmentsProps) {
   const { user } = useAuth();
+  const route = useHashRoute();
+  const requestedAppointment = new URLSearchParams(
+    route.split("?")[1] ?? "",
+  ).get("appointment");
   const { services: approvedServices } = useServiceCatalog();
   const userId = user?.id;
   const bookingLock = useRef(false);
@@ -222,7 +232,7 @@ export default function ResidentAppointments({
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [category] = useState<AppointmentCategory>(
-    mode === "active" ? "upcoming" : mode,
+    mode === "active" ? "all" : mode === "accepted" ? "confirmed" : mode,
   );
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -251,11 +261,11 @@ export default function ResidentAppointments({
       }
       try {
         const { data, error: appointmentError } = await supabase
-          .from("appointments")
+          .from("resident_appointment_records")
           .select("*")
           .eq("user_id", userId)
-          .order("appointment_date", { ascending: false })
-          .order("appointment_time", { ascending: false });
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
         if (generation !== appointmentRequest.current) return;
         if (appointmentError) throw appointmentError;
         setAppointmentLoadError(null);
@@ -356,13 +366,21 @@ export default function ResidentAppointments({
     selectedService,
   ]);
 
+  useEffect(() => {
+    if (requestedAppointment) {
+      const found = appointments.find((a) => a.id === requestedAppointment);
+      if (found) setSelectedAppointment(found);
+    }
+  }, [requestedAppointment, appointments]);
   const counts = useMemo(
     () => ({
       upcoming: appointments.filter((appointment) =>
         ["pending", "confirmed"].includes(appointment.status),
       ).length,
       completed: appointments.filter(
-        (appointment) => appointment.status === "completed",
+        (appointment) =>
+          appointment.status === "completed" &&
+          appointment.has_valid_receipt === true,
       ).length,
       rejected: appointments.filter(
         (appointment) => appointment.status === "rejected",
@@ -378,12 +396,12 @@ export default function ResidentAppointments({
     () =>
       appointments.filter((appointment) => {
         const searchText =
-          `${serviceLabel(appointment.service_type)} ${purposeLabel(appointment.service_purpose) ?? ""} ${appointment.purpose} ${appointment.status}`.toLowerCase();
+          `${serviceLabel(appointment.service_type)} ${purposeLabel(appointment.service_purpose) ?? ""} ${appointment.purpose} ${appointmentLabel(appointment.status, appointment.legacy_receipt_missing)}`.toLowerCase();
         if (search && !searchText.includes(search.toLowerCase().trim()))
           return false;
         const timestamp =
           mode === "completed"
-            ? appointment.completed_at
+            ? appointment.receipt_verified_at
             : mode === "cancelled"
               ? appointment.cancelled_at
               : null;
@@ -397,7 +415,10 @@ export default function ResidentAppointments({
         if (category === "all") return true;
         if (category === "upcoming")
           return ["pending", "confirmed"].includes(appointment.status);
-        return appointment.status === category;
+        return (
+          appointment.status === category &&
+          (category !== "completed" || appointment.has_valid_receipt === true)
+        );
       }),
     [appointments, category, search, fromDate, toDate, mode],
   );
@@ -579,13 +600,15 @@ export default function ResidentAppointments({
             Barangay services
           </p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">
-            {mode === "completed"
-              ? "Completed Appointments"
-              : mode === "cancelled"
-                ? "Cancelled Appointments"
-                : mode === "rejected"
-                  ? "Rejected Appointments"
-                  : "Active Appointments"}
+            {mode === "accepted"
+              ? "Accepted Appointments"
+              : mode === "completed"
+                ? "Completed Appointments"
+                : mode === "cancelled"
+                  ? "Cancelled Appointments"
+                  : mode === "rejected"
+                    ? "Rejected Appointments"
+                    : "Recent Appointments"}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             View existing requests, previous visits, or book a new appointment
@@ -777,18 +800,21 @@ export default function ResidentAppointments({
                 ) : (
                   <CalendarPlus size={19} />
                 )}
-                {saving ? "Submitting…" : "Confirm Appointment"}
+                {saving ? "Submitting…" : "Submit Appointment Request"}
               </button>
             </div>
           </form>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="All requests" value={counts.all} />
-          <Metric label="Upcoming / active" value={counts.upcoming} />
-          <Metric label="Completed" value={counts.completed} />
+          <Metric label="All Appointment Requests" value={counts.all} />
           <Metric
-            label="Rejected / cancelled"
+            label="Pending / Accepted Appointments"
+            value={counts.upcoming}
+          />
+          <Metric label="Completed Appointments" value={counts.completed} />
+          <Metric
+            label="Rejected / Cancelled Appointments"
             value={counts.rejected + counts.cancelled}
           />
         </div>
@@ -798,7 +824,8 @@ export default function ResidentAppointments({
           className="mt-6 flex flex-wrap gap-2"
         >
           {[
-            ["appointments", "Active Appointments"],
+            ["appointments", "Recent Appointments"],
+            ["accepted", "Accepted Appointments"],
             ["completed", "Completed Appointments"],
             ["cancelled", "Cancelled Appointments"],
             ["rejected", "Rejected Appointments"],
@@ -886,7 +913,10 @@ export default function ResidentAppointments({
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${STATUS_STYLES[appointment.status]}`}
                           >
-                            {appointment.status}
+                            {appointmentLabel(
+                              appointment.status,
+                              appointment.legacy_receipt_missing,
+                            )}
                           </span>
                         </div>
                         {(appointment.status === "completed" ||
@@ -898,12 +928,12 @@ export default function ResidentAppointments({
                             :{" "}
                             {(
                               appointment.status === "completed"
-                                ? appointment.completed_at
+                                ? appointment.receipt_verified_at
                                 : appointment.cancelled_at
                             )
                               ? new Date(
                                   (appointment.status === "completed"
-                                    ? appointment.completed_at
+                                    ? appointment.receipt_verified_at
                                     : appointment.cancelled_at)!,
                                 ).toLocaleString("en-PH", {
                                   timeZone: "Asia/Manila",
@@ -971,7 +1001,10 @@ export default function ResidentAppointments({
       {selectedAppointment && (
         <AppointmentDetailsModal
           appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
+          onClose={() => {
+            setSelectedAppointment(null);
+            updateHashQuery({ appointment: null });
+          }}
           onCancel={
             ["pending", "confirmed"].includes(selectedAppointment.status)
               ? () => {
@@ -1054,7 +1087,10 @@ function AppointmentDetailsModal({
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_STYLES[appointment.status]}`}
             >
-              {appointment.status}
+              {appointmentLabel(
+                appointment.status,
+                appointment.legacy_receipt_missing,
+              )}
             </span>
             {purpose && (
               <span className="rounded-full bg-pine-50 px-3 py-1 text-xs font-bold text-pine-700">
@@ -1072,7 +1108,13 @@ function AppointmentDetailsModal({
               value={formatAppointmentTime(appointment.appointment_time)}
             />
             <Detail label="Saved Fee" value={formatFee(appointment.fee)} />
-            <Detail label="Status" value={appointment.status} />
+            <Detail
+              label="Status"
+              value={appointmentLabel(
+                appointment.status,
+                appointment.legacy_receipt_missing,
+              )}
+            />
           </dl>
           <AppointmentPaymentPanel
             key={appointment.id}

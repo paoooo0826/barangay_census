@@ -17,6 +17,17 @@ interface AnalyticsData {
   addressGroups: number;
   postedPayments: number;
   charts: AnalyticsChart[];
+  reportDate: string;
+  verifiedResidents: number;
+  legacyCompletions: number;
+  insights: {
+    section: string;
+    title: string;
+    count: number;
+    denominator: number;
+    interpretation: string;
+    suggestion: string;
+  }[];
 }
 const number = new Intl.NumberFormat("en-PH");
 const colors = [
@@ -112,9 +123,7 @@ export function AnalyticsChartCard({ chart }: { chart: AnalyticsChart }) {
                   r="4"
                   fill="#166534"
                 >
-                  <title>
-                    {`${r.displayLabel}: ${r.count} ${chart.unit}`}
-                  </title>
+                  <title>{`${r.displayLabel}: ${r.count} ${chart.unit}`}</title>
                 </circle>
               ))}
             </svg>
@@ -221,10 +230,11 @@ export default function AdminAnalytics({
           Barangay Analytics
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Aggregate statistics from current records. Dates filter activity
-          charts and collected payments; current totals remain unchanged.
-          Resident status filters resident and verification charts. No names,
-          contact details, addresses, or ID images are included.
+          BRIMS analyzes validated resident records to inform barangay programs
+          and services. Aggregate statistics from current records. Dates filter
+          activity charts and collected payments; current totals remain
+          unchanged. Resident status filters resident and verification charts.
+          No names, contact details, addresses, or ID images are included.
         </p>
       </div>
       <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-3">
@@ -275,7 +285,7 @@ export default function AdminAnalytics({
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Current Unique Residents", data.residentTotal],
+              ["Registered Accounts in Selected Cohort", data.residentTotal],
               ["Distinct Address Groups", data.addressGroups],
               ["Duplicate Account Records Excluded", data.duplicateRecords],
               ["Posted Payments in Period (PHP)", data.postedPayments],
@@ -289,10 +299,15 @@ export default function AdminAnalytics({
             ))}
           </div>
           <p className="text-xs leading-5 text-slate-500">
-            Address groups are not verified household counts: the database has
-            no independent household identifier. Resident charts use the latest
-            record per account. Missing values are shown explicitly. Occupations
-            are grouped to avoid displaying personal free text.
+            Reporting date: {data.reportDate} (Asia/Manila). Registered accounts
+            are not a verified count of the entire barangay population. All
+            review and residency statuses are included unless filtered; current
+            residency is shown separately. Registration activity does not prove
+            population growth. Address groups are not verified household counts:
+            the database has no independent household identifier. Resident
+            charts use the latest record per account. Missing values are shown
+            explicitly. Occupations are grouped to avoid displaying personal
+            free text.
           </p>
           <nav aria-label="Analytics sections" className="flex flex-wrap gap-2">
             {sections.map((s) => (
@@ -307,6 +322,45 @@ export default function AdminAnalytics({
               </button>
             ))}
           </nav>
+          {data.legacyCompletions > 0 && (
+            <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+              {data.legacyCompletions} historical appointments marked Completed
+              lack linked receipts and are excluded from receipt-backed
+              completion totals.{" "}
+              <a className="underline" href="#/admin/dashboard?tab=legacy">
+                Review Reconciliation
+              </a>
+            </p>
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {(data.insights ?? [])
+              .filter((i) => i.section === section)
+              .map((i) => (
+                <article
+                  key={i.title}
+                  className="rounded-2xl border border-pine-200 bg-pine-50 p-5"
+                >
+                  <p className="text-xs font-bold text-pine-700">
+                    Rule-Based Decision Support · Current Totals
+                  </p>
+                  <h3 className="mt-2 font-bold">{i.title}</h3>
+                  <p className="mt-2 text-xl font-bold">
+                    {number.format(i.count)} / {number.format(i.denominator)} (
+                    {i.denominator
+                      ? ((i.count / i.denominator) * 100).toFixed(1)
+                      : "0.0"}
+                    %)
+                  </p>
+                  <p className="mt-2 text-sm">{i.interpretation}</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {i.count === 0
+                      ? "No matching records in this cohort. Confirm data coverage before drawing conclusions. "
+                      : ""}
+                    {i.suggestion}
+                  </p>
+                </article>
+              ))}
+          </div>
           <div className="grid items-start gap-5 lg:grid-cols-2">
             {data.charts
               .filter((c) => c.section === section)

@@ -31,9 +31,9 @@ export default function AppointmentPaymentPanel({
   const free = Number(appointment.fee) === 0;
   const canCollect =
     admin &&
-    !free &&
     !posted &&
-    !["cancelled", "rejected"].includes(appointment.status);
+    (appointment.status === "confirmed" ||
+      appointment.legacy_receipt_missing === true);
 
   const load = useCallback(async () => {
     if (!mounted.current) return;
@@ -102,7 +102,7 @@ export default function AppointmentPaymentPanel({
       if (!(data as unknown as ServicePayment)?.id)
         throw new Error("Collection was not confirmed.");
       setReceipt("");
-      setSuccess("Cash collection recorded. Appointment status is unchanged.");
+      setSuccess("Receipt issued and appointment completed.");
       await load();
       onChanged?.();
     } catch (caught) {
@@ -139,7 +139,7 @@ export default function AppointmentPaymentPanel({
       setCorrecting(false);
       setVoidReason("");
       setSuccess(
-        "Payment record voided. Its receipt and history have been preserved.",
+        "Receipt voided and history preserved. The appointment is Accepted and awaits a corrected receipt.",
       );
       await load();
       onChanged?.();
@@ -155,6 +155,37 @@ export default function AppointmentPaymentPanel({
       if (mounted.current) setBusy(false);
     }
   };
+  async function completeExistingReceipt() {
+    if (writeLock.current || !posted) return;
+    writeLock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await supabase.rpc("transition_appointment", {
+        p_appointment_id: appointment.id,
+        p_expected_status: appointment.status,
+        p_new_status: "completed",
+        p_admin_notes: appointment.admin_notes ?? null,
+      });
+      if (r.error) throw r.error;
+      if (!(r.data as { updated?: boolean })?.updated)
+        throw new Error("The appointment changed. Reload before retrying.");
+      if (mounted.current) {
+        setSuccess("Existing receipt linked; completion confirmed.");
+        onChanged?.();
+      }
+    } catch (e) {
+      if (mounted.current)
+        setError(
+          e && typeof e === "object" && "message" in e
+            ? String(e.message)
+            : "Unable to confirm completion.",
+        );
+    } finally {
+      writeLock.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
   return (
     <section
       aria-label="Payment and receipt"
@@ -174,7 +205,9 @@ export default function AppointmentPaymentPanel({
       ) : (
         <p className="mt-2 text-sm font-semibold text-pine-900">
           {free
-            ? "Free — no payment required"
+            ? posted
+              ? "Zero-Fee Release Acknowledged"
+              : "Free — release acknowledgment pending"
             : posted
               ? `Paid · ${money(posted.amount)}`
               : ["cancelled", "rejected"].includes(appointment.status)
@@ -183,7 +216,8 @@ export default function AppointmentPaymentPanel({
         </p>
       )}
       <p className="mt-1 text-xs text-slate-600">
-        Payment is tracked separately from appointment completion.
+        Completion requires a posted receipt matching the saved fee. Zero-fee
+        services require a release acknowledgment.
       </p>
       {error && (
         <div role="alert" className="mt-3 text-sm text-red-700">
@@ -219,7 +253,11 @@ export default function AppointmentPaymentPanel({
               <dt className="text-xs text-slate-500">Collection</dt>
               <dd>
                 {money(payment.amount)} ·{" "}
-                {payment.status === "posted" ? "Paid" : "Voided"}
+                {payment.status === "posted"
+                  ? payment.method === "zero_fee_acknowledgment"
+                    ? "Release Acknowledged"
+                    : "Paid"
+                  : "Voided"}
               </dd>
             </div>
             <div>
@@ -244,15 +282,17 @@ export default function AppointmentPaymentPanel({
           className="mt-4 space-y-3"
         >
           <p className="text-xs text-slate-600">
-            Record cash already collected at the barangay office using the
-            issued official receipt.
+            {free
+              ? "Record the service release acknowledgment. No cash payment is created."
+              : "Record cash already collected at the barangay office using the issued official receipt. Saving this receipt completes the appointment."}
           </p>
           <label className="block text-sm font-semibold">
-            Amount collected <span className="text-red-600">*</span>
+            {free ? "Service Fee" : "Amount Collected"}{" "}
+            <span className="text-red-600">*</span>
             <input
               aria-label="Amount collected"
               type="number"
-              min="0.01"
+              min={free ? "0" : "0.01"}
               step="0.01"
               required
               value={amount}
@@ -260,12 +300,15 @@ export default function AppointmentPaymentPanel({
                 setAmount(e.target.value);
                 setError("");
               }}
-              disabled={busy}
+              disabled={busy || free}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3"
             />
           </label>
           <label className="block text-sm font-semibold">
-            Official receipt number <span className="text-red-600">*</span>
+            {free
+              ? "Release Acknowledgment Reference"
+              : "Official Receipt Number"}{" "}
+            <span className="text-red-600">*</span>
             <input
               aria-label="Official receipt number"
               required
@@ -284,9 +327,33 @@ export default function AppointmentPaymentPanel({
             disabled={busy || Boolean(error)}
             className="w-full rounded-lg bg-pine-800 px-4 py-3 font-semibold text-white disabled:opacity-50"
           >
-            {busy ? "Recording…" : "Record cash collected"}
+            {busy
+              ? "Recording…"
+              : free
+                ? "Issue Acknowledgment and Complete"
+                : "Record Receipt and Complete"}
           </button>
         </form>
+      )}
+      {admin &&
+        posted &&
+        !appointment.has_valid_receipt &&
+        (appointment.status === "confirmed" ||
+          appointment.legacy_receipt_missing) && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void completeExistingReceipt()}
+            className="mt-4 rounded-xl bg-pine-700 p-3 font-bold text-white"
+          >
+            Complete Using Existing Receipt
+          </button>
+        )}
+      {admin && appointment.status === "pending" && (
+        <p className="mt-3 text-sm text-slate-600">
+          Accept this appointment before issuing a receipt or release
+          acknowledgment.
+        </p>
       )}
       {admin && posted && !loading && !readFailed && (
         <div className="mt-4">
@@ -301,8 +368,9 @@ export default function AppointmentPaymentPanel({
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-slate-600">
-                Voiding corrects bookkeeping. It does not process a refund or
-                change the appointment.
+                Voiding preserves this receipt and reopens its completed
+                appointment as Accepted, awaiting a corrected receipt. Any cash
+                refund must be handled separately.
               </p>
               <label className="block text-sm font-semibold">
                 Reason <span className="text-red-600">*</span>

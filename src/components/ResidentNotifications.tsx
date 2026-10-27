@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 
+import PaginationControls from "./PaginationControls";
 import { useDismissible } from "../hooks/useDismissible";
 import { supabase } from "../lib/supabase";
 import type {
@@ -20,6 +21,7 @@ interface Props {
   residentId?: string | null;
   onOpenAppointments: () => void;
   onOpenRecord: () => void;
+  onOpenItem?: (category: NotificationCategory, id: string | null) => void;
 }
 
 type NotificationFilter = "all" | NotificationCategory;
@@ -28,6 +30,9 @@ const FILTERS: Array<{ value: NotificationFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "appointment", label: "Appointments" },
   { value: "census", label: "Census" },
+  { value: "feedback", label: "Feedback" },
+  { value: "incident", label: "Reports" },
+  { value: "message", label: "Messages" },
   { value: "system", label: "System" },
 ];
 
@@ -39,6 +44,7 @@ function formatDateTime(value: string) {
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: "Asia/Manila",
         hour: "numeric",
         minute: "2-digit",
       }).format(date);
@@ -54,10 +60,14 @@ export default function ResidentNotifications({
   residentId,
   onOpenAppointments,
   onOpenRecord,
+  onOpenItem,
 }: Props) {
   const [notifications, setNotifications] = useState<ResidentNotification[]>(
     [],
   );
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<NotificationFilter>("all");
   const [open, setOpen] = useState(false);
   const panelRef = useDismissible<HTMLDivElement>(open, () => setOpen(false));
@@ -76,15 +86,22 @@ export default function ResidentNotifications({
     setLoading(true);
     setError(null);
     try {
-      const { data, error: notificationError } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("resident_id", residentId)
-        .order("created_at", { ascending: false })
-        .limit(50);
+      const { data, error: notificationError } = await supabase.rpc(
+        "resident_notification_feed",
+        { p_resident_id: residentId, p_offset: (page - 1) * 50, p_limit: 50 },
+      );
       if (generation !== request.current) return;
       if (notificationError) throw notificationError;
-      setNotifications((data ?? []) as ResidentNotification[]);
+      const feed = data as unknown as {
+        items: ResidentNotification[];
+        unread_count: number;
+        total: number;
+      };
+      if (!Array.isArray(feed?.items))
+        throw new Error("Notifications could not be loaded. Please retry.");
+      setNotifications(feed.items);
+      setUnreadCount(feed.unread_count);
+      setTotal(feed.total);
     } catch (caught) {
       if (generation === request.current)
         setError(
@@ -95,10 +112,15 @@ export default function ResidentNotifications({
     } finally {
       if (generation === request.current) setLoading(false);
     }
-  }, [residentId]);
+  }, [residentId, page]);
   useEffect(() => {
     setNotifications([]);
     setOpen(false);
+    setPage(1);
+    setUnreadCount(0);
+    setTotal(0);
+  }, [residentId]);
+  useEffect(() => {
     void loadNotifications();
     const refreshVisible = () => {
       if (!document.hidden) void loadNotifications();
@@ -119,7 +141,6 @@ export default function ResidentNotifications({
     if (open) void loadNotifications();
   }, [loadNotifications, open]);
 
-  const unreadCount = notifications.filter((item) => !item.is_read).length;
   const visible = useMemo(
     () =>
       filter === "all"
@@ -132,13 +153,13 @@ export default function ResidentNotifications({
     const ids = notifications
       .filter((notification) => !notification.is_read)
       .map((notification) => notification.id);
-    if (!ids.length) return;
+    if (!unreadCount) return;
     setMarking(true);
     setError(null);
     try {
       const { error: markError } = await supabase.rpc(
         "mark_resident_notifications_read",
-        { p_notification_ids: ids },
+        { p_notification_ids: null },
       );
       if (markError) throw markError;
       const marked = new Set(ids);
@@ -162,7 +183,20 @@ export default function ResidentNotifications({
   };
 
   const openRelatedPage = (notification: ResidentNotification) => {
-    if (notification.category === "appointment") onOpenAppointments();
+    void supabase
+      .rpc("mark_resident_notifications_read", {
+        p_notification_ids: [notification.id],
+      })
+      .then(
+        ({ error: e }) => {
+          if (e) setError(e.message);
+          else void loadNotifications();
+        },
+        () => setError("Unable to mark the notification as read."),
+      );
+    if (onOpenItem)
+      onOpenItem(notification.category, notification.related_entity_id ?? null);
+    else if (notification.category === "appointment") onOpenAppointments();
     else if (notification.category === "census") onOpenRecord();
     setOpen(false);
   };
@@ -189,9 +223,7 @@ export default function ResidentNotifications({
           <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
             <div>
               <h2 className="font-bold text-slate-900">Notifications</h2>
-              <p className="text-xs text-slate-500">
-                Census and appointment updates
-              </p>
+              <p className="text-xs text-slate-500">Your Barangay Updates</p>
             </div>
             <button
               type="button"
@@ -229,7 +261,7 @@ export default function ResidentNotifications({
               </div>
             ) : visible.length === 0 ? (
               <p className="p-10 text-center text-sm text-slate-500">
-                No notifications in this category.
+                No notifications in this category on this page.
               </p>
             ) : (
               visible.map((notification) => (
@@ -258,6 +290,12 @@ export default function ResidentNotifications({
             )}
           </div>
 
+          <PaginationControls
+            page={page}
+            totalItems={total}
+            pageSize={50}
+            onPageChange={setPage}
+          />
           <div className="border-t border-slate-200 p-3">
             <button
               type="button"
