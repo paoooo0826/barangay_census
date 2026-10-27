@@ -18,6 +18,14 @@ import { drawCameraFrame } from "../lib/cameraFrame";
 import { detectsHeadTurn, mirrorCameraPreview } from "../lib/cameraOrientation";
 import { checkIdDocument } from "../lib/idDocumentOcr";
 import type { IdDocumentCheck } from "../lib/idDocument";
+import {
+  LIVENESS_LIMITS,
+  detectsSmile,
+  detectsMoveCloser,
+  initialBlinkState,
+  updateBlink,
+  interruptBlink,
+} from "../lib/liveness";
 
 export type LivenessAction =
   | "blink_twice"
@@ -59,9 +67,6 @@ const MODEL_URL =
   "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
 const MATCH_THRESHOLD = 0.55;
 const STRONG_MATCH_THRESHOLD = 0.45;
-const BLINK_CLOSED_EAR_THRESHOLD = 0.22;
-const BLINK_REOPEN_EAR_THRESHOLD = 0.235;
-const BLINK_POLL_INTERVAL_MS = 100;
 
 const ACTION_LABELS: Record<LivenessAction, string> = {
   blink_twice: "Blink twice slowly",
@@ -164,8 +169,7 @@ export default function FaceIdentityVerification({
   const idFaceAvailableRef = useRef(false);
   const documentCheckRef = useRef<IdDocumentCheck | null>(null);
   const documentAbortRef = useRef<AbortController | null>(null);
-  const blinkClosedRef = useRef(false);
-  const blinkCountRef = useRef(0);
+  const blinkRef = useRef(initialBlinkState());
   const baselineAreaRef = useRef<number | null>(null);
   const fullscreenRequestedRef = useRef(false);
   const monitorSessionRef = useRef(0);
@@ -294,8 +298,7 @@ export default function FaceIdentityVerification({
     idDescriptorRef.current = null;
     idQualityRef.current = null;
     idFaceAvailableRef.current = false;
-    blinkClosedRef.current = false;
-    blinkCountRef.current = 0;
+    blinkRef.current = initialBlinkState();
     baselineAreaRef.current = null;
     completingRef.current = false;
     setActions([]);
@@ -549,19 +552,19 @@ export default function FaceIdentityVerification({
 
         const options = new faceapi.TinyFaceDetectorOptions({
           inputSize: 416,
-          scoreThreshold: requestedAction === "blink_twice" ? 0.45 : 0.55,
+          scoreThreshold: LIVENESS_LIMITS.faceConfidence,
         });
         const detections = await faceapi
           .detectAllFaces(video, options)
           .withFaceLandmarks()
-          .withFaceExpressions()
-          .withFaceDescriptors();
+          .withFaceExpressions();
 
         if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
           return;
 
         if (detections.length !== 1) {
           consecutiveMatches = 0;
+          blinkRef.current = interruptBlink(blinkRef.current);
           setError(
             detections.length === 0
               ? "No live face detected. Face the camera."
@@ -577,6 +580,7 @@ export default function FaceIdentityVerification({
         const box = detection.detection.box;
         if (!faceInsideGuide(box, video.videoWidth, video.videoHeight)) {
           consecutiveMatches = 0;
+          blinkRef.current = interruptBlink(blinkRef.current);
           setError(
             "Center your entire face inside the oval guide and move slightly back.",
           );
@@ -599,23 +603,20 @@ export default function FaceIdentityVerification({
         let actionDetected = false;
 
         if (requestedAction === "smile") {
-          actionDetected = (detection.expressions.happy ?? 0) >= 0.7;
+          actionDetected = detectsSmile(detection.expressions.happy ?? 0);
         }
         if (requestedAction === "turn_left" || requestedAction === "turn_right")
           actionDetected = detectsHeadTurn(requestedAction, yaw);
         if (requestedAction === "move_closer") {
-          actionDetected =
-            areaRatio >=
-            Math.max(0.18, (baselineAreaRef.current ?? areaRatio) * 1.35);
+          actionDetected = detectsMoveCloser(
+            areaRatio,
+            baselineAreaRef.current ?? areaRatio,
+          );
         }
         if (requestedAction === "blink_twice") {
           const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
-          if (ear <= BLINK_CLOSED_EAR_THRESHOLD) blinkClosedRef.current = true;
-          if (ear >= BLINK_REOPEN_EAR_THRESHOLD && blinkClosedRef.current) {
-            blinkCountRef.current += 1;
-            blinkClosedRef.current = false;
-          }
-          actionDetected = blinkCountRef.current >= 2;
+          blinkRef.current = updateBlink(blinkRef.current, ear);
+          actionDetected = blinkRef.current.count >= 2;
         }
 
         if (requestedAction === "blink_twice") {
@@ -629,8 +630,8 @@ export default function FaceIdentityVerification({
           consecutiveMatches = 0;
           setPassed(selectedActions.slice(0, index));
           setActionIndex(index);
-          blinkCountRef.current = 0;
-          blinkClosedRef.current = false;
+          blinkRef.current = initialBlinkState();
+          baselineAreaRef.current = null;
 
           if (index < selectedActions.length) {
             setStatus(
@@ -640,12 +641,17 @@ export default function FaceIdentityVerification({
           }
         } else {
           setStatus(
-            requestedAction === "blink_twice" && blinkCountRef.current > 0
-              ? `Blink detected: ${blinkCountRef.current} of 2. Blink once more.`
-              : `Automatic detection active: ${ACTION_LABELS[requestedAction]}`,
+            requestedAction === "blink_twice" &&
+              blinkRef.current.baseline === null
+              ? "Look at the camera with your eyes open briefly, then blink twice slowly."
+              : requestedAction === "blink_twice" && blinkRef.current.count > 0
+                ? `Blink detected: ${blinkRef.current.count} of 2. Blink once more.`
+                : `Automatic detection active: ${ACTION_LABELS[requestedAction]}`,
           );
           await wait(
-            requestedAction === "blink_twice" ? BLINK_POLL_INTERVAL_MS : 300,
+            requestedAction === "blink_twice"
+              ? LIVENESS_LIMITS.blinkPollMs
+              : LIVENESS_LIMITS.gesturePollMs,
           );
         }
       }

@@ -26,14 +26,26 @@ export function faceGuide(width: number, height: number): Frame {
 }
 
 export function faceInsideGuide(box: Frame, width: number, height: number) {
+  if (
+    ![width, height, box.x, box.y, box.width, box.height].every(
+      Number.isFinite,
+    ) ||
+    width <= 0 ||
+    height <= 0 ||
+    box.width <= 0 ||
+    box.height <= 0
+  )
+    return false;
   const guide = faceGuide(width, height);
+  const paddingX = guide.width * 0.06;
+  const paddingY = guide.height * 0.06;
   return (
-    box.x >= guide.x &&
-    box.y >= guide.y &&
-    box.x + box.width <= guide.x + guide.width &&
-    box.y + box.height <= guide.y + guide.height &&
-    box.width >= guide.width * 0.48 &&
-    box.height >= guide.height * 0.45
+    box.x >= Math.max(0, guide.x - paddingX) &&
+    box.y >= Math.max(0, guide.y - paddingY) &&
+    box.x + box.width <= Math.min(width, guide.x + guide.width + paddingX) &&
+    box.y + box.height <= Math.min(height, guide.y + guide.height + paddingY) &&
+    box.width >= guide.width * 0.44 &&
+    box.height >= guide.height * 0.42
   );
 }
 

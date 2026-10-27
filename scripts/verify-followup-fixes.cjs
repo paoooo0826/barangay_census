@@ -64,10 +64,10 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                 build.onLoad({ filter: /.*/, namespace: "face-test" }, () => ({
                   loader: "ts",
                   contents: `
-                  const net={loadFromUri:async()=>{}};export const nets={tinyFaceDetector:net,faceLandmark68Net:net,faceRecognitionNet:net,faceExpressionNet:net};export async function bufferToImage(){return {naturalWidth:1200,naturalHeight:800}};export function euclideanDistance(){return 0};
+                  const net={loadFromUri:async()=>{}};export const nets={tinyFaceDetector:net,faceLandmark68Net:net,faceRecognitionNet:net,faceExpressionNet:net};export async function bufferToImage(){return {naturalWidth:1200,naturalHeight:800}};export function euclideanDistance(){return window.__faceDistance??0};
                   export class TinyFaceDetectorOptions{}
-                  export function detectAllFaces(){return {withFaceLandmarks(){return this},withFaceExpressions(){return this},
-                    withFaceDescriptors(){return window.__idGate?Promise.resolve([]):new Promise(resolve=>window.__facePending.push(resolve))}}}
+                  export function detectAllFaces(){return {withFaceLandmarks(){return this},withFaceExpressions(){return new Promise(resolve=>window.__gesturePending.push(resolve))},
+                    withFaceDescriptors(){window.__descriptorCalls=(window.__descriptorCalls||0)+1;return window.__idGate?Promise.resolve([]):new Promise(resolve=>window.__facePending.push(resolve))}}}
                 `,
                 }));
                 build.onLoad(
@@ -78,8 +78,9 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
                     contents: fs.readFileSync(args.path, "utf8").replace(
                       "const currentAction = actions[actionIndex];",
                       `
-                    window.__camera={validate:validateIdAndStart,start:(facing='user')=>{facingRef.current=facing;return startCamera(['blink_twice','turn_left','smile'])},reset:resetVerification,
+                    window.__camera={validate:validateIdAndStart,start:(facing='user',selected=['blink_twice','turn_left','smile'])=>{facingRef.current=facing;return startCamera(selected)},reset:resetVerification,
                       capture:()=>captureAndCompare(['blink_twice','turn_left','smile']),complete:()=>complete,pending:()=>pendingResult,
+                      actionsPassed:()=>passed,seedFace:()=>{idFaceAvailableRef.current=true;idDescriptorRef.current=new Float32Array([0]);},
                       seed:()=>{idQualityRef.current={brightness:128,blurVariance:100,faceAreaRatio:0.1,detectedFaces:0};
                         idFaceAvailableRef.current=false;idDescriptorRef.current=null;}};
                     const currentAction = actions[actionIndex];
@@ -157,6 +158,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
       w.URL.revokeObjectURL = () => {};
       if (options.camera) {
         w.__facePending = [];
+        w.__gesturePending = [];
         w.__verified = [];
         w.__trackStops = 0;
         const frames = [];
@@ -564,6 +566,171 @@ async function cameraChecks() {
   t.dom.window.close();
 }
 
+async function livenessChecks() {
+  const source = `import {createRoot} from 'react-dom/client';import Face from './src/components/FaceIdentityVerification';const root=createRoot(document.getElementById('root'));
+    window.__mount=()=>root.render(<Face idType="PhilSys ID" idFrontFile={null} onVerified={result=>window.__verified.push(result)}/>);window.__unmount=()=>root.unmount();`;
+  const t = await render(source, "export const supabase={}", false, {
+      camera: true,
+    }),
+    { w, tick } = t;
+  const timeout = w.setTimeout.bind(w);
+  w.setTimeout = (fn, delay) => timeout(fn, Math.min(delay, 1));
+  await tick(() => {
+    w.__opening = w.__camera.start("user", [
+      "blink_twice",
+      "turn_left",
+      "turn_right",
+      "smile",
+      "move_closer",
+    ]);
+  });
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  await w.__opening;
+  await tick(() => {
+    w.__camera.seed();
+    w.__camera.seedFace();
+    Object.defineProperty(w.document.querySelector("video"), "readyState", {
+      value: 2,
+    });
+  });
+  await tick();
+  function detection({
+    ear = 0.18,
+    yaw = 0,
+    happy = 0.1,
+    scale = 1,
+    x = 450,
+  } = {}) {
+    const eye = (left) => [
+      { x: left, y: 300 },
+      { x: left + 5, y: 300 - 10 * ear },
+      { x: left + 15, y: 300 - 10 * ear },
+      { x: left + 20, y: 300 },
+      { x: left + 15, y: 300 + 10 * ear },
+      { x: left + 5, y: 300 + 10 * ear },
+    ];
+    return {
+      detection: {
+        box: { x, y: 250, width: 350 * scale, height: 440 * scale },
+      },
+      landmarks: {
+        getLeftEye: () => eye(450),
+        getRightEye: () => eye(550),
+        getNose: () => [{}, {}, {}, { x: 510 + yaw * 120, y: 350 }],
+      },
+      expressions: { happy },
+    };
+  }
+  const frame = async (value) => {
+    assert.ok(
+      w.__gesturePending.length,
+      "The liveness monitor is waiting for a frame",
+    );
+    await tick(() => w.__gesturePending.shift()(value));
+  };
+  for (let i = 0; i < 4; i++) await frame([detection()]);
+  for (let i = 0; i < 4; i++) await frame([detection()]);
+  check(
+    w.__camera.actionsPassed().length === 0,
+    "Static open eyes cannot pass the calibrated blink challenge",
+  );
+  await frame([detection({ ear: 0.11 })]);
+  await frame([]);
+  await frame([detection()]);
+  check(
+    w.__camera.actionsPassed().length === 0 &&
+      !w.document.body.textContent.includes("Blink detected: 1"),
+    "A missing face interrupts an unfinished close/reopen cycle",
+  );
+  for (let blink = 0; blink < 2; blink++) {
+    await frame([detection({ ear: 0.11 })]);
+    await frame([detection()]);
+  }
+  check(
+    w.__camera.actionsPassed()[0] === "blink_twice",
+    "The real monitor accepts two blinks from naturally narrower eyes",
+  );
+  await frame([detection({ yaw: -0.095 })]);
+  await frame([detection({ yaw: -0.095 })]);
+  check(
+    w.__camera.actionsPassed().length === 1,
+    "Turning in the wrong direction cannot satisfy the next challenge",
+  );
+  await frame([detection({ yaw: 0.095 })]);
+  await frame([detection({ yaw: 0.095 })]);
+  check(
+    w.__camera.actionsPassed().at(-1) === "turn_left",
+    "A modest left turn now passes after two valid frames",
+  );
+  await frame([detection({ yaw: -0.095 })]);
+  await frame([detection({ yaw: -0.095 })]);
+  check(
+    w.__camera.actionsPassed().at(-1) === "turn_right",
+    "A modest right turn now passes after two valid frames",
+  );
+  await frame([detection({ happy: 0.55 })]);
+  await frame([detection({ happy: 0.55 })]);
+  check(
+    w.__camera.actionsPassed().at(-1) === "smile",
+    "A moderate smile now passes in the actual liveness monitor",
+  );
+  await frame([detection()]);
+  await frame([detection({ scale: 1.1 })]);
+  await frame([detection({ scale: 1.1 })]);
+  check(
+    w.__camera.actionsPassed().length === 5 &&
+      w.__facePending.length === 1 &&
+      w.__descriptorCalls === 1,
+    "A smaller move closer completes gestures and runs descriptor comparison only for the final photo",
+  );
+  await tick(() => w.__finishFace());
+  await tick();
+  check(
+    w.__camera.pending()?.matched === true && w.__verified.length === 0,
+    "Passing movements still requires explicit photo confirmation before saving",
+  );
+  await tick(() =>
+    [...w.document.querySelectorAll("button")]
+      .find((b) => b.textContent.trim() === "Confirm Photo")
+      .click(),
+  );
+  check(
+    w.__verified.length === 1 &&
+      w.__verified[0].livenessPassed &&
+      w.__verified[0].livenessActions.length === 5,
+    "Successful calibrated liveness preserves completed actions and the existing save flow",
+  );
+  await tick(() => w.__camera.reset());
+  await tick(() => {
+    w.__opening = w.__camera.start();
+  });
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  await w.__opening;
+  await tick(() => {
+    w.__camera.seed();
+    w.__camera.seedFace();
+    w.__faceDistance = 0.7;
+    w.__capture = w.__camera.capture();
+  });
+  await tick(() => w.__finishFace());
+  await w.__capture;
+  check(
+    !w.__camera.pending() &&
+      w.__verified.length === 1 &&
+      w.document.body.textContent.includes("not sufficiently similar"),
+    "Easier gestures do not let a mismatched ID/live face complete verification",
+  );
+  await tick(() => w.__camera.reset());
+  await tick(() => w.__unmount());
+  check(
+    t.errors.length === 0,
+    "Calibrated gestures, interruption, final face rejection, and cleanup have no runtime errors",
+  );
+  t.dom.window.close();
+}
+
 async function idGateChecks() {
   const source = `import {createRoot} from 'react-dom/client';import Face from './src/components/FaceIdentityVerification';
     const root=createRoot(document.getElementById('root'));window.__file=new File(['id'],'id.jpg',{type:'image/jpeg'});window.__idType='PhilSys ID';
@@ -734,6 +901,7 @@ async function registrationSaveChecks() {
 (async () => {
   await routeChecks();
   await cameraChecks();
+  await livenessChecks();
   await idGateChecks();
   await registrationSaveChecks();
   console.log(
