@@ -1,3 +1,4 @@
+import CapturePortal from "./CapturePortal";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -661,7 +662,13 @@ export default function FaceIdentityVerification({
         throw new Error("The live camera has no image. Restart verification.");
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Unable to capture the live face.");
-      drawCameraFrame(ctx, video, { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight }, canvas.width, canvas.height);
+      drawCameraFrame(
+        ctx,
+        video,
+        { x: 0, y: 0, width: video.videoWidth, height: video.videoHeight },
+        canvas.width,
+        canvas.height,
+      );
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
         scoreThreshold: 0.55,
@@ -856,187 +863,203 @@ export default function FaceIdentityVerification({
       )}
 
       {(cameraOpen || cameraReady || complete || capturePreview) && (
-        <div
-          ref={dialogRef}
-          role={cameraOpen ? "dialog" : undefined}
-          aria-modal={cameraOpen ? true : undefined}
-          aria-label="Fullscreen identity capture"
-          className={
-            cameraOpen
-              ? "camera-dialog fixed inset-0 z-[200] flex flex-col bg-slate-950 p-3 sm:p-5"
-              : "mt-4"
-          }
-        >
-          {cameraOpen && (
-            <div className="mb-3 flex shrink-0 items-start justify-between gap-3 text-white">
-              <div>
-                <p className="text-sm font-bold sm:text-base">
-                  Full-screen identity verification
-                </p>
-                <p className="mt-1 text-xs text-slate-300 sm:text-sm">
-                  {status}
-                </p>
-                {error && (
-                  <p className="mt-1 text-xs font-semibold text-red-300 sm:text-sm">
-                    {error}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={resetVerification}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20"
-                aria-label="Exit full-screen camera"
-              >
-                <X size={18} />
-                <span className="hidden sm:inline">Exit camera</span>
-              </button>
-            </div>
-          )}
+        <CapturePortal active={cameraOpen}>
           <div
+            ref={dialogRef}
+            role={cameraOpen ? "dialog" : undefined}
+            aria-modal={cameraOpen ? true : undefined}
+            aria-label="Fullscreen identity capture"
             className={
               cameraOpen
-                ? "camera-preview relative flex-1 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl"
-                : "camera-preview relative overflow-hidden rounded-2xl border-4 border-white bg-slate-950 shadow-xl"
+                ? "camera-dialog camera-edge-to-edge fixed inset-0 z-[260] bg-black"
+                : "mt-4"
             }
           >
-            {capturePreview ? (
-              <img
-                src={capturePreview}
-                alt="Captured live verification photo"
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                muted
-                playsInline
-                style={{ transform: mirroredPreview ? "scaleX(-1)" : "none" }}
-                data-orientation={mirroredPreview ? "mirrored" : "unmirrored"}
-                className={
-                  cameraOpen
-                    ? "h-full w-full object-contain"
-                    : "aspect-[4/3] min-h-[320px] w-full object-contain sm:min-h-[460px]"
-                }
-              />
-            )}
-            {!complete && !capturePreview && (
-              <VideoGuide videoRef={videoRef} kind="face" ready={!error} />
-            )}
-            {!complete && !capturePreview && currentAction && (
-              <div className="absolute inset-x-3 bottom-3 rounded-xl bg-black/70 p-3 text-center text-sm font-bold text-white">
-                {ACTION_LABELS[currentAction]}
+            {cameraOpen && (
+              <div className="capture-header flex items-start justify-between gap-3 text-white">
+                <div>
+                  <p className="text-sm font-bold sm:text-base">
+                    Full-screen identity verification
+                  </p>
+                  <p className="mt-1 text-xs text-slate-300 sm:text-sm">
+                    {status}
+                  </p>
+                  {error && (
+                    <p className="mt-1 text-xs font-semibold text-red-300 sm:text-sm">
+                      {error}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={resetVerification}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+                  aria-label="Exit full-screen camera"
+                >
+                  <X size={18} />
+                  <span className="hidden sm:inline">Exit camera</span>
+                </button>
               </div>
             )}
-          </div>
-          <canvas ref={canvasRef} className="hidden" />
-          {cameraOpen && (
-            <div className="mt-3 flex shrink-0 flex-wrap justify-center gap-3 text-white">
-              {pendingResult ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={resetVerification}
-                  >
-                    Retake
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={busy}
-                    onClick={async () => {
-                      const attempt = attemptRef.current;
-                      setBusy(true);
-                      try {
-                        await onVerified(pendingResult);
-                        if (!activeAttempt(attempt)) return;
-                        setPendingResult(null);
-                        setComplete(true);
-                        setCameraOpen(false);
-                        exitBrowserFullscreen();
-                      } catch (caught) {
-                        if (activeAttempt(attempt))
-                          setError(
-                            caught instanceof Error
-                              ? caught.message
-                              : "Unable to save photo. Retry confirmation.",
-                          );
-                      } finally {
-                        if (activeAttempt(attempt)) setBusy(false);
-                      }
-                    }}
-                  >
-                    Confirm Photo
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    aria-label="Mirror Preview"
-                    aria-pressed={mirroredPreview}
-                    onClick={() => setMirroredPreview(value => !value)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2"
-                  >
-                    <FlipHorizontal2 size={18} />
-                    Mirror Preview: {mirroredPreview ? "On" : "Off"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl bg-white/10 px-4 py-2"
-                    disabled={busy}
-                    onClick={() => {
-                      facingRef.current =
-                        facingRef.current === "user" ? "environment" : "user";
-                      resetVerification();
-                      void validateIdAndStart();
-                    }}
-                  >
-                    Switch camera
-                  </button>
-                  {error && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        resetVerification();
-                        void validateIdAndStart();
-                      }}
-                    >
-                      Retry camera
-                    </button>
-                  )}
-                  {!cameraReady && !error && <p role="status">{status}</p>}
-                </>
-              )}
-            </div>
-          )}
-          {!complete && !capturePreview && (
-            <p className={`mt-3 text-center text-xs ${cameraOpen ? "text-slate-300" : "text-slate-500"}`}>
-              {mirroredPreview ? "Selfie preview follows your movements. " : "Normal camera preview. "}
-              Saved photos use the normal camera orientation. Follow head-turn instructions using your own left and right.
-            </p>
-          )}
-          {actionSummary && (
             <div
               className={
                 cameraOpen
-                  ? "mt-3 text-center text-xs text-slate-300"
-                  : "mt-3 text-xs text-slate-500"
+                  ? "camera-preview absolute inset-0 overflow-hidden bg-black"
+                  : "camera-preview relative overflow-hidden bg-slate-950"
               }
             >
-              <p>Random challenge: {actionSummary}</p>
-              {cameraReady && !complete && (
-                <p className="mt-1 font-semibold text-sage-300">
-                  Automatic monitoring · {passed.length} of {actions.length}{" "}
-                  movements detected
-                </p>
+              {capturePreview ? (
+                <img
+                  src={capturePreview}
+                  alt="Captured live verification photo"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  muted
+                  playsInline
+                  style={{ transform: mirroredPreview ? "scaleX(-1)" : "none" }}
+                  data-orientation={mirroredPreview ? "mirrored" : "unmirrored"}
+                  className={
+                    cameraOpen
+                      ? "h-full w-full object-contain"
+                      : "aspect-[4/3] min-h-[320px] w-full object-contain sm:min-h-[460px]"
+                  }
+                />
+              )}
+              {!complete && !capturePreview && (
+                <VideoGuide
+                  videoRef={videoRef}
+                  kind="face"
+                  ready={!error}
+                  borderless
+                />
+              )}
+              {!complete && !capturePreview && currentAction && (
+                <div className="absolute inset-x-3 top-[20%] bg-black/60 p-3 text-center text-sm font-bold text-white">
+                  {ACTION_LABELS[currentAction]}
+                </div>
               )}
             </div>
-          )}
-        </div>
+            <canvas ref={canvasRef} className="hidden" />
+            <div className={cameraOpen ? "capture-controls" : undefined}>
+              {cameraOpen && (
+                <div className="mt-3 flex shrink-0 flex-wrap justify-center gap-3 text-white">
+                  {pendingResult ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={resetVerification}
+                      >
+                        Retake
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={busy}
+                        onClick={async () => {
+                          const attempt = attemptRef.current;
+                          setBusy(true);
+                          try {
+                            await onVerified(pendingResult);
+                            if (!activeAttempt(attempt)) return;
+                            setPendingResult(null);
+                            setComplete(true);
+                            setCameraOpen(false);
+                            exitBrowserFullscreen();
+                          } catch (caught) {
+                            if (activeAttempt(attempt))
+                              setError(
+                                caught instanceof Error
+                                  ? caught.message
+                                  : "Unable to save photo. Retry confirmation.",
+                              );
+                          } finally {
+                            if (activeAttempt(attempt)) setBusy(false);
+                          }
+                        }}
+                      >
+                        Confirm Photo
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label="Mirror Preview"
+                        aria-pressed={mirroredPreview}
+                        onClick={() => setMirroredPreview((value) => !value)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2"
+                      >
+                        <FlipHorizontal2 size={18} />
+                        Mirror Preview: {mirroredPreview ? "On" : "Off"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-xl bg-white/10 px-4 py-2"
+                        disabled={busy}
+                        onClick={() => {
+                          facingRef.current =
+                            facingRef.current === "user"
+                              ? "environment"
+                              : "user";
+                          resetVerification();
+                          void validateIdAndStart();
+                        }}
+                      >
+                        Switch camera
+                      </button>
+                      {error && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            resetVerification();
+                            void validateIdAndStart();
+                          }}
+                        >
+                          Retry camera
+                        </button>
+                      )}
+                      {!cameraReady && !error && <p role="status">{status}</p>}
+                    </>
+                  )}
+                </div>
+              )}
+              {!complete && !capturePreview && (
+                <p
+                  className={`mt-3 text-center text-xs ${cameraOpen ? "text-slate-300" : "text-slate-500"}`}
+                >
+                  {mirroredPreview
+                    ? "Selfie preview follows your movements. "
+                    : "Normal camera preview. "}
+                  Saved photos use the normal camera orientation. Follow
+                  head-turn instructions using your own left and right.
+                </p>
+              )}
+              {actionSummary && (
+                <div
+                  className={
+                    cameraOpen
+                      ? "mt-3 text-center text-xs text-slate-300"
+                      : "mt-3 text-xs text-slate-500"
+                  }
+                >
+                  <p>Random challenge: {actionSummary}</p>
+                  {cameraReady && !complete && (
+                    <p className="mt-1 font-semibold text-sage-300">
+                      Automatic monitoring · {passed.length} of {actions.length}{" "}
+                      movements detected
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </CapturePortal>
       )}
 
       {complete && (

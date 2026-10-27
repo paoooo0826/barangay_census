@@ -838,7 +838,7 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         {activeTab === "incidents" && (
           <CommunityCases key="incident" kind="incident" admin />
         )}
-        {activeTab === "messages" && <BoardingMessages />}
+        {activeTab === "messages" && <BoardingMessages admin />}
         {activeTab === "housing" && <HousingManager admin />}
         {activeTab === "services" && <ServiceCatalog />}
         {(activeTab === "appointments" ||

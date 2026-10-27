@@ -6,10 +6,12 @@ export default function VideoGuide({
   videoRef,
   kind,
   ready = false,
+  borderless = false,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   kind: "face" | "id";
   ready?: boolean;
+  borderless?: boolean;
 }) {
   const [style, setStyle] = useState<{
     left: number;
@@ -57,7 +59,7 @@ export default function VideoGuide({
       <div
         aria-hidden="true"
         style={style}
-        className={`pointer-events-none absolute border-[3px] shadow-[0_0_0_9999px_rgba(0,0,0,0.25)] ${kind === "face" ? "rounded-[45%]" : "rounded-xl"} ${ready ? "border-sage-400" : "border-white/90"}`}
+        className={`pointer-events-none absolute shadow-[0_0_0_9999px_rgba(0,0,0,0.25)] ${kind === "face" ? "rounded-[45%]" : "rounded-xl"} ${borderless ? "border-0" : `border-[3px] ${ready ? "border-sage-400" : "border-white/90"}`}`}
       />
     )
   );

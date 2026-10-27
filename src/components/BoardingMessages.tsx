@@ -20,7 +20,11 @@ interface Message {
   body: string;
   created_at: string;
 }
-export default function BoardingMessages() {
+export default function BoardingMessages({
+  admin = false,
+}: {
+  admin?: boolean;
+}) {
   const { user } = useAuth();
   const route = useHashRoute();
   const requested = new URLSearchParams(route.split("?")[1] ?? "").get("house");
@@ -160,11 +164,14 @@ export default function BoardingMessages() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold">Boarding House Messages</h2>
+        <h2 className="text-2xl font-bold">
+          {admin ? "Landlord Messages" : "Barangay Office Messages"}
+        </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Private conversations between authorized administrators and the
-          landlord/landlady currently assigned to each house. Do not send
-          boarder identities or ID documents here.
+          {admin
+            ? "Communicate privately with the landlord/landlady assigned to each boarding house."
+            : "Communicate privately with the barangay office about your assigned boarding house."}{" "}
+          Do not send boarder identities or ID documents here.
         </p>
       </div>
       {(error || list.error) && (
@@ -215,7 +222,10 @@ export default function BoardingMessages() {
             <>
               <h3 className="text-lg font-bold">{house.name}</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Landlord/Landlady: {house.owner_name} · Newest messages first
+                {admin
+                  ? `Landlord/Landlady: ${house.owner_name}`
+                  : "Barangay Office"}{" "}
+                · Newest messages first
               </p>
               <button
                 type="button"

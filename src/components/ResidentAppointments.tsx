@@ -1011,6 +1011,7 @@ export default function ResidentAppointments({
                   setCancellationReason("");
                   setCancelTarget(selectedAppointment);
                   setSelectedAppointment(null);
+                  updateHashQuery({ appointment: null });
                 }
               : undefined
           }

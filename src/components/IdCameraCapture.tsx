@@ -1,6 +1,13 @@
+import CapturePortal from "./CapturePortal";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { useEffect, useRef, useState } from "react";
-import { Camera, SwitchCamera, FlipHorizontal2, Loader2, X } from "lucide-react";
+import {
+  Camera,
+  SwitchCamera,
+  FlipHorizontal2,
+  Loader2,
+  X,
+} from "lucide-react";
 import VideoGuide from "./VideoGuide";
 import { idGuide, inspectIdFrame } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
@@ -162,7 +169,13 @@ export default function IdCameraCapture({
             const captureContext = canvas.getContext("2d");
             if (!captureContext)
               throw new Error("Unable to capture the ID image.");
-            drawCameraFrame(captureContext, video, { x: sx, y: sy, width: sw, height: sh }, canvas.width, canvas.height);
+            drawCameraFrame(
+              captureContext,
+              video,
+              { x: sx, y: sy, width: sw, height: sh },
+              canvas.width,
+              canvas.height,
+            );
             const blob = await new Promise<Blob>((resolve, reject) =>
               canvas.toBlob(
                 (value) =>
@@ -227,145 +240,158 @@ export default function IdCameraCapture({
         Take live photo
       </button>
       {open && (
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Photograph ID ${side}`}
-          className="camera-dialog fixed inset-0 z-[260] flex flex-col bg-slate-950 p-3 text-white sm:p-5"
-        >
-          <div className="mb-3 flex shrink-0 justify-between gap-4">
-            <div>
-              <p className="font-bold">Photograph ID {side}</p>
-              <p className="mt-1 text-xs text-slate-300">
-                Keep the whole card aligned and steady. Capture automatically or
-                press Capture.
-              </p>
+        <CapturePortal active>
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Photograph ID ${side}`}
+            className="camera-dialog camera-edge-to-edge fixed inset-0 z-[260] bg-black text-white"
+          >
+            <div className="capture-header flex items-start justify-between gap-4">
+              <div>
+                <p className="font-bold">Photograph ID {side}</p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Keep the whole card aligned and steady. Capture automatically
+                  or press Capture.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close camera"
+                className="self-start shrink-0 rounded-xl bg-white/10 p-3"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={close}
-              aria-label="Close camera"
-              className="self-start shrink-0 rounded-xl bg-white/10 p-3"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div className="camera-preview relative flex-1 overflow-hidden rounded-2xl bg-black">
-            {capturedPreview ? (
-              <img
-                src={capturedPreview}
-                alt="Captured ID preview"
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <>
-                <video
-                  ref={videoRef}
-                  muted
-                  playsInline
-                  style={{ transform: mirroredPreview ? "scaleX(-1)" : "none" }}
-                  data-orientation={mirroredPreview ? "mirrored" : "unmirrored"}
+            <div className="camera-preview absolute inset-0 overflow-hidden bg-black">
+              {capturedPreview ? (
+                <img
+                  src={capturedPreview}
+                  alt="Captured ID preview"
                   className="h-full w-full object-contain"
                 />
-                <VideoGuide
-                  videoRef={videoRef}
-                  kind="id"
-                  ready={progress > 0}
-                />
-              </>
-            )}
-            {busy && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                <Loader2 className="animate-spin" size={40} />
-              </div>
-            )}
-          </div>
-          {!capturedPreview && (
-            <p className="mt-3 text-center text-xs text-slate-300">
-              {mirroredPreview ? "Selfie preview follows your movements. " : "Normal camera preview. "}
-              Saved ID photos keep text readable.
-            </p>
-          )}
-          <p
-            role={error ? "alert" : "status"}
-            className={`my-3 text-center text-sm ${error ? "text-red-300" : "text-slate-200"}`}
-          >
-            {error || message}
-          </p>
-          <div className="flex shrink-0 flex-wrap justify-center gap-3">
-            {capturedPreview ? (
-              <>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => void start()}
-                >
-                  Retake
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    const file = capturedFile.current;
-                    if (file) {
-                      onCapture(file);
-                      close();
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    muted
+                    playsInline
+                    style={{
+                      transform: mirroredPreview ? "scaleX(-1)" : "none",
+                    }}
+                    data-orientation={
+                      mirroredPreview ? "mirrored" : "unmirrored"
                     }
-                  }}
-                >
-                  Confirm Photo
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                disabled={busy || !!error || !streamRef.current}
-                className="btn-primary"
-                onClick={() => {
-                  manualCapture.current = true;
-                }}
+                    className="h-full w-full object-contain"
+                  />
+                  <VideoGuide
+                    videoRef={videoRef}
+                    kind="id"
+                    borderless
+                    ready={progress > 0}
+                  />
+                </>
+              )}
+              {busy && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <Loader2 className="animate-spin" size={40} />
+                </div>
+              )}
+            </div>
+            <div className="capture-controls">
+              {!capturedPreview && (
+                <p className="mt-3 text-center text-xs text-slate-300">
+                  {mirroredPreview
+                    ? "Selfie preview follows your movements. "
+                    : "Normal camera preview. "}
+                  Saved ID photos keep text readable.
+                </p>
+              )}
+              <p
+                role={error ? "alert" : "status"}
+                className={`my-3 text-center text-sm ${error ? "text-red-300" : "text-slate-200"}`}
               >
-                Capture
-              </button>
-            )}
-            {!capturedPreview && !captureInProgressRef.current && (
-              <button
-                type="button"
-                disabled={busy}
-                aria-label="Mirror Preview"
-                aria-pressed={mirroredPreview}
-                onClick={() => setMirroredPreview(value => !value)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
-              >
-                <FlipHorizontal2 size={18} />
-                Mirror Preview: {mirroredPreview ? "On" : "Off"}
-              </button>
-            )}
-            {!capturedPreview && !captureInProgressRef.current && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void start(facing === "environment" ? "user" : "environment")
-                }
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
-              >
-                <SwitchCamera size={18} />
-                Switch camera
-              </button>
-            )}
-            {error && (
-              <button
-                type="button"
-                onClick={() => void start()}
-                className="rounded-xl bg-white/10 px-5 py-3"
-              >
-                Retry photo
-              </button>
-            )}
+                {error || message}
+              </p>
+              <div className="flex shrink-0 flex-wrap justify-center gap-3">
+                {capturedPreview ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => void start()}
+                    >
+                      Retake
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => {
+                        const file = capturedFile.current;
+                        if (file) {
+                          onCapture(file);
+                          close();
+                        }
+                      }}
+                    >
+                      Confirm Photo
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy || !!error || !streamRef.current}
+                    className="btn-primary"
+                    onClick={() => {
+                      manualCapture.current = true;
+                    }}
+                  >
+                    Capture
+                  </button>
+                )}
+                {!capturedPreview && !captureInProgressRef.current && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label="Mirror Preview"
+                    aria-pressed={mirroredPreview}
+                    onClick={() => setMirroredPreview((value) => !value)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
+                  >
+                    <FlipHorizontal2 size={18} />
+                    Mirror Preview: {mirroredPreview ? "On" : "Off"}
+                  </button>
+                )}
+                {!capturedPreview && !captureInProgressRef.current && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void start(
+                        facing === "environment" ? "user" : "environment",
+                      )
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-5 py-3"
+                  >
+                    <SwitchCamera size={18} />
+                    Switch camera
+                  </button>
+                )}
+                {error && (
+                  <button
+                    type="button"
+                    onClick={() => void start()}
+                    className="rounded-xl bg-white/10 px-5 py-3"
+                  >
+                    Retry photo
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </CapturePortal>
       )}
     </>
   );

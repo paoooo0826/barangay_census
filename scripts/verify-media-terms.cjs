@@ -312,6 +312,9 @@ const canvasSetup = w => {
     Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:()=>new Promise(resolve=>w.__cameraPermission=()=>resolve({getTracks:()=>[{stop(){w.__stopped=true}}]}))}});
   });
   await t.tick(()=>button(t.w,'Take live photo').click());
+  const edgeCamera=t.w.document.querySelector('[role=dialog]');
+  check(edgeCamera.parentElement===t.w.document.body&&edgeCamera.className.includes('camera-edge-to-edge'),'The census ID camera opens directly in the body and fills the viewport outside form cards');
+  check(!/border|rounded/.test(t.w.document.querySelector('.camera-preview').className),'The census ID preview has no card border or rounded frame');
   check(t.w.document.querySelector('video')?.style.transform==='none' && t.w.document.querySelector('video').className.includes('object-contain'),'Live ID camera preview explicitly uses unmirrored orientation and preserves the source aspect ratio');
   await t.tick(()=>t.w.document.querySelector('[aria-label="Close camera"]').click());
   check(t.w.document.body.style.overflow==='', 'Closing the ID camera restores page scrolling before another panel is opened');

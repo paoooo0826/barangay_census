@@ -32,6 +32,7 @@ export default function CommunityCases({
   admin?: boolean;
 }) {
   const { user } = useAuth();
+  const userId = user?.id;
   const incident = kind === "incident",
     table = incident ? "incident_reports" : "resident_feedback";
   const statuses = incident ? INCIDENT_STATUSES : FEEDBACK_STATUSES;
@@ -42,6 +43,7 @@ export default function CommunityCases({
     [search, setSearch] = useState(""),
     [from, setFrom] = useState(""),
     [to, setTo] = useState("");
+  const invalidRange = Boolean(admin && from && to && from > to);
   const [selected, setSelected] = useState<CommunityCase | null>(null),
     [error, setError] = useState(""),
     [success, setSuccess] = useState("");
@@ -70,14 +72,15 @@ export default function CommunityCases({
   const query = useCallback(
     (start: number, end: number) => {
       let q = supabase.from(table).select("*", { count: "exact" });
-      if (status !== "all") q = q.eq("status", status);
-      if (search.trim())
+      if (!admin) q = q.eq("user_id", userId ?? "");
+      if (admin && status !== "all") q = q.eq("status", status);
+      if (admin && search.trim())
         q = q.ilike(
           incident ? "description" : "content",
           searchPattern(search),
         );
-      if (from) q = q.gte("created_at", `${from}T00:00:00+08:00`);
-      if (to)
+      if (admin && from) q = q.gte("created_at", `${from}T00:00:00+08:00`);
+      if (admin && to)
         q = q.lt(
           "created_at",
           new Date(Date.parse(`${to}T00:00:00+08:00`) + 86400000).toISOString(),
@@ -87,43 +90,57 @@ export default function CommunityCases({
         .order("id", { ascending: false })
         .range(start, end);
     },
-    [table, status, search, from, to, incident],
+    [table, status, search, from, to, incident, admin, userId],
   );
   const list = usePagedQuery<CommunityCase>({
     page,
     pageSize: 8,
     onPageChange: setPage,
     query,
-    enabled: Boolean(user),
+    enabled: Boolean(user) && !invalidRange,
   });
   useEffect(() => {
     setPage(1);
   }, [status, search, from, to]);
   useEffect(() => {
-    const generation = ++request.current;
     setSelected(null);
-    if (item)
-      void supabase
-        .from(table)
-        .select("*")
-        .eq("id", item)
-        .maybeSingle()
-        .then(
-          (r) => {
-            if (generation !== request.current) return;
-            if (r.error) setError(r.error.message);
-            else if (!r.data)
-              setError("This item is unavailable to your account.");
-            else setSelected(r.data as CommunityCase);
-          },
-          (e: unknown) => {
-            if (generation === request.current) setError(errorMessage(e));
-          },
-        );
-    return () => {
-      ++request.current;
+    if (!item || !user) return;
+    let active = true;
+    const load = async () => {
+      const generation = ++request.current;
+      try {
+        let query = supabase.from(table).select("*").eq("id", item);
+        if (!admin) query = query.eq("user_id", user.id);
+        const result = await query.maybeSingle();
+        if (!active || generation !== request.current) return;
+        if (result.error) throw result.error;
+        if (!result.data) {
+          setSelected(null);
+          setError("This item is unavailable to your account.");
+          return;
+        }
+        setSelected(result.data as CommunityCase);
+      } catch (e) {
+        if (active && generation === request.current) setError(errorMessage(e));
+      }
     };
-  }, [item, table, user?.id]);
+    void load();
+    const refresh = () => {
+      if (!document.hidden) void load();
+    };
+    const timer = admin ? null : window.setInterval(refresh, 30000);
+    if (!admin) {
+      window.addEventListener("focus", refresh);
+      document.addEventListener("visibilitychange", refresh);
+    }
+    return () => {
+      active = false;
+      ++request.current;
+      if (timer !== null) window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [item, table, user?.id, admin]);
   async function pickImage(file?: File) {
     if (!file || busy) return;
     try {
@@ -249,7 +266,13 @@ export default function CommunityCases({
     <section className="space-y-5">
       <div>
         <h2 className="text-2xl font-bold">
-          {incident ? "Incident Reports" : "Written Feedback"}
+          {incident
+            ? admin
+              ? "Incident Reports"
+              : "Report an Incident"
+            : admin
+              ? "Written Feedback"
+              : "Send Feedback"}
         </h2>
         <p className="mt-2 text-sm text-slate-600">
           {incident
@@ -377,63 +400,83 @@ export default function CommunityCases({
           {success}
         </p>
       )}
-      <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="label">
-          Search Description
-          <input
-            type="search"
-            className="input mt-2"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-        <label className="label">
-          Status
-          <select
-            className="input mt-2"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            {statuses.map((s) => (
-              <option value={s} key={s}>
-                {titleCase(s)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="label">
-          Submitted From
-          <input
-            type="date"
-            className="input mt-2"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label className="label">
-          Submitted Through
-          <input
-            type="date"
-            min={from}
-            className="input mt-2"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
+      {admin && (
+        <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="label">
+            Search Description
+            <input
+              type="search"
+              className="input mt-2"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <label className="label">
+            Status
+            <select
+              className="input mt-2"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="all">All Statuses</option>
+              {statuses.map((s) => (
+                <option value={s} key={s}>
+                  {titleCase(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="label">
+            Submitted From
+            <input
+              type="date"
+              className="input mt-2"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label className="label">
+            Submitted Through
+            <input
+              type="date"
+              min={from}
+              className="input mt-2"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+      {invalidRange && (
+        <p role="alert" className="text-sm text-red-700">
+          The start date must be on or before the end date.
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold">
+          {admin
+            ? "Submitted Records"
+            : incident
+              ? "My Reports"
+              : "My Feedback"}
+        </h3>
+        <button
+          type="button"
+          className="text-sm font-bold text-pine-700 underline"
+          onClick={() => void list.reload()}
+        >
+          {admin ? "Refresh" : "Refresh My Updates"}
+        </button>
       </div>
-      <button
-        type="button"
-        className="text-sm font-bold text-pine-700 underline"
-        onClick={() => void list.reload()}
-      >
-        Refresh
-      </button>
-      {list.loading ? (
+      {invalidRange ? null : list.loading ? (
         <p role="status">Loading…</p>
       ) : !list.rows.length ? (
         <p className="rounded-2xl border border-dashed p-8 text-slate-500">
-          No matching {incident ? "reports" : "feedback submissions"}.
+          {admin
+            ? `No matching ${incident ? "reports" : "feedback submissions"}.`
+            : incident
+              ? "You haven’t submitted any incident reports yet."
+              : "You haven’t sent feedback yet."}
         </p>
       ) : (
         list.rows.map((row) => (
@@ -462,12 +505,14 @@ export default function CommunityCases({
           </button>
         ))
       )}
-      <PaginationControls
-        page={page}
-        totalItems={list.total}
-        pageSize={8}
-        onPageChange={setPage}
-      />
+      {!invalidRange && (
+        <PaginationControls
+          page={page}
+          totalItems={list.total}
+          pageSize={8}
+          onPageChange={setPage}
+        />
+      )}
       {selected && (
         <CaseDetails
           key={selected.id}

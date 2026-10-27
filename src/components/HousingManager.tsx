@@ -63,7 +63,10 @@ export default function HousingManager({
   const [houseId, setHouseId] = useState(requested ?? ""),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(1),
-    [summary, setSummary] = useState<Summary | null>(null),
+    [summaryResult, setSummaryResult] = useState<{
+      key: string;
+      value: Summary;
+    } | null>(null),
     [historyPage, setHistoryPage] = useState(1),
     [from, setFrom] = useState(""),
     [to, setTo] = useState("");
@@ -71,6 +74,8 @@ export default function HousingManager({
     [success, setSuccess] = useState(""),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
+    [pendingRetry, setPendingRetry] = useState(false),
+    [retryAction, setRetryAction] = useState(""),
     [action, setAction] = useState("baseline"),
     [quantity, setQuantity] = useState(""),
     [date, setDate] = useState(manilaDate());
@@ -80,7 +85,17 @@ export default function HousingManager({
   const generation = useRef(0),
     lock = useRef(false),
     mounted = useRef(true),
-    retry = useRef<{ payload: string; key: string } | null>(null);
+    retry = useRef<{
+      payload: string;
+      key: string;
+      args: {
+        p_house_id: string;
+        p_action: string;
+        p_quantity: number;
+        p_date: string;
+        p_expected_version: number;
+      };
+    } | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -114,6 +129,16 @@ export default function HousingManager({
     list.rows.find((h) => h.id === houseId) ??
     (!houseId ? list.rows[0] : undefined);
   const selectedId = selected?.id;
+  const activeHouse = useRef(selectedId);
+  useEffect(() => {
+    activeHouse.current = selectedId;
+  }, [selectedId]);
+  const summaryKey = JSON.stringify([selectedId, from, to, historyPage]);
+  const summary =
+    summaryResult?.key === summaryKey ? summaryResult.value : null;
+  const isBaseline =
+    summary?.reported?.current == null ||
+    (pendingRetry && retryAction === "baseline");
   useEffect(() => {
     setPage(1);
     setHouseId("");
@@ -121,7 +146,7 @@ export default function HousingManager({
   const load = useCallback(async () => {
     const serial = ++generation.current;
     if (!selectedId) {
-      setSummary(null);
+      setSummaryResult(null);
       return;
     }
     setLoading(true);
@@ -135,20 +160,19 @@ export default function HousingManager({
       });
       if (serial !== generation.current) return;
       setLoading(false);
-      if (r.error) {
-        setError(r.error.message);
-        return;
-      }
-      setSummary(r.data as unknown as Summary);
-      setError("");
+      if (r.error) throw r.error;
+      setSummaryResult({
+        key: summaryKey,
+        value: r.data as unknown as Summary,
+      });
     } catch (e) {
       if (serial === generation.current) {
         setError(errorMessage(e));
-        setSummary(null);
+        setSummaryResult(null);
         setLoading(false);
       }
     }
-  }, [selectedId, from, to, historyPage]);
+  }, [selectedId, from, to, historyPage, summaryKey]);
   useEffect(() => {
     void load();
     const refresh = () => {
@@ -167,17 +191,20 @@ export default function HousingManager({
     setQuantity("");
     setSuccess("");
     retry.current = null;
-  }, [selectedId, from, to]);
+    setPendingRetry(false);
+  }, [selectedId]);
   async function saveCount(event: React.FormEvent) {
     event.preventDefault();
-    if (lock.current || !selectedId || !summary?.can_manage) return;
+    if (lock.current || loading || !selectedId || !summary?.can_manage) return;
     const value = Number(quantity);
     const chosen =
-      summary.reported?.current == null
-        ? "baseline"
-        : action === "baseline"
-          ? "arrival"
-          : action;
+      pendingRetry && retry.current
+        ? retry.current.args.p_action
+        : summary.reported?.current == null
+          ? "baseline"
+          : action === "baseline"
+            ? "arrival"
+            : action;
     if (
       !quantity.trim() ||
       !Number.isInteger(value) ||
@@ -197,29 +224,50 @@ export default function HousingManager({
       p_date: date,
       p_expected_version: summary.reported?.version ?? 0,
     };
-    const payload = JSON.stringify(args);
-    if (retry.current?.payload !== payload)
-      retry.current = { payload, key: crypto.randomUUID() };
+    const payload = JSON.stringify([selectedId, action, value, date]);
+    if (!pendingRetry && retry.current?.payload !== payload) {
+      retry.current = { payload, key: crypto.randomUUID(), args };
+      setRetryAction(args.p_action);
+    }
+    const attempt = retry.current;
+    if (!attempt) return;
     lock.current = true;
     setBusy(true);
     setError("");
     try {
       const r = await supabase.rpc("record_boarding_count", {
-        ...args,
-        p_request_key: retry.current.key,
+        ...attempt.args,
+        p_request_key: attempt.key,
       });
       if (r.error) throw r.error;
       if (!(r.data as { id?: string })?.id)
         throw new Error(
           "Count update was not confirmed. Retry the same entry.",
         );
-      if (!mounted.current) return;
+      if (!mounted.current || activeHouse.current !== attempt.args.p_house_id)
+        return;
       retry.current = null;
+      setPendingRetry(false);
       setQuantity("");
       setSuccess("Reported count saved with its audit history.");
       await load();
     } catch (e) {
-      if (mounted.current) setError(errorMessage(e));
+      if (mounted.current && activeHouse.current === attempt.args.p_house_id) {
+        const conflict =
+          e && typeof e === "object" && "code" in e && e.code === "40001";
+        if (conflict) {
+          retry.current = null;
+          setPendingRetry(false);
+          await load();
+        } else {
+          const code =
+            e && typeof e === "object" && "code" in e ? String(e.code) : "";
+          const definiteFailure = /^(22|23|42|P0)/.test(code);
+          setPendingRetry(!definiteFailure);
+          if (definiteFailure) retry.current = null;
+        }
+        setError(errorMessage(e));
+      }
     } finally {
       lock.current = false;
       if (mounted.current) setBusy(false);
@@ -240,6 +288,15 @@ export default function HousingManager({
       {(error || list.error) && (
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">
           {error || list.error}
+        </p>
+      )}
+      {pendingRetry && (
+        <p
+          role="status"
+          className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          The last count update was not confirmed. Retry it to check the
+          original update before entering another change.
         </p>
       )}
       {success && (
@@ -310,9 +367,11 @@ export default function HousingManager({
             <div className="rounded-2xl border bg-white p-5">
               <h3 className="text-lg font-bold">{selected.name}</h3>
               <p className="mt-1 break-words text-sm">{selected.address}</p>
-              <p className="mt-1 text-sm text-slate-500">
-                Landlord/Landlady: {selected.owner_name}
-              </p>
+              {(admin || resident?.boarding_status === "boarder") && (
+                <p className="mt-1 text-sm text-slate-500">
+                  Landlord/Landlady: {selected.owner_name}
+                </p>
+              )}
               {admin && (
                 <button
                   type="button"
@@ -372,7 +431,11 @@ export default function HousingManager({
                 {summary.can_manage && summary.reported && (
                   <>
                     <CountCards
-                      title="Landlord-Reported Counts"
+                      title={
+                        admin
+                          ? "Landlord-Reported Counts"
+                          : "My Reported Counts"
+                      }
                       current={summary.reported.current}
                       arrivals={summary.reported.arrivals}
                       departures={summary.reported.departures}
@@ -397,9 +460,9 @@ export default function HousingManager({
                           Action
                           <select
                             className="input mt-2"
-                            disabled={busy || summary.reported.current == null}
+                            disabled={busy || pendingRetry || isBaseline}
                             value={
-                              summary.reported.current == null
+                              isBaseline
                                 ? "baseline"
                                 : action === "baseline"
                                   ? "arrival"
@@ -407,7 +470,7 @@ export default function HousingManager({
                             }
                             onChange={(e) => setAction(e.target.value)}
                           >
-                            {summary.reported.current == null ? (
+                            {isBaseline ? (
                               <option value="baseline">
                                 Initial Current Count
                               </option>
@@ -425,8 +488,7 @@ export default function HousingManager({
                           </select>
                         </label>
                         <label className="label">
-                          {summary.reported.current == null ||
-                          action === "correction"
+                          {isBaseline || action === "correction"
                             ? "New Current Count"
                             : "Number of Arrivals / Departures"}
                           <input
@@ -437,7 +499,7 @@ export default function HousingManager({
                             step="1"
                             className="input mt-2"
                             value={quantity}
-                            disabled={busy}
+                            disabled={busy || pendingRetry}
                             onChange={(e) => setQuantity(e.target.value)}
                           />
                         </label>
@@ -452,7 +514,7 @@ export default function HousingManager({
                             max={manilaDate()}
                             className="input mt-2"
                             value={date}
-                            disabled={busy}
+                            disabled={busy || pendingRetry}
                             onChange={(e) => setDate(e.target.value)}
                           />
                         </label>
@@ -465,7 +527,11 @@ export default function HousingManager({
                           disabled={busy}
                           className="rounded-xl bg-pine-700 px-4 py-3 font-bold text-white disabled:opacity-50"
                         >
-                          {busy ? "Saving…" : "Save Count Update"}
+                          {busy
+                            ? "Saving…"
+                            : pendingRetry
+                              ? "Retry Count Update"
+                              : "Save Count Update"}
                         </button>
                       </form>
                     )}

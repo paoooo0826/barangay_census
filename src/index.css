@@ -192,6 +192,52 @@
     overscroll-behavior: contain;
   }
 
+  .camera-edge-to-edge {
+    height: 100dvh;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .camera-edge-to-edge .camera-preview {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .capture-header,
+  .capture-controls {
+    position: absolute;
+    inset-inline: 0;
+    z-index: 2;
+    padding: 1rem;
+    color: white;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .capture-header {
+    top: 0;
+    max-height: 35dvh;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    background: linear-gradient(to bottom, rgb(0 0 0 / 0.85), transparent);
+  }
+
+  .capture-controls {
+    bottom: 0;
+    max-height: 38dvh;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    background: linear-gradient(
+      to top,
+      rgb(0 0 0 / 0.9),
+      rgb(0 0 0 / 0.4),
+      transparent
+    );
+  }
+
   .camera-preview {
     min-height: min(40dvh, 200px);
   }

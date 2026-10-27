@@ -374,6 +374,9 @@ async function cameraChecks() {
   );
   check(w.document.body.style.overflow === "", "Resetting the face camera restores page scrolling after pending permission");
   await open();
+  check(w.document.querySelector('[aria-label="Fullscreen identity capture"]').parentElement===w.document.body && w.document.querySelector('[aria-label="Fullscreen identity capture"]').className.includes('camera-edge-to-edge'), 'Live face capture uses a full-screen body portal outside census card borders');
+  check(!/border|rounded/.test(w.document.querySelector('.camera-preview').className), 'Live face preview has no outer border or rounded card frame');
+  check(w.document.querySelector('.capture-header [aria-label="Exit full-screen camera"]') && w.document.querySelector('.capture-controls'), 'Borderless face capture retains accessible overlay controls');
   check(w.document.querySelector('video')?.style.transform === 'scaleX(-1)' && w.document.querySelector('[aria-label="Mirror Preview"]')?.getAttribute('aria-pressed') === 'true', 'Front-facing live verification uses the familiar selfie preview direction');
   await tick(() => w.document.querySelector('[aria-label="Mirror Preview"]').click());
   check(w.document.querySelector('video')?.style.transform === 'none', 'Face verification allows a normal preview without changing captured image orientation');
