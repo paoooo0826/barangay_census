@@ -119,6 +119,7 @@ begin
  if jsonb_array_length(analytics->'charts')<40 or jsonb_array_length(analytics->'insights')<4 then raise exception 'Analytics missing charts/insights';end if;
  analytics:=public.admin_system_analytics(current_date,current_date,'verified');
  for chart in select x.value from jsonb_array_elements(analytics->'charts') x where x.value->>'title' in ('Residents by Registration Status','Residents by Age Group','Registered Residents by Current Residency','Residents by ID Verification Status') loop
+  if chart->>'title'='Registered Residents by Current Residency' and chart->>'unit'<>'residents' then raise exception 'Residency chart has the wrong counting unit';end if;
   if (select coalesce(sum((x->>'count')::int),0) from jsonb_array_elements(chart->'rows') x)<>(analytics->>'residentTotal')::int then raise exception 'Chart denominator mismatch: %',chart->>'title';end if;
  end loop;
 end $$;

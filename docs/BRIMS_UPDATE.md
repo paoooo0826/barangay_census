@@ -23,7 +23,7 @@
 
 ## Deployment and verification
 
-Applied to Supabase project `pqpezqeagxeuetztwlam`: `20261027093819_brims_notifications_receipts_cases_boarding_analytics.sql`. Its statements were first exercised in rollback transactions, then the complete role/workflow fixture was rerun against the applied schema successfully. No fixture accounts, receipts, messages or reports persist.
+Applied to Supabase project `pqpezqeagxeuetztwlam`: `20261027093819_brims_notifications_receipts_cases_boarding_analytics.sql` and `20261027094449_align_residency_analytics_units.sql`. The latter corrects the residency chart unit to residents, matching its deduplicated account grain. Its statements were first exercised in rollback transactions, then the complete role/workflow fixture was rerun against the applied schema successfully. No fixture accounts, receipts, messages or reports persist.
 
 - Receipt checks cover acceptance without completion, RPC and direct-update attempts without proof, exact fee validation, repeated requests, preserved receipt-number uniqueness, void/reissue history, explicit zero-fee acknowledgments, and a deliberately failed completion after receipt insertion. The injected failure leaves neither payment nor completion.
 - Ownership checks cover resident cases/receipts/notifications, private incident Storage metadata, administrator read receipts, assigned landlord messaging, guessed house IDs, identified stay endpoint denial, and count-only summaries. Message read boundaries preserve newer unread messages.
