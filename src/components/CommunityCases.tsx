@@ -18,6 +18,14 @@ import { RESIDENT_IMAGE_ACCEPT } from "../lib/imageValidation";
 import { useImageCrop } from "./ImageCropDialog";
 import FullscreenImageViewer from "./FullscreenImageViewer";
 import PaginationControls from "./PaginationControls";
+import IncidentLocation from "./IncidentLocation";
+import IncidentProgress from "./IncidentProgress";
+import {
+  parseIncidentPin,
+  incidentMapUrl,
+  type IncidentPin,
+} from "../lib/incidents";
+import { hasProfanity, requireRespectfulText } from "../lib/profanity";
 
 type Kind = "feedback" | "incident";
 interface DraftImage {
@@ -53,6 +61,12 @@ export default function CommunityCases({
     [occurred, setOccurred] = useState("");
   const [images, setImages] = useState<DraftImage[]>([]),
     [busy, setBusy] = useState(false);
+  const [landmark, setLandmark] = useState("");
+  const [pin, setPin] = useState<IncidentPin>({
+    latitude: "",
+    longitude: "",
+    accuracy: null,
+  });
   const { crop, cropDialog } = useImageCrop();
   const lock = useRef(false),
     mounted = useRef(true),
@@ -76,7 +90,7 @@ export default function CommunityCases({
       if (admin && status !== "all") q = q.eq("status", status);
       if (admin && search.trim())
         q = q.ilike(
-          incident ? "description" : "content",
+          incident ? "search_text" : "content",
           searchPattern(search),
         );
       if (admin && from) q = q.gte("created_at", `${from}T00:00:00+08:00`);
@@ -86,7 +100,7 @@ export default function CommunityCases({
           new Date(Date.parse(`${to}T00:00:00+08:00`) + 86400000).toISOString(),
         );
       return q
-        .order("created_at", { ascending: false })
+        .order(incident ? "updated_at" : "created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(start, end);
     },
@@ -163,6 +177,14 @@ export default function CommunityCases({
     if (lock.current || !user) return;
     const description = content.trim(),
       place = location.trim();
+    let coordinates: ReturnType<typeof parseIncidentPin>;
+    try {
+      coordinates = parseIncidentPin(pin);
+      if (!incident) requireRespectfulText(description);
+    } catch (e) {
+      setError(errorMessage(e));
+      return;
+    }
     if (
       description.length < (incident ? 20 : 10) ||
       description.length > (incident ? 6000 : 4000)
@@ -189,6 +211,8 @@ export default function CommunityCases({
       description,
       place,
       occurred,
+      landmark: landmark.trim(),
+      coordinates,
       images: images.map((i) => i.id),
     });
     if (retry.current?.payload !== payload)
@@ -218,13 +242,17 @@ export default function CommunityCases({
           attempt.paths[image.id] = path;
         }
       const result = incident
-        ? await supabase.rpc("submit_incident_report", {
+        ? await supabase.rpc("submit_incident_with_location", {
             p_category: category,
             p_description: description,
             p_location: place,
             p_occurred_at: new Date(`${occurred}+08:00`).toISOString(),
             p_image_paths: images.map((i) => attempt.paths[i.id]),
             p_request_key: attempt.key,
+            p_landmark: landmark.trim(),
+            p_latitude: coordinates.latitude,
+            p_longitude: coordinates.longitude,
+            p_accuracy: coordinates.accuracy,
           })
         : await supabase.rpc("submit_resident_feedback", {
             p_kind: category,
@@ -242,6 +270,8 @@ export default function CommunityCases({
       setContent("");
       setLocation("");
       setOccurred("");
+      setLandmark("");
+      setPin({ latitude: "", longitude: "", accuracy: null });
       setImages([]);
       setPage(1);
       setSuccess(
@@ -319,6 +349,13 @@ export default function CommunityCases({
               onChange={(e) => setContent(e.target.value)}
             />
           </label>
+          {hasProfanity(content) && (
+            <p role="status" className="text-sm text-amber-800">
+              {incident
+                ? "Potentially offensive language detected. Relevant quoted evidence can still be submitted and will be flagged for administrator review."
+                : "Offensive English or Tagalog wording must be revised before sending."}
+            </p>
+          )}
           {incident && (
             <>
               <label className="label">
@@ -333,6 +370,13 @@ export default function CommunityCases({
                   onChange={(e) => setLocation(e.target.value)}
                 />
               </label>
+              <IncidentLocation
+                pin={pin}
+                onChange={setPin}
+                landmark={landmark}
+                onLandmark={setLandmark}
+                disabled={busy}
+              />
               <label className="label">
                 Incident Date and Time (Manila)
                 <input
@@ -403,7 +447,9 @@ export default function CommunityCases({
       {admin && (
         <div className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="label">
-            Search Description
+            {incident
+              ? "Search Reports, Locations, or Tracking Numbers"
+              : "Search Feedback"}
             <input
               type="search"
               className="input mt-2"
@@ -499,6 +545,22 @@ export default function CommunityCases({
             <time className="mt-2 block text-xs text-slate-500">
               {paymentTime(row.created_at)}
             </time>
+            {incident && row.location && (
+              <span className="mt-1 block break-words text-xs text-slate-600">
+                Location: {row.location}
+                {row.landmark ? ` · ${row.landmark}` : ""}
+              </span>
+            )}
+            {incident && (
+              <span className="mt-1 block text-xs text-slate-500">
+                Latest Activity: {paymentTime(row.updated_at)}
+              </span>
+            )}
+            {admin && row.language_flagged && (
+              <span className="mt-2 block text-xs font-bold text-amber-800">
+                Language Review Needed
+              </span>
+            )}
             <span className="mt-2 block text-xs font-bold text-pine-700">
               View Details and History
             </span>
@@ -580,10 +642,21 @@ function CaseDetails({
     [response, setResponse] = useState(item.response),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [followUp, setFollowUp] = useState(""),
+    [notice, setNotice] = useState(""),
+    [conflict, setConflict] = useState(false);
+  const followUpRetry = useRef<{ message: string; key: string } | null>(null);
   const [images, setImages] = useState<{ path: string; url: string }[]>([]),
     [preview, setPreview] = useState<string | null>(null),
     [history, setHistory] = useState<
-      { id: string; status: string; message: string; created_at: string }[]
+      {
+        id: string;
+        status: string;
+        message: string;
+        created_at: string;
+        entry_type?: string;
+        language_flagged?: boolean;
+      }[]
     >([]),
     [historyPage, setHistoryPage] = useState(1),
     [historyTotal, setHistoryTotal] = useState(0);
@@ -607,7 +680,9 @@ function CaseDetails({
     const load = async () => {
       const h = await supabase
         .from("community_case_updates")
-        .select("id,status,message,created_at", { count: "exact" })
+        .select("id,status,message,created_at,entry_type,language_flagged", {
+          count: "exact",
+        })
         .eq(kind === "incident" ? "incident_id" : "feedback_id", item.id)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
@@ -649,6 +724,20 @@ function CaseDetails({
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (lock.current) return;
+    try {
+      requireRespectfulText(response);
+    } catch (e) {
+      setError(errorMessage(e));
+      return;
+    }
+    if (
+      kind === "incident" &&
+      (status !== item.status || response.trim() !== item.response) &&
+      response.trim().length < 3
+    ) {
+      setError("Add a short progress update or action taken for the resident.");
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setError("");
@@ -663,7 +752,68 @@ function CaseDetails({
       if (r.error) throw r.error;
       const value = r.data as unknown as CommunityCase;
       if (!value?.id) throw new Error("Review was not confirmed.");
-      if (mounted.current) changed(value);
+      if (mounted.current) {
+        changed(value);
+        setHistoryPage(1);
+        setConflict(false);
+        setNotice("Review saved and shared with the resident.");
+      }
+    } catch (e) {
+      if (mounted.current) {
+        setError(errorMessage(e));
+        setConflict(
+          Boolean(
+            e && typeof e === "object" && "code" in e && e.code === "40001",
+          ),
+        );
+      }
+    } finally {
+      lock.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+  async function sendFollowUp(event: React.FormEvent) {
+    event.preventDefault();
+    if (lock.current) return;
+    const message = followUp.trim();
+    if (message.length < 3 || message.length > 4000) {
+      setError("Write a follow-up with 3 to 4000 characters.");
+      return;
+    }
+    try {
+      if (admin) requireRespectfulText(message);
+    } catch (e) {
+      setError(errorMessage(e));
+      return;
+    }
+    if (followUpRetry.current?.message !== message)
+      followUpRetry.current = { message, key: crypto.randomUUID() };
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const r = await supabase.rpc("add_incident_follow_up", {
+        p_incident_id: item.id,
+        p_message: message,
+        p_request_key: followUpRetry.current.key,
+      });
+      if (r.error) throw r.error;
+      const saved = r.data as unknown as CommunityCase;
+      if (!saved?.id)
+        throw new Error(
+          "Follow-up was not confirmed. Retry without changing the text.",
+        );
+      if (!mounted.current) return;
+      followUpRetry.current = null;
+      setFollowUp("");
+      setHistoryPage(1);
+      setNotice(
+        admin
+          ? "Reply sent to the resident."
+          : "Follow-up sent to the barangay. The current report status is unchanged.",
+      );
+      changed(saved);
     } catch (e) {
       if (mounted.current) setError(errorMessage(e));
     } finally {
@@ -671,6 +821,34 @@ function CaseDetails({
       if (mounted.current) setBusy(false);
     }
   }
+  async function reloadLatest() {
+    if (lock.current) return;
+    setBusy(true);
+    lock.current = true;
+    try {
+      const r = await supabase
+        .from(kind === "incident" ? "incident_reports" : "resident_feedback")
+        .select("*")
+        .eq("id", item.id)
+        .maybeSingle();
+      if (r.error) throw r.error;
+      if (!r.data) throw new Error("This item is unavailable.");
+      if (mounted.current) {
+        changed(r.data as CommunityCase);
+        setError("");
+        setConflict(false);
+        setNotice(
+          "Latest report loaded. Your review draft has been kept; check the new history before saving.",
+        );
+      }
+    } catch (e) {
+      if (mounted.current) setError(errorMessage(e));
+    } finally {
+      lock.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+  const map = incidentMapUrl(item.latitude, item.longitude);
   return (
     <>
       <div
@@ -709,6 +887,16 @@ function CaseDetails({
             Submitted {paymentTime(item.created_at)} · Updated{" "}
             {paymentTime(item.updated_at)}
           </p>
+          {kind === "incident" && <IncidentProgress status={item.status} />}
+          {admin && item.language_flagged && (
+            <p
+              role="status"
+              className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
+            >
+              Language Review: The report contains potentially offensive
+              wording. Review it in context; it may be quoted evidence.
+            </p>
+          )}
           <p className="mt-4 whitespace-pre-wrap break-words leading-7">
             {item.description ?? item.content}
           </p>
@@ -716,6 +904,29 @@ function CaseDetails({
             <p className="mt-3 break-words">
               <strong>Location:</strong> {item.location}
             </p>
+          )}
+          {item.landmark && (
+            <p className="mt-2 break-words">
+              <strong>Nearby Landmark:</strong> {item.landmark}
+            </p>
+          )}
+          {map && (
+            <div className="mt-2 text-sm">
+              <p>
+                Location Pin: {item.latitude}, {item.longitude}
+                {item.location_accuracy != null
+                  ? ` (approximately ±${Math.round(item.location_accuracy)} metres)`
+                  : ""}
+              </p>
+              <a
+                href={map}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-pine-700 underline"
+              >
+                Open Incident Location on OpenStreetMap
+              </a>
+            </div>
           )}
           {item.occurred_at && (
             <p className="mt-2">
@@ -759,6 +970,24 @@ function CaseDetails({
               {error} Close and reopen this item to reload the latest record.
             </p>
           )}
+          {conflict && (
+            <button
+              type="button"
+              disabled={busy}
+              className="btn-secondary mt-3"
+              onClick={() => void reloadLatest()}
+            >
+              Reload Latest and Keep My Draft
+            </button>
+          )}
+          {notice && (
+            <p
+              role="status"
+              className="mt-3 rounded-xl bg-pine-50 p-3 text-sm text-pine-800"
+            >
+              {notice}
+            </p>
+          )}
           {admin && (
             <form
               onSubmit={(e) => void save(e)}
@@ -787,8 +1016,10 @@ function CaseDetails({
                 <textarea
                   className="input mt-2"
                   maxLength={4000}
-                  required={status === "rejected"}
-                  minLength={status === "rejected" ? 3 : 0}
+                  required={kind === "incident" || status === "rejected"}
+                  minLength={
+                    kind === "incident" || status === "rejected" ? 3 : 0
+                  }
                   value={response}
                   disabled={busy}
                   onChange={(e) => setResponse(e.target.value)}
@@ -803,7 +1034,66 @@ function CaseDetails({
               </button>
             </form>
           )}
-          <h4 className="mt-6 font-bold">Status and Response History</h4>
+          {kind === "incident" && (
+            <form
+              onSubmit={(e) => void sendFollowUp(e)}
+              className="mt-5 space-y-3 rounded-xl border border-slate-200 p-4"
+            >
+              <h4 className="font-bold">
+                {admin ? "Reply to Follow-up" : "Follow Up on This Report"}
+              </h4>
+              {!admin && ["resolved", "rejected"].includes(item.status) && (
+                <p className="text-xs text-slate-600">
+                  This report is closed. A follow-up asks the barangay to review
+                  your message; only an administrator can reopen the report.
+                </p>
+              )}
+              <label className="label">
+                {admin
+                  ? "Follow-up Reply (Visible to Resident)"
+                  : "Additional Details or Question"}
+                <textarea
+                  className="input mt-2"
+                  rows={3}
+                  required
+                  minLength={3}
+                  maxLength={4000}
+                  value={followUp}
+                  disabled={busy}
+                  onChange={(e) => setFollowUp(e.target.value)}
+                />
+              </label>
+              {hasProfanity(followUp) && (
+                <p className="text-xs text-amber-800">
+                  {admin
+                    ? "Revise offensive wording before replying."
+                    : "Potentially offensive wording will be flagged for admin review. Relevant quoted evidence is preserved."}
+                </p>
+              )}
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={busy || followUp.trim().length < 3}
+              >
+                {busy
+                  ? "Sending…"
+                  : admin
+                    ? "Send Follow-up Reply"
+                    : "Send Follow-up"}
+              </button>
+            </form>
+          )}
+          <h4 className="mt-6 font-bold">
+            {kind === "incident"
+              ? "Progress and Follow-up History"
+              : "Status and Response History"}
+          </h4>
+          {kind === "incident" && (
+            <p className="mt-2 text-xs text-slate-500">
+              Submitted {paymentTime(item.created_at)}. Newest activity is
+              listed first.
+            </p>
+          )}
           {!history.length && (
             <p className="mt-2 text-sm text-slate-500">
               No review updates yet.
@@ -811,13 +1101,24 @@ function CaseDetails({
           )}
           {history.map((h) => (
             <div key={h.id} className="mt-3 border-t pt-3 text-sm">
-              <strong>{titleCase(h.status)}</strong>
+              <strong>
+                {h.entry_type === "resident_follow_up"
+                  ? "Resident Follow-up"
+                  : h.entry_type === "admin_reply"
+                    ? "Barangay Reply"
+                    : titleCase(h.status)}
+              </strong>
               <time className="ml-2 text-xs text-slate-500">
                 {paymentTime(h.created_at)}
               </time>
               <p className="mt-1 whitespace-pre-wrap break-words">
                 {h.message || "Status updated."}
               </p>
+              {admin && h.language_flagged && (
+                <p className="mt-1 text-xs text-amber-800">
+                  Language Review: Read the quoted wording in context.
+                </p>
+              )}
             </div>
           ))}
           <PaginationControls

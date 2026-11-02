@@ -6,12 +6,14 @@ import { usePagedQuery } from "../hooks/usePagedQuery";
 import { errorMessage } from "../lib/community";
 import { paymentTime } from "../lib/payments";
 import PaginationControls from "./PaginationControls";
+import { requireRespectfulText } from "../lib/profanity";
 interface Conversation {
   id: string;
   name: string;
   owner_name: string;
   active: boolean;
   unread_count: number;
+  can_send?: boolean;
 }
 interface Message {
   id: string;
@@ -22,9 +24,22 @@ interface Message {
 }
 export default function BoardingMessages({
   admin = false,
+  landlord = false,
 }: {
   admin?: boolean;
+  landlord?: boolean;
 }) {
+  const { adminProfile } = useAuth();
+  if (admin ? !adminProfile?.is_active : !landlord)
+    return (
+      <p role="alert" className="rounded-xl border bg-white p-5">
+        Messages are private to authorized administrators and the assigned
+        landlord/landlady.
+      </p>
+    );
+  return <PrivateBoardingMessages admin={admin} />;
+}
+function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   const { user } = useAuth();
   const route = useHashRoute();
   const requested = new URLSearchParams(route.split("?")[1] ?? "").get("house");
@@ -129,9 +144,15 @@ export default function BoardingMessages({
   }, [houseId, list.rows, list.loading, list.error, page, loadHouses]);
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    if (lock.current || !houseId) return;
+    if (lock.current || !houseId || house?.can_send === false) return;
     const clean = body.trim();
     if (!clean || clean.length > 4000) return;
+    try {
+      requireRespectfulText(clean);
+    } catch (e) {
+      setError(errorMessage(e));
+      return;
+    }
     const payload = JSON.stringify([houseId, clean]);
     if (retry.current?.payload !== payload)
       retry.current = { payload, key: crypto.randomUUID() };
@@ -227,6 +248,15 @@ export default function BoardingMessages({
                   : "Barangay Office"}{" "}
                 · Newest messages first
               </p>
+              {house.can_send === false && (
+                <p
+                  role="status"
+                  className="mt-3 rounded-xl bg-amber-50 p-3 text-sm"
+                >
+                  The assigned owner no longer has landlord access. This
+                  conversation is read-only for administrators.
+                </p>
+              )}
               <button
                 type="button"
                 className="mt-3 text-sm font-bold text-pine-700 underline"
@@ -282,13 +312,13 @@ export default function BoardingMessages({
                     rows={3}
                     className="input mt-2"
                     value={body}
-                    disabled={busy}
+                    disabled={busy || house.can_send === false}
                     onChange={(e) => setBody(e.target.value)}
                   />
                 </label>
                 <button
                   type="submit"
-                  disabled={busy || !body.trim()}
+                  disabled={busy || house.can_send === false || !body.trim()}
                   className="rounded-xl bg-pine-700 px-5 py-3 font-bold text-white disabled:opacity-50"
                 >
                   {busy ? "Sending…" : "Send Message"}

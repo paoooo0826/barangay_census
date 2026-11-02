@@ -1,4 +1,5 @@
 import ResidentRecordHistory from "../components/ResidentRecordHistory";
+import { requireRespectfulText } from "../lib/profanity";
 import ResidencyDetails from "../components/ResidencyDetails";
 import BoardingDetails from "../components/BoardingDetails";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -474,6 +475,12 @@ export default function AdminReview({
     }
 
     const expectedUpdatedAt = data.resident.updated_at;
+    try {
+      requireRespectfulText(remarkText);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Revise the review wording.");
+      return;
+    }
     if (!expectedUpdatedAt) {
       await fetchResidentData();
       setError(

@@ -1,3 +1,4 @@
+import { requireRespectfulText } from "../lib/profanity";
 import { appointmentLabel } from "../lib/community";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
@@ -311,6 +312,14 @@ export default function AdminAppointments({
         return;
       }
       adminNotes = reason.trim();
+      try {
+        requireRespectfulText(adminNotes);
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Revise the rejection reason.",
+        );
+        return;
+      }
     }
     setUpdatingId(a.id);
     setError(null);

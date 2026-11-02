@@ -1,10 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { usePagedQuery } from "../hooks/usePagedQuery";
 import { categoryLabel, educationStatusLabel } from "../lib/displayLabels";
 import PaginationControls from "./PaginationControls";
 import type { Json } from "../types/database";
+import ResidentUpdateFeedback, {
+  type UpdateFeedback,
+} from "./ResidentUpdateFeedback";
+import { errorMessage } from "../lib/community";
 
 interface Entry {
   id: string;
@@ -14,6 +18,7 @@ interface Entry {
   details: {
     status?: string;
     remark?: string;
+    message?: string;
     changes?: Record<string, { before: Json; after: Json }>;
   };
 }
@@ -24,6 +29,7 @@ const ACTIONS: Record<string, string> = {
   census_submitted: "Census submitted",
   census_updated: "Census information updated",
   census_details_updated: "Census attachments / classifications updated",
+  census_update_feedback: "Administrator feedback saved",
 };
 const FIELDS: Record<string, string> = {
   city_municipality: "City / municipality",
@@ -70,29 +76,96 @@ export function historyValue(value: Json, field: string): string {
 export default function ResidentRecordHistory({
   residentId,
   refreshKey,
+  admin = true,
 }: {
   residentId: string;
   refreshKey?: string | null;
+  admin?: boolean;
 }) {
   const [page, setPage] = useState(1);
   const query = useCallback(
-    (from: number, to: number) =>
-      supabase
+    (from: number, to: number) => {
+      if (!admin)
+        return supabase
+          .rpc("resident_record_history", {
+            p_resident_id: residentId,
+            p_offset: from,
+            p_limit: to - from + 1,
+          })
+          .then((result) => {
+            const data = result.data as unknown as {
+              items: Entry[];
+              total: number;
+            } | null;
+            return {
+              data: data?.items ?? [],
+              count: data?.total ?? 0,
+              error: result.error,
+            };
+          });
+      return supabase
         .from("admin_resident_history")
         .select("*", { count: "exact" })
         .eq("resident_id", residentId)
         .order("created_at", { ascending: false })
         .order("id")
-        .range(from, to),
-    [residentId],
+        .range(from, to);
+    },
+    [residentId, admin],
   );
-  const { rows, total, loading, error } = usePagedQuery<Entry>({
+  const { rows, total, loading, error, reload } = usePagedQuery<Entry>({
     page,
     pageSize: 8,
     onPageChange: setPage,
     query,
     refreshKey: refreshKey ? new Date(refreshKey).getTime() : 0,
   });
+  const [feedback, setFeedback] = useState<UpdateFeedback[]>([]),
+    [feedbackLoading, setFeedbackLoading] = useState(false),
+    [feedbackError, setFeedbackError] = useState(""),
+    [feedbackRefresh, setFeedbackRefresh] = useState(0);
+  const updateIds = rows
+    .filter((entry) =>
+      ["census_submitted", "census_updated", "census_details_updated"].includes(
+        entry.action,
+      ),
+    )
+    .map((entry) => entry.id);
+  const updateKey = JSON.stringify(updateIds);
+  useEffect(() => {
+    let active = true;
+    setFeedbackError("");
+    const ids = JSON.parse(updateKey) as string[];
+    setFeedback((current) =>
+      current.filter(
+        (value) =>
+          value.resident_id === residentId && ids.includes(value.history_id),
+      ),
+    );
+    if (!ids.length) {
+      setFeedbackLoading(false);
+      return;
+    }
+    setFeedbackLoading(true);
+    void (async () => {
+      try {
+        const r = await supabase
+          .from("resident_update_feedback")
+          .select("id,history_id,resident_id,message,version,updated_at")
+          .eq("resident_id", residentId)
+          .in("history_id", ids);
+        if (r.error) throw r.error;
+        if (active) setFeedback((r.data ?? []) as UpdateFeedback[]);
+      } catch (e) {
+        if (active) setFeedbackError(errorMessage(e));
+      } finally {
+        if (active) setFeedbackLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [residentId, updateKey, feedbackRefresh, refreshKey, rows]);
   return (
     <section
       aria-label="Record history"
@@ -106,12 +179,27 @@ export default function ResidentRecordHistory({
         Saved review decisions and changes recorded since history tracking was
         enabled.
       </p>
+      <button
+        type="button"
+        className="mt-3 text-sm font-bold text-pine-700 underline"
+        onClick={() => {
+          void reload();
+          setFeedbackRefresh((value) => value + 1);
+        }}
+      >
+        Refresh History and Feedback
+      </button>
+      {feedbackError && (
+        <p role="alert" className="mt-3 text-sm text-red-700">
+          {feedbackError} Refresh the history to retry.
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-4 text-sm text-red-700">
           {error}
         </p>
       )}
-      {loading ? (
+      {loading && !rows.length ? (
         <p role="status" className="mt-4 text-sm">
           Loading history…
         </p>
@@ -145,6 +233,11 @@ export default function ResidentRecordHistory({
                   {entry.details.remark}
                 </p>
               )}
+              {entry.details?.message && (
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm">
+                  {entry.details.message}
+                </p>
+              )}
               {Object.entries(entry.details?.changes ?? {})
                 .filter(
                   ([field]) =>
@@ -172,6 +265,27 @@ export default function ResidentRecordHistory({
                     </dl>
                   </div>
                 ))}
+              {updateIds.includes(entry.id) && (
+                <ResidentUpdateFeedback
+                  key={entry.id}
+                  residentId={residentId}
+                  historyId={entry.id}
+                  feedback={feedback.find(
+                    (value) => value.history_id === entry.id,
+                  )}
+                  loading={feedbackLoading || Boolean(feedbackError)}
+                  admin={admin}
+                  onSaved={(saved) =>
+                    setFeedback((current) => [
+                      ...current.filter(
+                        (value) => value.history_id !== saved.history_id,
+                      ),
+                      saved,
+                    ])
+                  }
+                  onReload={() => setFeedbackRefresh((value) => value + 1)}
+                />
+              )}
             </li>
           ))}
         </ol>

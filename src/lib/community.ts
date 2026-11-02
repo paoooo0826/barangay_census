@@ -30,6 +30,12 @@ export interface CommunityCase {
   description?: string;
   location?: string;
   occurred_at?: string;
+  landmark?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_accuracy?: number | null;
+  language_flagged?: boolean;
+  last_follow_up_at?: string | null;
 }
 export const INCIDENT_CATEGORIES = [
   "safety_concern",

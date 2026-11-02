@@ -280,6 +280,7 @@ export interface Database {
       admin_notifications: AnyTable;
       admin_notification_reads: AnyTable;
       resident_feedback: AnyTable;
+      resident_update_feedback: AnyTable;
       incident_reports: AnyTable;
       incident_attachments: AnyTable;
       community_case_updates: AnyTable;
@@ -318,6 +319,43 @@ export interface Database {
       admin_resident_history: AnyTable;
     };
     Functions: {
+      submit_incident_with_location: {
+        Args: {
+          p_category: string;
+          p_description: string;
+          p_location: string;
+          p_occurred_at: string;
+          p_image_paths: string[];
+          p_request_key: string;
+          p_landmark?: string;
+          p_latitude?: number | null;
+          p_longitude?: number | null;
+          p_accuracy?: number | null;
+        };
+        Returns: Json;
+      };
+      add_incident_follow_up: {
+        Args: {
+          p_incident_id: string;
+          p_message: string;
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      save_resident_update_feedback: {
+        Args: {
+          p_resident_id: string;
+          p_history_id: string;
+          p_message: string;
+          p_expected_version: number;
+          p_request_key: string;
+        };
+        Returns: Json;
+      };
+      resident_record_history: {
+        Args: { p_resident_id: string; p_offset?: number; p_limit?: number };
+        Returns: Json;
+      };
       admin_notification_feed: {
         Args: { p_offset?: number; p_limit?: number; p_unread_only?: boolean };
         Returns: Json;

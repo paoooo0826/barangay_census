@@ -1,3 +1,4 @@
+import { requireRespectfulText } from "../lib/profanity";
 import { appointmentLabel } from "../lib/community";
 import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { navigateHash } from "../hooks/useHashRoute";
@@ -459,6 +460,14 @@ export default function ResidentAppointments({
       );
       return;
     }
+    try {
+      requireRespectfulText(details);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Revise the appointment details.",
+      );
+      return;
+    }
     const chosenDate = new Date(`${appointmentDate}T12:00:00`);
     if (chosenDate.getDay() === 0 || chosenDate.getDay() === 6) {
       setError("Appointments are available from Monday to Friday only.");
@@ -561,6 +570,14 @@ export default function ResidentAppointments({
   const cancelAppointment = async () => {
     if (!cancelTarget) return;
     const reason = cancellationReason.trim();
+    try {
+      requireRespectfulText(reason);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Revise the cancellation reason.",
+      );
+      return;
+    }
     if (reason.length < 3) {
       setError("Enter a cancellation reason with at least three characters.");
       return;

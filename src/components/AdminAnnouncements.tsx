@@ -1,3 +1,4 @@
+import { requireRespectfulText } from "../lib/profanity";
 import AnnouncementDetail, { AnnouncementImage } from "./AnnouncementDetail";
 import type { AnnouncementDetailData } from "./AnnouncementDetail";
 import FullscreenImageViewer from "./FullscreenImageViewer";
@@ -344,6 +345,15 @@ export default function AdminAnnouncements({
   async function handlePublish(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mutationLock.current || preparingImage || !validate()) return;
+    try {
+      requireRespectfulText(title);
+      requireRespectfulText(message);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Revise the announcement wording.",
+      );
+      return;
+    }
     mutationLock.current = true;
     setSaving(true);
     setError(null);

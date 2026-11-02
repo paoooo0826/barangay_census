@@ -1,5 +1,6 @@
 import CommunityCases from "../components/CommunityCases";
 import BoardingMessages from "../components/BoardingMessages";
+import ResidentRecordHistory from "../components/ResidentRecordHistory";
 import AnnouncementDetail, {
   AnnouncementImage,
 } from "../components/AnnouncementDetail";
@@ -232,9 +233,14 @@ export default function ResidentDashboard({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
-    if (!loading && !boardingAccess && selectedTab === "housing")
+    if (
+      !loading &&
+      ((!boardingAccess && selectedTab === "housing") ||
+        (selectedTab === "messages" &&
+          resident?.boarding_status !== "landlord"))
+    )
       navigateHash("/resident/dashboard", true);
-  }, [boardingAccess, loading, selectedTab]);
+  }, [boardingAccess, loading, selectedTab, resident?.boarding_status]);
 
   const load = useCallback(
     async (manual = false) => {
@@ -476,8 +482,14 @@ export default function ResidentDashboard({
               />
             </button>
             <ResidentNotifications
+              key={`${resident?.id}:${resident?.boarding_status}`}
               residentId={resident?.id}
               onOpenItem={(category, id) => {
+                if (
+                  category === "message" &&
+                  resident?.boarding_status !== "landlord"
+                )
+                  return;
                 const destination =
                   category === "appointment"
                     ? "appointments"
@@ -772,7 +784,7 @@ export default function ResidentDashboard({
           <CommunityCases key="incident" kind="incident" />
         )}
         {tab === "messages" && resident?.boarding_status === "landlord" && (
-          <BoardingMessages />
+          <BoardingMessages landlord />
         )}
         {tab === "housing" && boardingAccess && resident && (
           <>
@@ -819,12 +831,20 @@ export default function ResidentDashboard({
           />
         )}
         {tab === "record" && resident && (
-          <RecordSummary
-            resident={resident}
-            categories={categories}
-            onEdit={onEdit}
-            onBack={() => navigateToTab("home")}
-          />
+          <>
+            <RecordSummary
+              resident={resident}
+              categories={categories}
+              onEdit={onEdit}
+              onBack={() => navigateToTab("home")}
+            />
+            <ResidentRecordHistory
+              key={resident.id}
+              residentId={resident.id}
+              refreshKey={resident.updated_at}
+              admin={false}
+            />
+          </>
         )}
 
         {tab === "home" && (

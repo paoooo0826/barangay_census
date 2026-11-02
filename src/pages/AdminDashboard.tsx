@@ -41,7 +41,11 @@ import type {
 } from "../types/database";
 import { BOARDING_OPTIONS, boardingStatusLabel } from "../lib/boarding";
 
-import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
+import {
+  navigateHash,
+  updateHashQuery,
+  useHashRoute,
+} from "../hooks/useHashRoute";
 
 interface Props {
   tab?: string | null;
@@ -68,6 +72,14 @@ type AdminTab =
   | "housing"
   | "account";
 const PAGE_SIZE = 8;
+const APPOINTMENT_PAGES = [
+  "appointments",
+  "accepted",
+  "completed",
+  "cancelled",
+  "rejected",
+  "history",
+];
 const PRIMARY_TABS: Array<{
   value: Exclude<AdminTab, "account">;
   label: string;
@@ -90,6 +102,31 @@ const PRIMARY_TABS: Array<{
   { value: "services", label: "Services", icon: FileSearch },
   { value: "payments", label: "Payments & Receipts", icon: Receipt },
   { value: "housing", label: "Boarding Houses", icon: Home },
+];
+const NAV_GROUPS = [
+  { label: "Dashboard", icon: LayoutDashboard, tabs: ["dashboard"] },
+  { label: "Residents", icon: Users, tabs: ["records", "analytics"] },
+  {
+    label: "Services & Appointments",
+    icon: CalendarDays,
+    tabs: [
+      "services",
+      "appointments",
+      "accepted",
+      "completed",
+      "cancelled",
+      "rejected",
+      "history",
+      "payments",
+      "legacy",
+    ],
+  },
+  { label: "Boarding Houses", icon: Home, tabs: ["housing", "messages"] },
+  {
+    label: "Community",
+    icon: BellRing,
+    tabs: ["announcements", "incidents", "feedback"],
+  },
 ];
 const STATUS_STYLES: Record<ResidentStatus, string> = {
   pending_review: "bg-amber-100 text-amber-800",
@@ -140,21 +177,22 @@ function AdminNavLinks({
 }) {
   return (
     <>
-      {PRIMARY_TABS.map((item) => {
-        const Icon = item.icon;
+      {NAV_GROUPS.map((group) => {
+        const Icon = group.icon;
+        const active = group.tabs.includes(activeTab);
         return (
           <a
-            key={item.value}
-            href={`#/admin/dashboard?tab=${item.value}`}
+            key={group.label}
+            href={`#/admin/dashboard?tab=${group.tabs[0]}`}
             onClick={() => {
               onSelect?.();
               window.scrollTo({ top: 0, left: 0, behavior: "instant" });
             }}
-            aria-current={activeTab === item.value ? "page" : undefined}
-            className={`nav-item ${activeTab === item.value ? "nav-item-active" : ""}`}
+            aria-current={active ? "page" : undefined}
+            className={`nav-item ${active ? "nav-item-active" : ""}`}
           >
             <Icon size={18} />
-            {item.label}
+            {group.label}
           </a>
         );
       })}
@@ -451,6 +489,69 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
         tabIndex={-1}
         className="mx-auto min-w-0 max-w-[1600px] space-y-6 px-4 py-8 outline-none sm:px-6 lg:ml-72 lg:px-8"
       >
+        {NAV_GROUPS.filter(
+          (group) => group.tabs.length > 1 && group.tabs.includes(activeTab),
+        ).map((group) => (
+          <section
+            key={group.label}
+            className="rounded-2xl border border-slate-200 bg-white p-4"
+          >
+            <h2 className="mb-3 text-sm font-bold text-slate-700">
+              {group.label}
+            </h2>
+            <nav
+              aria-label={`${group.label} sections`}
+              className="flex flex-wrap gap-2"
+            >
+              {(group.label === "Services & Appointments"
+                ? ["services", "appointments", "payments", "legacy"]
+                : group.tabs
+              ).map((value) => {
+                const item = PRIMARY_TABS.find((tab) => tab.value === value)!;
+                const active =
+                  activeTab === value ||
+                  (value === "appointments" &&
+                    APPOINTMENT_PAGES.includes(activeTab));
+                return (
+                  <a
+                    key={value}
+                    href={`#/admin/dashboard?tab=${value}`}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() =>
+                      window.scrollTo({ top: 0, left: 0, behavior: "instant" })
+                    }
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold ${active ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-pine-50"}`}
+                  >
+                    {value === "appointments"
+                      ? "Appointments"
+                      : value === "housing"
+                        ? "House Management"
+                        : item.label}
+                  </a>
+                );
+              })}
+            </nav>
+            {APPOINTMENT_PAGES.includes(activeTab) && (
+              <label className="label mt-4 block max-w-sm">
+                Appointment Page
+                <select
+                  className="input mt-2"
+                  value={activeTab}
+                  onChange={(event) => {
+                    navigateHash(`/admin/dashboard?tab=${event.target.value}`);
+                    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                  }}
+                >
+                  {APPOINTMENT_PAGES.map((value) => (
+                    <option key={value} value={value}>
+                      {PRIMARY_TABS.find((item) => item.value === value)!.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </section>
+        ))}
         {(error || (activeTab === "records" && recordError)) && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error || (activeTab === "records" ? recordError : null)}
