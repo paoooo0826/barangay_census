@@ -779,6 +779,283 @@ const incidentRow = {
     "Progress-note validation and conflict recovery have no runtime errors",
   );
   await t.close();
+  // Database pagination stays newest-first; only the admin's rendered batch is reversed.
+  const chatApi =
+    api +
+    `
+const chatFrom=supabase.from;
+supabase.from=table=>{
+ const q=chatFrom(table);if(table!=='boarding_messages')return q;
+ const order=q.order,then=q.then;
+ q.order=(field,options)=>{window.__chatOrders??=[];window.__chatOrders.push({field,...options});return order(field,options)};
+ q.then=resolve=>then(async result=>{
+  if(window.__chatHold)await new Promise(release=>window.__releaseChat=release);
+  return resolve(window.__chatError?{data:null,count:null,error:{message:'Messages temporarily unavailable'}}:result);
+ });return q;
+};
+const chatRpc=supabase.rpc;
+supabase.rpc=async(name,args)=>{
+ const result=await chatRpc(name,args);
+ if(name==='send_boarding_message'&&!result.error)window.__rows.boarding_messages.unshift({id:'sent',boarding_house_id:args.p_house_id,sender_user_id:'u0',sender_role:'admin',body:args.p_body,created_at:'2026-11-04T02:00:00Z'});
+ return result;
+};`;
+  const chatSetup = (w) => {
+    w.history.replaceState({}, "", "#/admin/dashboard?tab=messages");
+    w.__houses = ["h1", "h2", "h3"].map((id, i) => ({
+      id,
+      name: `Chat House ${i + 1}`,
+      owner_name: `Owner ${i + 1}`,
+      active: true,
+      unread_count: 0,
+    }));
+    w.__rows = {
+      boarding_messages: Array.from({ length: 25 }, (_, i) => ({
+        id: `m${25 - i}`,
+        boarding_house_id: "h1",
+        sender_user_id: i % 2 ? "u0" : "owner",
+        sender_role: i % 2 ? "admin" : "landlord",
+        body: `Message ${25 - i}`,
+        created_at: `2026-11-04T01:00:${String(25 - i).padStart(2, "0")}Z`,
+      })).concat([
+        {
+          id: "h2m",
+          boarding_house_id: "h2",
+          sender_user_id: "owner2",
+          sender_role: "landlord",
+          body: "Other house message",
+          created_at: "2026-11-04T03:00:00Z",
+        },
+      ]),
+    };
+    const positions = new WeakMap();
+    Object.defineProperties(w.HTMLElement.prototype, {
+      scrollHeight: {
+        configurable: true,
+        get() {
+          return this.getAttribute("aria-label") === "Conversation messages"
+            ? Math.max(300, this.querySelectorAll("article").length * 120)
+            : 0;
+        },
+      },
+      clientHeight: {
+        configurable: true,
+        get() {
+          return 300;
+        },
+      },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return positions.get(this) ?? 0;
+        },
+        set(value) {
+          positions.set(
+            this,
+            Math.min(value, Math.max(0, this.scrollHeight - this.clientHeight)),
+          );
+        },
+      },
+    });
+  };
+  t = await render(
+    `import A from './src/components/BoardingMessages';function Test(){return <A admin/>}`,
+    chatApi,
+    chatSetup,
+  );
+  const chat = () =>
+    t.w.document.querySelector('[aria-label="Conversation messages"]');
+  const bodies = () =>
+    [...chat().querySelectorAll("article p")].map((p) => p.textContent);
+  check(
+    bodies()[0] === "Message 6" &&
+      bodies().at(-1) === "Message 25" &&
+      bodies().length === 20,
+    "Admin opens the newest 20 messages in chronological display order",
+  );
+  check(
+    t.w.__chatOrders.every((order) => order.ascending === false) &&
+      t.w.__chatOrders.some((order) => order.field === "id"),
+    "Newest-first database pagination and stable tie-breaking are preserved",
+  );
+  check(
+    t.w.__rows.boarding_messages[0].id === "m25",
+    "Reversing admin display never mutates the query data",
+  );
+  check(
+    chat().scrollTop === chat().scrollHeight - chat().clientHeight,
+    "Admin conversation opens scrolled to the bottom",
+  );
+  check(
+    t.w.location.hash.includes("house=h1"),
+    "The initially opened admin conversation is pinned to its route",
+  );
+  check(
+    t.w.__calls
+      .filter((c) => c.name === "mark_boarding_conversation_read")
+      .at(-1).args.p_through === "2026-11-04T01:00:25Z",
+    "Admin marks through the newest fetched timestamp despite chronological rendering",
+  );
+  await t.tick(() => {
+    chat().scrollTop = 120;
+    chat().dispatchEvent(new t.w.Event("scroll"));
+    t.w.__chatHold = true;
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    bodies().length === 20 && chat().scrollTop === 120,
+    "Background reload retains rendered messages and reading position",
+  );
+  await t.tick(() => {
+    t.w.__chatHold = false;
+    t.w.__releaseChat();
+  });
+  check(
+    chat().scrollTop === 120,
+    "An unchanged refresh does not jump the conversation to the bottom",
+  );
+  await t.tick(() => {
+    t.w.__rows.boarding_messages.unshift({
+      id: "m26",
+      boarding_house_id: "h1",
+      sender_user_id: "owner",
+      sender_role: "landlord",
+      body: "New incoming message",
+      created_at: "2026-11-04T01:01:00Z",
+    });
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    bodies().at(-1) === "New incoming message" && chat().scrollTop === 120,
+    "Incoming messages appear at the bottom without interrupting a reader above it",
+  );
+  await t.tick(() => {
+    chat().scrollTop = chat().scrollHeight;
+    chat().dispatchEvent(new t.w.Event("scroll"));
+    t.w.__rows.boarding_messages.unshift({
+      id: "m27",
+      boarding_house_id: "h1",
+      sender_user_id: "owner",
+      sender_role: "landlord",
+      body: "Followed incoming message",
+      created_at: "2026-11-04T01:02:00Z",
+    });
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    bodies().at(-1) === "Followed incoming message" &&
+      chat().scrollTop === chat().scrollHeight - chat().clientHeight,
+    "A reader already at the bottom follows the newest incoming message",
+  );
+  const readCalls = t.w.__calls.filter(
+    (c) => c.name === "mark_boarding_conversation_read",
+  ).length;
+  await t.tick(() => button(t.w, "Next").click());
+  check(
+    bodies()[0] === "Message 1" && bodies().at(-1) === "Message 7",
+    "Older pages also display in chronological order",
+  );
+  check(
+    t.w.__calls.filter((c) => c.name === "mark_boarding_conversation_read")
+      .length === readCalls,
+    "Reading older history does not advance the newest-page read marker",
+  );
+  await t.tick(() => {
+    change(
+      t.w,
+      t.w.document.querySelector("textarea"),
+      "Please review the boarding house schedule.",
+    );
+    submit(t.w, t.w.document.querySelector("form"));
+  });
+  await t.tick();
+  check(
+    t.w.document.querySelector('[aria-current="page"]').textContent === "1" &&
+      bodies().at(-1) === "Please review the boarding house schedule.",
+    "Sending from an older page returns to the latest batch with the sent message last",
+  );
+  check(
+    chat().scrollTop === chat().scrollHeight - chat().clientHeight &&
+      t.w.document.querySelector("textarea").value === "",
+    "Sending scrolls to the bottom and clears the confirmed draft",
+  );
+  await t.tick(() => {
+    t.w.__houses.reverse();
+    t.w.dispatchEvent(new t.w.Event("focus"));
+  });
+  check(
+    t.w.document.querySelector("h3").textContent === "Chat House 1" &&
+      bodies().at(-1) === "Please review the boarding house schedule.",
+    "Conversation reordering during refresh cannot switch the selected admin thread",
+  );
+  await t.tick(() =>
+    [...t.w.document.querySelectorAll("aside button")]
+      .find((b) => b.textContent.includes("Chat House 2"))
+      .click(),
+  );
+  await t.tick();
+  check(
+    bodies().join("|") === "Other house message",
+    "Switching houses displays only the selected conversation",
+  );
+  check(
+    t.w.__calls
+      .filter((c) => c.name === "mark_boarding_conversation_read")
+      .filter((c) => c.args.p_house_id === "h2")
+      .every((c) => c.args.p_through === "2026-11-04T03:00:00Z"),
+    "Switching houses never applies the previous conversation timestamp to its read marker",
+  );
+  await t.tick(() => {
+    t.w.__chatError = true;
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    chat().textContent.includes("could not be loaded") &&
+      !chat().textContent.includes("Loading messages"),
+    "Failed message loading provides a recoverable error rather than an endless spinner",
+  );
+  await t.tick(() => {
+    t.w.__chatError = false;
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    bodies().join("|") === "Other house message",
+    "A failed conversation refresh can be retried successfully",
+  );
+  await t.tick(() =>
+    [...t.w.document.querySelectorAll("aside button")]
+      .find((b) => b.textContent.includes("Chat House 3"))
+      .click(),
+  );
+  await t.tick();
+  check(
+    chat().textContent.includes("No messages yet.") &&
+      !chat().querySelector("article"),
+    "An empty admin conversation has a useful empty state",
+  );
+  check(
+    t.errors.length === 0,
+    "Admin message ordering, pagination, scrolling and retries have no runtime errors",
+  );
+  await t.close();
+  t = await render(
+    `import A from './src/components/BoardingMessages';function Test(){return <A landlord/>}`,
+    chatApi,
+    chatSetup,
+  );
+  const landlordBodies = [...t.w.document.querySelectorAll("article p")].map(
+    (p) => p.textContent,
+  );
+  check(
+    landlordBodies[0] === "Message 25" &&
+      landlordBodies.at(-1) === "Message 6" &&
+      !t.w.document.querySelector('[aria-label="Conversation messages"]'),
+    "The admin-only change preserves the existing landlord panel ordering",
+  );
+  check(
+    t.errors.length === 0,
+    "The landlord panel still renders without runtime errors",
+  );
+  await t.close();
   console.log(
     `Community organization and workflow verification passed (${checks.length} checks).`,
   );

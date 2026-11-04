@@ -86,6 +86,20 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     };
   }, [loadHouses]);
   const houseId = house?.id;
+  const messageList = useRef<HTMLDivElement | null>(null);
+  const nearBottom = useRef(true),
+    scrollAfterSend = useRef(false);
+  const lastView = useRef<{
+    scope: string;
+    latestId?: string;
+    rows: Message[];
+  } | null>(null);
+  const scope = `${houseId ?? ""}:${page}`;
+  const [loadedScope, setLoadedScope] = useState("");
+  useEffect(() => {
+    if (admin && !requested && houses.length)
+      updateHashQuery({ house: houses[0].id }, true);
+  }, [admin, requested, houses]);
   const query = useCallback(
     (start: number, end: number) =>
       supabase
@@ -111,12 +125,52 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     setBody("");
     retry.current = null;
   }, [houseId]);
+  useEffect(() => {
+    if (!admin || !houseId || list.loading) return;
+    if (list.error) {
+      lastView.current = null;
+      return;
+    }
+    // A page/house change renders once with the previous query's rows. Wait for
+    // the new array before exposing those rows under the new conversation.
+    if (
+      lastView.current?.scope !== scope &&
+      lastView.current?.rows === list.rows
+    )
+      return;
+    setLoadedScope(scope);
+  }, [admin, houseId, list.loading, list.error, list.rows, scope]);
+  useEffect(() => {
+    if (
+      !admin ||
+      list.loading ||
+      list.error ||
+      loadedScope !== scope ||
+      !messageList.current
+    )
+      return;
+    const previous = lastView.current,
+      latestId = list.rows[0]?.id;
+    const opening = previous?.scope !== scope;
+    const hasNewMessage = previous?.latestId !== latestId;
+    if (
+      opening ||
+      (page === 1 &&
+        (scrollAfterSend.current || (hasNewMessage && nearBottom.current)))
+    ) {
+      messageList.current.scrollTop = messageList.current.scrollHeight;
+      nearBottom.current = true;
+      scrollAfterSend.current = false;
+    }
+    lastView.current = { scope, latestId, rows: list.rows };
+  }, [admin, list.loading, list.error, list.rows, loadedScope, scope, page]);
   // Mark only messages fetched on the newest page as read; loading older history must not swallow new unread messages.
   useEffect(() => {
     if (
       !houseId ||
       list.loading ||
       list.error ||
+      (admin && loadedScope !== scope) ||
       page !== 1 ||
       !list.rows.length ||
       document.hidden
@@ -141,7 +195,17 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     return () => {
       active = false;
     };
-  }, [houseId, list.rows, list.loading, list.error, page, loadHouses]);
+  }, [
+    houseId,
+    list.rows,
+    list.loading,
+    list.error,
+    page,
+    loadHouses,
+    admin,
+    loadedScope,
+    scope,
+  ]);
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (lock.current || !houseId || house?.can_send === false) return;
@@ -171,6 +235,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
           "Message was not confirmed. Retry without changing it.",
         );
       if (!mounted.current) return;
+      if (admin) scrollAfterSend.current = true;
       setBody("");
       retry.current = null;
       setPage(1);
@@ -246,7 +311,9 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                 {admin
                   ? `Landlord/Landlady: ${house.owner_name}`
                   : "Barangay Office"}{" "}
-                · Newest messages first
+                {admin
+                  ? "· Latest messages at the bottom"
+                  : "· Newest messages first"}
               </p>
               {house.can_send === false && (
                 <p
@@ -264,15 +331,43 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
               >
                 Refresh Messages
               </button>
-              <div className="my-4 space-y-3">
-                {list.loading ? (
+              <div
+                ref={messageList}
+                role={admin ? "region" : undefined}
+                aria-label={admin ? "Conversation messages" : undefined}
+                tabIndex={admin ? 0 : undefined}
+                onScroll={
+                  admin
+                    ? (event) => {
+                        const element = event.currentTarget;
+                        nearBottom.current =
+                          element.scrollHeight -
+                            element.clientHeight -
+                            element.scrollTop <=
+                          64;
+                      }
+                    : undefined
+                }
+                className={`my-4 space-y-3 ${admin ? "max-h-[60dvh] min-h-32 overflow-y-auto overscroll-contain pr-1" : ""}`}
+              >
+                {list.error ? (
+                  <p className="py-6 text-sm text-slate-500">
+                    Messages could not be loaded. Use Refresh Messages to try
+                    again.
+                  </p>
+                ) : (
+                    admin
+                      ? loadedScope !== scope ||
+                        (!list.rows.length && list.loading)
+                      : list.loading
+                  ) ? (
                   <p role="status">Loading messages…</p>
                 ) : !list.rows.length ? (
                   <p className="py-6 text-sm text-slate-500">
                     No messages yet.
                   </p>
                 ) : (
-                  list.rows.map((m) => (
+                  (admin ? [...list.rows].reverse() : list.rows).map((m) => (
                     <article
                       key={m.id}
                       className={`rounded-xl p-4 ${m.sender_user_id === user?.id ? "ml-5 bg-pine-50" : "mr-5 bg-slate-100"}`}
