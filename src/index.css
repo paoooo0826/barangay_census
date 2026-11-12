@@ -161,6 +161,11 @@
     @apply flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-pine-50 hover:text-pine-800;
   }
 
+  /* Keep keyboard focus inside the scrollable admin sidebar row. */
+  .admin-nav-item:focus-visible {
+    outline-offset: -2px;
+  }
+
   .nav-item-active {
     @apply bg-pine-100 text-pine-900;
     box-shadow: inset 3px 0 #34694f;

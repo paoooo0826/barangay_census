@@ -194,10 +194,10 @@ function AdminNavLinks({
               window.scrollTo({ top: 0, left: 0, behavior: "instant" });
             }}
             aria-current={active ? "page" : undefined}
-            className={`nav-item ${active ? "nav-item-active" : ""}`}
+            className={`nav-item admin-nav-item w-full min-w-0 ${active ? "nav-item-active" : ""}`}
           >
-            <Icon size={18} />
-            {group.label}
+            <Icon size={18} aria-hidden="true" />
+            <span className="min-w-0 break-words">{group.label}</span>
           </a>
         );
       })}
