@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { analyticsLabel } from "../lib/displayLabels";
 import {
   analyticsColors as colors,
@@ -95,7 +95,7 @@ function Donut({ chart }: { chart: AnalyticsChart }) {
                   onMouseEnter={() => setActive(row.label)}
                   onMouseLeave={() => setActive(null)}
                 >
-                  <title>{`${analyticsLabel(row.label)}: ${number.format(row.count)} (${((row.count / total) * 100).toFixed(1)}%)`}</title>
+                  <title>{`${analyticsLabel(row.label)}: ${number.format(row.count)} of ${number.format(total)} (${((row.count / total) * 100).toFixed(1)}%)`}</title>
                 </circle>
               );
             })}
@@ -129,7 +129,7 @@ function Donut({ chart }: { chart: AnalyticsChart }) {
               onFocus={() => setActive(row.label)}
               onBlur={() => setActive(null)}
               onClick={() => setActive(active === row.label ? null : row.label)}
-              aria-label={`${analyticsLabel(row.label)}: ${number.format(row.count)} ${chart.unit}, ${((row.count / total) * 100).toFixed(1)} percent`}
+              aria-label={`${analyticsLabel(row.label)}: ${number.format(row.count)} of ${number.format(total)} ${chart.unit}, ${((row.count / total) * 100).toFixed(1)} percent`}
             >
               <span
                 className="mt-1 h-2 w-2 shrink-0 rounded-sm"
@@ -210,6 +210,19 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
   );
   const [selected, setSelected] = useState<string | null>(null),
     [hidden, setHidden] = useState<string[]>([]);
+  const plot = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(320);
+  useEffect(() => {
+    const element = plot.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) =>
+      setWidth(Math.max(160, Math.floor(entry.contentRect.width))),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [months.length, hidden.length]);
+  const right = width - 42;
+  const span = right - 44;
   const id = useId(),
     month = selected && months.includes(selected) ? selected : months.at(-1);
   const visible = series.filter((s) => !hidden.includes(s.title));
@@ -224,11 +237,11 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
   const top = Math.ceil(maximum / 4) * 4;
   const x = (key: string) =>
     months.length === 1
-      ? 380
-      : 48 +
+      ? width / 2
+      : 44 +
         ((monthIndex(key) - monthIndex(months[0])) /
           Math.max(1, monthIndex(months.at(-1)!) - monthIndex(months[0]))) *
-          656;
+          span;
   const y = (count: number) => 198 - (count / top) * 162;
   return (
     <>
@@ -265,17 +278,18 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
       ) : (
         <>
           <div
-            className="max-w-full overflow-x-auto"
+            ref={plot}
+            className="min-w-0 max-w-full"
             role="region"
             aria-label="Monthly activity plot"
             tabIndex={0}
           >
             <svg
-              viewBox="0 0 740 235"
+              viewBox={`0 0 ${width} 235`}
               role="img"
               aria-labelledby={`${id}-title ${id}-description`}
-              className="mt-4 w-full min-w-[620px]"
-              style={{ minHeight: 180 }}
+              className="mt-4 block w-full"
+              style={{ height: 235 }}
             >
               <title id={`${id}-title`}>Monthly Activity</title>
               <desc id={`${id}-description`}>
@@ -285,8 +299,8 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
               {[0, 1, 2, 3, 4].map((i) => (
                 <g key={i}>
                   <line
-                    x1="48"
-                    x2="704"
+                    x1="44"
+                    x2={right}
                     y1={y((top / 4) * i)}
                     y2={y((top / 4) * i)}
                     stroke="#e2e7de"
@@ -357,7 +371,8 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
                   (_, i) =>
                     i === 0 ||
                     i === months.length - 1 ||
-                    (months.length > 3 &&
+                    (width >= 520 &&
+                      months.length > 3 &&
                       i % Math.ceil(months.length / 5) === 0 &&
                       i < months.length - 2),
                 )
@@ -376,14 +391,14 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
               {months.map((m, i) => (
                 <rect
                   key={m}
-                  x={i === 0 ? 48 : (x(months[i - 1]) + x(m)) / 2}
+                  x={i === 0 ? 44 : (x(months[i - 1]) + x(m)) / 2}
                   y="30"
                   width={Math.max(
                     8,
                     (i === months.length - 1
-                      ? 704
+                      ? right
                       : (x(m) + x(months[i + 1])) / 2) -
-                      (i === 0 ? 48 : (x(months[i - 1]) + x(m)) / 2),
+                      (i === 0 ? 44 : (x(months[i - 1]) + x(m)) / 2),
                   )}
                   height="168"
                   fill="transparent"
@@ -394,9 +409,6 @@ export function TrendPlot({ charts }: { charts: AnalyticsChart[] }) {
               ))}
             </svg>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500 md:hidden">
-            Swipe the chart to see all months. Inspect Month shows exact counts.
-          </p>
           <div className="mt-1 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs">
             <label className="font-semibold text-slate-600">
               Inspect Month
@@ -449,10 +461,14 @@ export function AnalyticsChartCard({
   chart,
   kind,
   className = "",
+  period,
+  asOf,
 }: {
   chart: AnalyticsChart;
   kind?: string;
   className?: string;
+  period?: string;
+  asOf?: string;
 }) {
   const total = chartRows(chart).reduce((sum, row) => sum + row.count, 0),
     view = kind ?? chart.kind;
@@ -467,7 +483,9 @@ export function AnalyticsChartCard({
             {chart.title}
           </h3>
           <p className="mt-1 text-[11px] text-slate-500">
-            {chart.period ? "Activity in selected period" : "Current totals"}
+            {chart.period
+              ? `Activity · ${period ?? "selected period"}`
+              : `Current totals${asOf ? ` · ${asOf}` : ""}`}
           </p>
         </div>
         {view !== "donut" && (
@@ -479,6 +497,19 @@ export function AnalyticsChartCard({
           </span>
         )}
       </div>
+      <p className="mt-3 text-xs leading-5 text-slate-600">
+        {total
+          ? `This breakdown shows ${number.format(total)} ${chart.unit} ${chart.period ? "in the selected activity period" : "in the current selection"}.`
+          : `No ${chart.unit} are recorded for this selection.`}
+        {total > 0 &&
+          view !== "trend" &&
+          (() => {
+            const largest = [...chartRows(chart)].sort(
+              (a, b) => b.count - a.count,
+            )[0];
+            return ` The largest group is ${analyticsLabel(largest.label)} (${number.format(largest.count)} of ${number.format(total)} ${chart.unit}).`;
+          })()}
+      </p>
       {chart.note && (
         <p className="mt-3 text-xs leading-5 text-slate-600">{chart.note}</p>
       )}
@@ -497,7 +528,13 @@ export function AnalyticsChartCard({
     </article>
   );
 }
-export function ActivityChartCard({ charts }: { charts: AnalyticsChart[] }) {
+export function ActivityChartCard({
+  charts,
+  period,
+}: {
+  charts: AnalyticsChart[];
+  period?: string;
+}) {
   if (!charts.length) return null;
   return (
     <article
@@ -510,13 +547,24 @@ export function ActivityChartCard({ charts }: { charts: AnalyticsChart[] }) {
             Monthly Activity Overview
           </h3>
           <p className="mt-1 text-[11px] text-slate-500">
-            Activity in selected period · Count per month
+            Activity · {period ?? "selected period"} · Count per month
           </p>
         </div>
         <span className="rounded-full bg-pine-50 px-2.5 py-1 text-[10px] font-semibold text-pine-700">
           Registrations, verifications & services
         </span>
       </div>
+      <p className="mt-3 text-xs leading-5 text-slate-600">
+        Counts by month in the selected activity period:{" "}
+        {charts
+          .map(
+            (chart) =>
+              `${number.format(chartRows(chart).reduce((sum, row) => sum + row.count, 0))} ${chart.unit}`,
+          )
+          .join(", ")}
+        . Select a month for exact counts; these measures describe different
+        activities and are not added together.
+      </p>
       <TrendPlot charts={charts} />
       <div className="grid gap-x-4 sm:grid-cols-2">
         {charts.map((chart) => (

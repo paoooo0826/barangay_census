@@ -1,3 +1,4 @@
+import type { CensusYear } from "./censusYears";
 export interface AnalyticsChart {
   section: string;
   title: string;
@@ -15,6 +16,7 @@ export interface AnalyticsData {
   postedPayments: number;
   charts: AnalyticsChart[];
   reportDate: string;
+  censusYears?: CensusYear[];
   verifiedResidents: number;
   legacyCompletions: number;
   insights: {
@@ -100,6 +102,25 @@ export function validAnalyticsData(value: unknown): value is AnalyticsData {
   if (!value || typeof value !== "object") return false;
   const data = value as AnalyticsData;
   return (
+    (data.censusYears == null ||
+      (Array.isArray(data.censusYears) &&
+        data.censusYears.every(
+          (row) =>
+            row &&
+            Number.isInteger(row.year) &&
+            row.year >= 1900 &&
+            (row.count === null ||
+              (Number.isSafeInteger(row.count) && row.count >= 0)) &&
+            ["complete", "partial", "unconfirmed", "missing"].includes(
+              row.coverage,
+            ) &&
+            row.age &&
+            typeof row.age === "object" &&
+            !Array.isArray(row.age) &&
+            Object.values(row.age).every(
+              (n) => Number.isSafeInteger(n) && n >= 0,
+            ),
+        ))) &&
     (data.verifiedResidents == null ||
       (Number.isFinite(data.verifiedResidents) &&
         data.verifiedResidents >= 0 &&

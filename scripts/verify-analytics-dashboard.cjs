@@ -19,7 +19,7 @@ const clone = () => JSON.parse(JSON.stringify(report));
 (async () => {
   const built = await esbuild.build({
     stdin: {
-      contents: `export * from './src/lib/analytics';`,
+      contents: `export * from './src/lib/analytics';export * from './src/lib/censusYears';export * from './src/lib/analyticsInsights';`,
       loader: "ts",
       resolveDir: path.resolve(__dirname, ".."),
     },
@@ -35,6 +35,91 @@ const clone = () => JSON.parse(JSON.stringify(report));
   );
   const { chartRows, monthlySeries, monthLabel, validAnalyticsData } =
     mod.exports;
+  const { censusYearChange, projectCensusYears } = mod.exports;
+  const year = (value, count, coverage = "complete") => ({
+    year: value,
+    count,
+    coverage,
+    age: {},
+  });
+  check(
+    censusYearChange(year(2024, 480), year(2025, 540)).percent === 12.5,
+    "Year-over-year changes use the previous year as the denominator",
+  );
+  check(
+    censusYearChange(year(2024, 0), year(2025, 10)).percent === null,
+    "A confirmed zero does not produce a percentage",
+  );
+  check(
+    censusYearChange(year(2024, null, "missing"), year(2025, 10)) === null,
+    "Missing years are never treated as zero",
+  );
+  check(
+    projectCensusYears(
+      [
+        year(2023, 400),
+        year(2024, 480),
+        year(2025, 540),
+        year(2026, 10, "partial"),
+      ],
+      2026,
+    )?.count === 680,
+    "Three consecutive complete years support a transparent linear projection",
+  );
+  check(
+    projectCensusYears(
+      [year(2023, 400), year(2024, 480, "unconfirmed"), year(2025, 540)],
+      2026,
+    ) === null,
+    "Unconfirmed coverage suppresses projection",
+  );
+  const { ageGroupChanges, observedMonthlyChange } = mod.exports;
+  const scenario = projectCensusYears(
+    [year(2023, 400), year(2024, 480), year(2025, 540)],
+    2026,
+  );
+  check(
+    scenario?.slope === 70 &&
+      scenario.scenarioLow === 660 &&
+      scenario.scenarioHigh === 700,
+    "Forecast scenarios repeat the two observed annual changes over the same horizon",
+  );
+  const movements = ageGroupChanges({ A: 8, B: 2 }, { B: 8, C: 2 });
+  check(
+    movements[0].label === "A" &&
+      movements[0].delta === -8 &&
+      movements.reduce((sum, row) => sum + row.delta, 0) === 0,
+    "Diagnostic contributions include disappearing categories and offsetting movement",
+  );
+  const monthly = {
+    section: "Activity",
+    title: "Service requests",
+    unit: "requests",
+    kind: "trend",
+    period: true,
+    rows: [
+      { label: "2026-08", count: 10 },
+      { label: "2026-09", count: 14 },
+      { label: "2026-10", count: 2 },
+    ],
+  };
+  check(
+    observedMonthlyChange(monthly, "2026-10-15", "", "")?.delta === 4,
+    "Monthly comparison excludes the current month",
+  );
+  check(
+    observedMonthlyChange(monthly, "2026-11-05", "", "2026-10-14")?.delta === 4,
+    "Monthly comparison excludes a month clipped by the filter",
+  );
+  check(
+    observedMonthlyChange(
+      { ...monthly, rows: [monthly.rows[0], monthly.rows[2]] },
+      "2026-11-05",
+      "",
+      "",
+    ) === null,
+    "Monthly comparisons never bridge a missing month",
+  );
   const chart = {
     section: "Activity",
     title: "Activity by Month",
@@ -118,7 +203,7 @@ const clone = () => JSON.parse(JSON.stringify(report));
     );
   check(
     t.w.document.querySelector("h2").textContent === "Barangay Analytics" &&
-      button(t.w, "Overview").getAttribute("aria-pressed") === "true",
+      button(t.w, "Descriptive").getAttribute("aria-pressed") === "true",
     "Analytics opens the new overview with the established barangay heading",
   );
   check(
@@ -208,23 +293,39 @@ const clone = () => JSON.parse(JSON.stringify(report));
         .outerHTML.includes("NaN"),
     "Timeline can restore a hidden series with valid chart geometry",
   );
+  const sectionNames = [
+    ...t.w.document.querySelectorAll(
+      '[aria-label="Analytics sections"] button',
+    ),
+  ].map((el) => el.textContent);
   check(
-    t.w.document
-      .querySelector('[aria-label="Analytics sections"]')
-      .querySelectorAll("button").length === 12,
-    "Overview and all eleven data sections remain available",
+    JSON.stringify(sectionNames) ===
+      JSON.stringify([
+        "Descriptive",
+        "Diagnostic",
+        "Predictive",
+        "Prescriptive",
+      ]),
+    "Four labeled analytics types are available",
   );
+  const group = (name) =>
+    t.tick(() => {
+      const select = t.w.document.querySelector(
+        '[aria-label="Statistics group"]',
+      );
+      select.value = name;
+      select.dispatchEvent(new t.w.Event("change", { bubbles: true }));
+    });
   for (const section of [...new Set(report.charts.map((c) => c.section))]) {
-    await t.tick(() => button(t.w, section).click());
+    await group(section);
     const expected = report.charts.filter((c) => c.section === section);
     check(
-      expected.every((c) => article(c.title)) &&
-        t.w.document.querySelectorAll("article[aria-label]").length ===
-          expected.length,
-      `The ${section} section retains every available statistic`,
+      expected.every((c) => article(c.title)),
+      `The ${section} group retains every available statistic`,
     );
   }
-  await t.tick(() => button(t.w, "Residents").click());
+  await group("Residents");
+
   check(
     article("Residents by Selected Category").textContent.includes(
       "category counts can exceed the resident total",
@@ -423,9 +524,7 @@ const clone = () => JSON.parse(JSON.stringify(report));
     "Undated records remain visible in exact data instead of becoming timeline points",
   );
   check(
-    !t.w.document
-      .querySelector('svg[viewBox="0 0 740 235"]')
-      .outerHTML.includes("NaN"),
+    !t.w.document.querySelector('svg[role="img"]').outerHTML.includes("NaN"),
     "A single recorded month has valid chart coordinates",
   );
   check(
@@ -442,6 +541,47 @@ const clone = () => JSON.parse(JSON.stringify(report));
       .textContent.includes("incomplete report") &&
       !t.w.document.querySelector('[aria-label="Analytics summary"]'),
     "An incomplete server response shows a retryable error without crashing",
+  );
+  await t.close();
+  t = await render(component, fixtureApi, (w) => {
+    w.__report = {
+      ...clone(),
+      censusYears: [
+        { ...year(2023, 400), age: { Adults: 390, Youth: 10 } },
+        { ...year(2024, 480), age: { Adults: 460, Youth: 20 } },
+        { ...year(2025, 540), age: { Adults: 525, Youth: 15 } },
+      ],
+    };
+  });
+  check(
+    t.w.document
+      .querySelector('[aria-label="Key findings"]')
+      ?.textContent.includes("recorded respondents"),
+    "Descriptive findings distinguish the cohort from the population",
+  );
+  await t.tick(() => button(t.w, "Diagnostic").click());
+  check(
+    t.w.document
+      .querySelector('[aria-label="Age group changes"]')
+      ?.textContent.includes("20 → 15"),
+    "Diagnostic displays declines as well as increases",
+  );
+  await t.tick(() => button(t.w, "Predictive").click());
+  check(
+    t.w.document.body.textContent.includes("660–700 submissions") &&
+      t.w.document.body.textContent.includes("not a confidence interval"),
+    "Predictive shows a labeled scenario range with its caveat",
+  );
+  await t.tick(() => button(t.w, "Prescriptive").click());
+  check(
+    t.w.document
+      .querySelector("details[open]")
+      ?.textContent.includes("How to check progress"),
+    "Prescriptive puts next steps and follow-up measures directly in view",
+  );
+  check(
+    t.errors.length === 0,
+    "All four analytics views render without runtime errors",
   );
   await t.close();
   console.log(

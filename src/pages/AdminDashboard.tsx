@@ -105,7 +105,8 @@ const PRIMARY_TABS: Array<{
 ];
 const NAV_GROUPS = [
   { label: "Dashboard", icon: LayoutDashboard, tabs: ["dashboard"] },
-  { label: "Residents", icon: Users, tabs: ["records", "analytics"] },
+  { label: "Residents", icon: Users, tabs: ["records"] },
+  { label: "Analytics", icon: Activity, tabs: ["analytics"] },
   {
     label: "Services & Appointments",
     icon: CalendarDays,
@@ -183,7 +184,11 @@ function AdminNavLinks({
         return (
           <a
             key={group.label}
-            href={`#/admin/dashboard?tab=${group.tabs[0]}`}
+            href={
+              group.tabs[0] === "analytics"
+                ? "#/admin/analytics"
+                : `#/admin/dashboard?tab=${group.tabs[0]}`
+            }
             onClick={() => {
               onSelect?.();
               window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -204,9 +209,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
   const { user, adminProfile } = useAuth();
   const route = useHashRoute();
   const activeTab = normalizeTab(
-    route.split("?")[0] === "/admin/dashboard"
-      ? new URLSearchParams(route.split("?")[1] ?? "").get("tab")
-      : tab,
+    route.split("?")[0] === "/admin/analytics"
+      ? "analytics"
+      : route.split("?")[0] === "/admin/dashboard"
+        ? new URLSearchParams(route.split("?")[1] ?? "").get("tab")
+        : tab,
   );
   const [summary, setSummary] = useState<AdminSummary>(EMPTY_ADMIN_SUMMARY);
   const summaryRequest = useRef(0);
@@ -678,7 +685,11 @@ export default function AdminDashboard({ tab, onLogout, onReview }: Props) {
                   return (
                     <a
                       key={action.label}
-                      href={`#/admin/dashboard?tab=${action.href}`}
+                      href={
+                        action.href === "analytics"
+                          ? "#/admin/analytics"
+                          : `#/admin/dashboard?tab=${action.href}`
+                      }
                       onClick={() =>
                         window.scrollTo({
                           top: 0,

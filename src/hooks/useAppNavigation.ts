@@ -15,7 +15,7 @@ function protectedPage(route: string, isAdmin: boolean) {
   return (
     /^\/resident\/(dashboard|census|register)$/.test(path) ||
     (isAdmin &&
-      (path === "/admin/dashboard" || /^\/admin\/review\/[^/]+$/.test(path)))
+      (path === "/admin/dashboard" || path === "/admin/analytics" || /^\/admin\/review\/[^/]+$/.test(path)))
   );
 }
 

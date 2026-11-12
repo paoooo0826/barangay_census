@@ -274,9 +274,13 @@ async function adminPageChecks() {
   );
   await tick(() => w.__tab("analytics"));
   check(w.document.body.textContent.includes("Residents by Registration Status"), "Analytics initially displays current resident status statistics");
-  await click(button("Demographics"));
+  check(w.document.querySelector('a[href="#/admin/analytics"][aria-current="page"]') &&
+    !w.document.querySelector('a[href="#/admin/dashboard?tab=records"][aria-current="page"]'),
+    "Analytics has an independent active admin navigation item");
+  const group = w.document.querySelector("select[aria-label='Statistics group']");
+  await tick(() => { group.value = "Demographics"; group.dispatchEvent(new w.Event("change", {bubbles:true})); });
   check(["Residents by Age Group", "Residents by Sex", "Residents by Civil Status"].every(s=>w.document.body.textContent.includes(s)), "Demographic section renders specific chart titles");
-  await click(button("Education and Work"));
+  await tick(() => { group.value = "Education and Work"; group.dispatchEvent(new w.Event("change", {bubbles:true})); });
   check(w.document.body.textContent.includes("Residents by Highest Education"), "Education statistics are organized in their own section");
   check(w.document.body.textContent.includes("Address groups are not verified household counts"), "Analytics explains the distinction between address groups and households");
   await tick(() => w.__tab("appointments"));

@@ -1,3 +1,5 @@
+import { DescriptiveFindings, MonthlyDiagnostic } from "./AnalyticsFindings";
+import CensusYearInsights from "./CensusYearInsights";
 import { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
@@ -18,28 +20,17 @@ import { ActivityChartCard, AnalyticsChartCard } from "./AnalyticsCharts";
 export { AnalyticsChartCard } from "./AnalyticsCharts";
 export type { AnalyticsChart } from "../lib/analytics";
 
-const sectionDescriptions: Record<string, string> = {
-  Residents: "Registration status and selected resident categories.",
-  Demographics: "Age, sex, civil status and other demographic distributions.",
-  "Education and Work":
-    "Education levels, enrolment status and reported occupation groups.",
-  "Housing and Residency":
-    "Housing arrangements, rent ranges, boarding roles and current residency.",
-  Boarders:
-    "Boarding-house activity and recorded stays. Aggregate counts only.",
-  Verification: "ID and live verification coverage and review recommendations.",
-  "Services and Appointments":
-    "Service demand, saved fees and appointment outcomes.",
-  Activity: "Registrations, verifications and service activity over time.",
-  "Community Reports":
-    "Written feedback, incident reports and message activity.",
-  Payments: "Payment records in the selected activity period.",
-  Announcements: "Publication states, priority and intended audiences.",
-};
 const overviewTitles = [
   "Residents by Registration Status",
   "Residents by Sex",
   "Appointments by Status",
+];
+const findingTitles = [
+  "Residents by Age Group",
+  "Residents by Sex",
+  "Residents by Civil Status",
+  "Residents by Highest Education",
+  "Service Requests by Type",
 ];
 const activityTitles = [
   "Resident Registrations by Month",
@@ -49,8 +40,28 @@ const activityTitles = [
 ];
 function PlanningNotes({ insights }: { insights: AnalyticsData["insights"] }) {
   if (!insights.length) return null;
+  const ordered = [...insights].sort(
+    (a, b) =>
+      Number(b.count > 0) - Number(a.count > 0) ||
+      Number(/Queue$/.test(b.title)) - Number(/Queue$/.test(a.title)),
+  );
+  const measures: Record<string, string> = {
+    "Census Review Queue":
+      "Track how many applications are reviewed and how many remain pending at the next review.",
+    "Accepted Service Queue":
+      "Track receipt-backed completions and the number still accepted at the next review.",
+    "Senior Program Planning":
+      "Confirm eligible residents before outreach, then track how many were contacted and served.",
+    "Youth Program Planning":
+      "Confirm eligible residents and compare program signups with available slots.",
+    "PWD Assistance Planning":
+      "Confirm assistance needs with residents and track which requests were addressed.",
+  };
   return (
-    <details className="rounded-2xl border border-pine-200 bg-pine-50/60 p-5">
+    <details
+      open
+      className="rounded-2xl border border-pine-200 bg-pine-50/60 p-5"
+    >
       <summary className="w-fit cursor-pointer rounded text-sm font-bold text-pine-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">
         Planning Notes{" "}
         <span className="ml-1 text-xs font-normal">({insights.length})</span>
@@ -60,7 +71,7 @@ function PlanningNotes({ insights }: { insights: AnalyticsData["insights"] }) {
         eligibility before planning services.
       </p>
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {insights.map((insight) => (
+        {ordered.map((insight) => (
           <article
             key={insight.title}
             className="rounded-xl border border-pine-100 bg-white p-4"
@@ -69,9 +80,8 @@ function PlanningNotes({ insights }: { insights: AnalyticsData["insights"] }) {
               <h3 className="text-sm font-bold">{insight.title}</h3>
               <span className="shrink-0 rounded-full bg-pine-50 px-2 py-1 text-xs font-bold text-pine-800">
                 {insight.denominator
-                  ? ((insight.count / insight.denominator) * 100).toFixed(1)
-                  : "0.0"}
-                %
+                  ? `${((insight.count / insight.denominator) * 100).toFixed(1)}%`
+                  : "No baseline"}
               </span>
             </div>
             <p className="mt-2 text-xl font-bold tabular-nums text-pine-800">
@@ -84,11 +94,18 @@ function PlanningNotes({ insights }: { insights: AnalyticsData["insights"] }) {
               {insight.interpretation}
             </p>
             <p className="mt-2 text-xs leading-5 text-slate-600">
-              {insight.count === 0
-                ? "No matching records in this cohort. Confirm data coverage before drawing conclusions. "
-                : ""}
-              {insight.suggestion}
+              <strong>Next step: </strong>
+              {insight.count > 0
+                ? insight.suggestion
+                : "Check the filter and record coverage before assigning follow-up. No matching records are shown."}
             </p>
+            {insight.count > 0 && (
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                <strong>How to check progress: </strong>
+                {measures[insight.title] ??
+                  "Record the baseline and compare it with the same measure after taking action."}
+              </p>
+            )}
           </article>
         ))}
       </div>
@@ -109,7 +126,7 @@ export default function AdminAnalytics({
   const [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
     [status, setStatus] = useState("all"),
-    [section, setSection] = useState("Overview"),
+    [section, setSection] = useState("Descriptive"),
     [reload, setReload] = useState(0);
   const generation = useRef(0),
     filterKey = JSON.stringify([from, to, status]);
@@ -162,11 +179,12 @@ export default function AdminAnalytics({
       window.clearInterval(timer);
     };
   }, [from, to, status, filterKey, refreshKey, reload]);
-  const sections = [
+  const sections = ["Descriptive", "Diagnostic", "Predictive", "Prescriptive"];
+  const activeSection = section;
+  const [category, setCategory] = useState("Overview");
+  const categories = [
     ...new Set((data?.charts ?? []).map((chart) => chart.section)),
   ];
-  const activeSection =
-    section === "Overview" || sections.includes(section) ? section : "Overview";
   const byTitle = new Map(
     (data?.charts ?? []).map((chart) => [chart.title, chart]),
   );
@@ -174,7 +192,7 @@ export default function AdminAnalytics({
     byTitle.has(title) ? [byTitle.get(title)!] : [],
   );
   const selectedCharts = (data?.charts ?? []).filter(
-    (chart) => chart.section === activeSection,
+    (chart) => chart.section === category,
   );
   const verified =
     data?.verifiedResidents ??
@@ -188,7 +206,7 @@ export default function AdminAnalytics({
       : "All recorded dates";
   return (
     <section className="space-y-5" aria-label="Barangay analytics dashboard">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div>
           <p className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-pine-600">
             <BarChart3 size={14} aria-hidden="true" />
@@ -202,8 +220,8 @@ export default function AdminAnalytics({
             community activity.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-right text-[11px] leading-5 text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[11px] leading-5 text-slate-500">
             Reporting Date
             <strong className="block font-semibold text-slate-700">
               {data?.reportDate || (error ? "Unavailable" : "Loading report")} ·
@@ -232,7 +250,7 @@ export default function AdminAnalytics({
             <input
               aria-label="Activity From"
               type="date"
-              className="input mt-1.5"
+              className="input mt-1.5 min-h-12 min-w-0 w-full"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
             />
@@ -242,7 +260,7 @@ export default function AdminAnalytics({
             <input
               aria-label="Activity Through"
               type="date"
-              className="input mt-1.5"
+              className="input mt-1.5 min-h-12 min-w-0 w-full"
               value={to}
               onChange={(e) => setTo(e.target.value)}
             />
@@ -251,7 +269,7 @@ export default function AdminAnalytics({
             Resident Status
             <select
               aria-label="Resident Status"
-              className="input mt-1.5"
+              className="input mt-1.5 min-h-12 min-w-0 w-full"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
@@ -289,8 +307,8 @@ export default function AdminAnalytics({
             {period}
           </span>
           <span>
-            Dates filter activity and collected payments. Current totals stay
-            unchanged.
+            Dates filter activity, annual submissions, and collected payments.
+            Current totals stay unchanged.
           </span>
           <span>
             Resident status filters resident and verification statistics.
@@ -333,7 +351,7 @@ export default function AdminAnalytics({
               {
                 label: "Verified Residents",
                 value: number.format(verified),
-                note: `${data.residentTotal ? ((verified / data.residentTotal) * 100).toFixed(1) : "0.0"}% of the selected resident cohort`,
+                note: `${data.residentTotal ? ((verified / data.residentTotal) * 100).toFixed(1) : "0.0"}% of the selected resident cohort (${number.format(verified)} of ${number.format(data.residentTotal)})`,
                 icon: CheckCircle2,
               },
               {
@@ -374,7 +392,7 @@ export default function AdminAnalytics({
             aria-label="Analytics sections"
             className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
           >
-            {["Overview", ...sections].map((name) => (
+            {sections.map((name) => (
               <button
                 key={name}
                 type="button"
@@ -399,82 +417,136 @@ export default function AdminAnalytics({
               </a>
             </p>
           )}
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">
-                {activeSection === "Overview"
-                  ? "Community at a Glance"
-                  : activeSection}
-              </h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {activeSection === "Overview"
-                  ? "Current resident and appointment totals, followed by activity in your selected period."
-                  : sectionDescriptions[activeSection]}
+          <h3 className="text-lg font-bold">{activeSection} Analytics</h3>
+          {activeSection === "Descriptive" && (
+            <>
+              <label className="label block max-w-sm">
+                Statistics group
+                <select
+                  className="input mt-1"
+                  aria-label="Statistics group"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  {["Overview", ...categories].map((name) => (
+                    <option key={name}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <DescriptiveFindings
+                charts={
+                  category === "Overview"
+                    ? data.charts.filter((chart) =>
+                        findingTitles.includes(chart.title),
+                      )
+                    : selectedCharts
+                }
+                data={data}
+                period={period}
+              />
+              {category === "Overview" ? (
+                <div className="space-y-4">
+                  <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {overviewTitles.flatMap((title) =>
+                      byTitle.has(title)
+                        ? [
+                            <AnalyticsChartCard
+                              period={period}
+                              asOf={data.reportDate}
+                              key={title}
+                              chart={byTitle.get(title)!}
+                              kind="donut"
+                            />,
+                          ]
+                        : [],
+                    )}
+                  </div>
+                  <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]">
+                    <ActivityChartCard charts={activity} period={period} />
+                    {byTitle.has("Service Requests by Type") && (
+                      <AnalyticsChartCard
+                        period={period}
+                        asOf={data.reportDate}
+                        chart={byTitle.get("Service Requests by Type")!}
+                      />
+                    )}
+                  </div>
+                  <div className="grid items-stretch gap-4 lg:grid-cols-2">
+                    {[
+                      "Residents by Age Group",
+                      "Residents by Selected Category",
+                    ].flatMap((title) =>
+                      byTitle.has(title)
+                        ? [
+                            <AnalyticsChartCard
+                              period={period}
+                              asOf={data.reportDate}
+                              key={title}
+                              chart={byTitle.get(title)!}
+                            />,
+                          ]
+                        : [],
+                    )}
+                  </div>
+                  {!data.charts.length && (
+                    <p className="rounded-2xl border bg-white p-6 text-sm text-slate-500">
+                      No analytics records are available yet. Statistics will
+                      appear as records are added.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid items-stretch gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                  {selectedCharts.map((chart) => (
+                    <AnalyticsChartCard
+                      period={period}
+                      asOf={data.reportDate}
+                      key={chart.title}
+                      chart={chart}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {(activeSection === "Diagnostic" ||
+            activeSection === "Predictive") && (
+            <CensusYearInsights
+              years={
+                status === "all" || status === "verified"
+                  ? (data.censusYears ?? [])
+                  : []
+              }
+              period={period}
+              reportYear={Number(data.reportDate?.slice(0, 4))}
+              diagnostic={activeSection === "Diagnostic"}
+              filtered={Boolean(from || to || status !== "all")}
+            />
+          )}
+          {activeSection === "Diagnostic" && (
+            <MonthlyDiagnostic
+              charts={activity}
+              reportDate={data.reportDate}
+              from={from}
+              to={to}
+            />
+          )}
+          {activeSection === "Prescriptive" && (
+            <>
+              <p className="text-sm text-slate-600">
+                Actions below use the selected resident cohort or the explicitly
+                labeled current service queue. Area participation rates require
+                reliable eligible-resident counts, which are not recorded.
               </p>
-            </div>
-            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold text-slate-500">
-              Aggregate Data Only
-            </span>
-          </div>
-          {activeSection === "Overview" ? (
-            <div className="space-y-4">
-              <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {overviewTitles.flatMap((title) =>
-                  byTitle.has(title)
-                    ? [
-                        <AnalyticsChartCard
-                          key={title}
-                          chart={byTitle.get(title)!}
-                          kind="donut"
-                        />,
-                      ]
-                    : [],
-                )}
-              </div>
-              <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]">
-                <ActivityChartCard charts={activity} />
-                {byTitle.has("Service Requests by Type") && (
-                  <AnalyticsChartCard
-                    chart={byTitle.get("Service Requests by Type")!}
-                  />
-                )}
-              </div>
-              <div className="grid items-start gap-4 lg:grid-cols-2">
-                {[
-                  "Residents by Age Group",
-                  "Residents by Selected Category",
-                ].flatMap((title) =>
-                  byTitle.has(title)
-                    ? [
-                        <AnalyticsChartCard
-                          key={title}
-                          chart={byTitle.get(title)!}
-                        />,
-                      ]
-                    : [],
-                )}
-              </div>
-              {!data.charts.length && (
-                <p className="rounded-2xl border bg-white p-6 text-sm text-slate-500">
-                  No analytics records are available yet. Statistics will appear
-                  as records are added.
+              {(data.insights ?? []).length ? (
+                <PlanningNotes insights={data.insights} />
+              ) : (
+                <p>
+                  No evidence-backed actions are available for this selection.
                 </p>
               )}
-            </div>
-          ) : (
-            <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-              {selectedCharts.map((chart) => (
-                <AnalyticsChartCard key={chart.title} chart={chart} />
-              ))}
-            </div>
+            </>
           )}
-          <PlanningNotes
-            insights={(data.insights ?? []).filter(
-              (insight) =>
-                activeSection === "Overview" ||
-                insight.section === activeSection,
-            )}
-          />
           <details className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500">
             <summary className="w-fit cursor-pointer rounded font-semibold text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">
               About These Statistics & Data Quality

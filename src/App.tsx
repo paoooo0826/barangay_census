@@ -44,7 +44,13 @@ export default function App() {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const handleLogout = useCallback(() => setConfirmLogout(true), []);
   const { route, navigate, goBack, registerNavigationGuard, clearHistory } =
-    useAppNavigation(userId, loading, isActiveAdmin, handleLogout, isPasswordReset);
+    useAppNavigation(
+      userId,
+      loading,
+      isActiveAdmin,
+      handleLogout,
+      isPasswordReset,
+    );
   const [sessionNotice, setSessionNotice] = useState(
     () => sessionStorage.getItem("barangay:session-notice") ?? "",
   );
@@ -71,7 +77,10 @@ export default function App() {
     path === "/resident/register" ||
     path === "/resident/census" ||
     path === "/resident/dashboard";
-  const adminProtected = path === "/admin/dashboard" || Boolean(reviewMatch);
+  const adminProtected =
+    path === "/admin/dashboard" ||
+    path === "/admin/analytics" ||
+    Boolean(reviewMatch);
   const loggedInOnLoginPage =
     Boolean(user) && (path === "/resident" || path === "/admin");
   const routeKey = `${userId ?? ""}:${path}`;
@@ -151,7 +160,9 @@ export default function App() {
     try {
       const { error } = await signOut();
       if (error) {
-        setLogoutError(error.message || "Unable to sign out. Please try again.");
+        setLogoutError(
+          error.message || "Unable to sign out. Please try again.",
+        );
         return;
       }
       clearHistory();
@@ -355,10 +366,14 @@ export default function App() {
     );
   } else if (path === "/admin/setup") {
     page = <AdminSetup onNavigate={navigate} />;
-  } else if (path === "/admin/dashboard") {
+  } else if (path === "/admin/dashboard" || path === "/admin/analytics") {
     page = (
       <AdminDashboard
-        tab={new URLSearchParams(route.split("?")[1] ?? "").get("tab")}
+        tab={
+          path === "/admin/analytics"
+            ? "analytics"
+            : new URLSearchParams(route.split("?")[1] ?? "").get("tab")
+        }
         onLogout={() => void handleLogout()}
         onReview={(id) => navigate(`/admin/review/${id}`)}
       />
@@ -402,14 +417,38 @@ export default function App() {
       <div
         hidden={(idle.expiring || logoutPending) && Boolean(user)}
         inert={(idle.expiring || logoutPending) && Boolean(user)}
-        className={
-          user && (residentProtected || adminProtected) ? "pb-20" : undefined
-        }
       >
-        {userId && !loading && !isPasswordReset &&
-          (residentProtected || (adminProtected && isActiveAdmin)) ? (
-            <TermsGate key={userId} userId={userId} onLeave={handleLogout}>{page}</TermsGate>
-          ) : page}
+        {user &&
+          !loading &&
+          (residentProtected || adminProtected) &&
+          !logoutPending &&
+          !idle.expiring && (
+            <div
+              className={`mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-2 px-4 py-2 sm:px-6 ${path === "/admin/dashboard" || path === "/admin/analytics" ? "lg:pl-80" : ""}`}
+            >
+              <button
+                type="button"
+                onClick={goBack}
+                className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-pine-800 shadow-sm"
+                aria-label="Back to previous application page"
+              >
+                ← Back
+              </button>
+              {idle.secondsLeft !== null && (
+                <SessionTimer seconds={idle.secondsLeft} />
+              )}
+            </div>
+          )}
+        {userId &&
+        !loading &&
+        !isPasswordReset &&
+        (residentProtected || (adminProtected && isActiveAdmin)) ? (
+          <TermsGate key={userId} userId={userId} onLeave={handleLogout}>
+            {page}
+          </TermsGate>
+        ) : (
+          page
+        )}
       </div>
       {(idle.expiring || logoutPending) && user && (
         <div
@@ -421,25 +460,6 @@ export default function App() {
             : "Signing out…"}
         </div>
       )}
-      {user &&
-        !loading &&
-        (residentProtected || adminProtected) &&
-        !logoutPending &&
-        !idle.expiring && (
-          <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[45] flex items-end justify-between gap-3">
-            <button
-              type="button"
-              onClick={goBack}
-              className="pointer-events-auto rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-pine-800 shadow-sm"
-              aria-label="Back to previous application page"
-            >
-              ← Back
-            </button>
-            {idle.secondsLeft !== null && (
-              <SessionTimer seconds={idle.secondsLeft} />
-            )}
-          </div>
-        )}
       {idle.remaining !== null && !idle.expiring && !logoutPending && (
         <SessionWarning
           seconds={idle.remaining}
