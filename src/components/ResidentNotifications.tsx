@@ -19,6 +19,7 @@ import type {
 
 interface Props {
   residentId?: string | null;
+  showLandlordMessages?: boolean;
   onOpenAppointments: () => void;
   onOpenRecord: () => void;
   onOpenItem?: (category: NotificationCategory, id: string | null) => void;
@@ -58,6 +59,7 @@ function NotificationIcon({ category }: { category: NotificationCategory }) {
 
 export default function ResidentNotifications({
   residentId,
+  showLandlordMessages = false,
   onOpenAppointments,
   onOpenRecord,
   onOpenItem,
@@ -141,12 +143,19 @@ export default function ResidentNotifications({
     if (open) void loadNotifications();
   }, [loadNotifications, open]);
 
+  const activeFilter =
+    !showLandlordMessages && filter === "message" ? "all" : filter;
+  const availableFilters = showLandlordMessages
+    ? FILTERS
+    : FILTERS.filter((item) => item.value !== "message");
   const visible = useMemo(
     () =>
-      filter === "all"
-        ? notifications
-        : notifications.filter((item) => item.category === filter),
-    [filter, notifications],
+      notifications.filter(
+        (item) =>
+          (showLandlordMessages || item.category !== "message") &&
+          (activeFilter === "all" || item.category === activeFilter),
+      ),
+    [activeFilter, notifications, showLandlordMessages],
   );
 
   const markAllRead = async () => {
@@ -183,6 +192,7 @@ export default function ResidentNotifications({
   };
 
   const openRelatedPage = (notification: ResidentNotification) => {
+    if (notification.category === "message" && !showLandlordMessages) return;
     void supabase
       .rpc("mark_resident_notifications_read", {
         p_notification_ids: [notification.id],
@@ -236,12 +246,12 @@ export default function ResidentNotifications({
           </div>
 
           <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
-            {FILTERS.map((item) => (
+            {availableFilters.map((item) => (
               <button
                 type="button"
                 key={item.value}
                 onClick={() => setFilter(item.value)}
-                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${filter === item.value ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-600"}`}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${activeFilter === item.value ? "bg-pine-700 text-white" : "bg-slate-100 text-slate-600"}`}
               >
                 {item.label}
               </button>

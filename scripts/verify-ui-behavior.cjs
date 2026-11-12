@@ -673,8 +673,8 @@ async function render(source, api = "export const supabase = {};") {
   await adminBoarding.close();
   const boardingApi = `
     window.__saved={id:'r0',user_id:'u0',first_name:'Fixture',last_name:'Resident',tracking_number:'BC-2026-COMPLETE-LONG-TRACKING-NUMBER',status:'verified',boarding_status:'neither',birth_date:'1990-01-01',boarding_house_name:'Reported house',boarding_house_address:'Reported address',boarding_landlord_name:'Reported owner',boarding_start_date:'2026-01-01',boarding_tenant_count:3};
-    window.__boardingRequests=[];
-    export const supabase={rpc:async(name)=>({error:null,data:name==='boarding_count_summary'?{registered:{current:1,arrivals:1,departures:0},reported:window.__saved.boarding_status==='landlord'?{current:null,version:0,arrivals:0,departures:0,corrections:0}:null,can_manage:window.__saved.boarding_status==='landlord',events:[],history_total:0}:{items:[],unread_count:0,total:0}}),from(table){window.__boardingRequests.push(table);let filters=[];const q={select(){return q},eq(k,v){filters.push([k,v]);return q},order(){return q},limit(){return q},range(){return q},or(){return q},in(){return q},is(){return q},maybeSingle:async()=>({data:table==='residents'?{...window.__saved}:null,error:null}),then(resolve){let rows=table==='boarding_houses'?[{id:'h0',name:'Assigned house',address:'Assigned address',owner_user_id:'u0',owner_name:'Fixture landlord',active:true}]:table==='boarder_stays'?[{id:'s0',boarding_house_id:'h0',resident_id:'r0',resident_name:'Fixture Resident',tracking_number:window.__saved.tracking_number,move_in_date:'2026-01-01',status:'staying'}]:[];rows=rows.filter(r=>filters.every(([k,v])=>r[k]===v));return Promise.resolve({data:rows,error:null,count:rows.length}).then(resolve)}};return q},storage:{from:()=>({createSignedUrl:async()=>({data:null,error:null})})}};`;
+    window.__boardingRequests=[];window.__chatHouses=[];
+    export const supabase={rpc:async(name)=>({error:null,data:name==="boarding_conversations"?window.__chatHouses:name==='boarding_count_summary'?{registered:{current:1,arrivals:1,departures:0},reported:window.__saved.boarding_status==='landlord'?{current:null,version:0,arrivals:0,departures:0,corrections:0}:null,can_manage:window.__saved.boarding_status==='landlord',events:[],history_total:0}:{items:[],unread_count:0,total:0}}),from(table){window.__boardingRequests.push(table);let filters=[];const q={select(){return q},eq(k,v){filters.push([k,v]);return q},order(){return q},limit(){return q},range(){return q},or(){return q},in(){return q},is(){return q},maybeSingle:async()=>({data:table==='residents'?{...window.__saved}:null,error:null}),then(resolve){let rows=table==='boarding_houses'?[{id:'h0',name:'Assigned house',address:'Assigned address',owner_user_id:'u0',owner_name:'Fixture landlord',active:true}]:table==='boarder_stays'?[{id:'s0',boarding_house_id:'h0',resident_id:'r0',resident_name:'Fixture Resident',tracking_number:window.__saved.tracking_number,move_in_date:'2026-01-01',status:'staying'}]:[];rows=rows.filter(r=>filters.every(([k,v])=>r[k]===v));return Promise.resolve({data:rows,error:null,count:rows.length}).then(resolve)}};return q},storage:{from:()=>({createSignedUrl:async()=>({data:null,error:null})})}};`;
   const dashboard = await render(
     `import {createRoot} from 'react-dom/client';import ResidentDashboard from './src/pages/ResidentDashboard';const root=createRoot(document.getElementById('root'));window.__requestedTab='housing';window.__mount=()=>root.render(<ResidentDashboard tab={window.__requestedTab} onLogout={()=>{}} onEdit={()=>{}}/>);window.__unmount=()=>root.unmount();`,
     boardingApi,
@@ -740,6 +740,26 @@ async function render(source, api = "export const supabase = {};") {
   await dashboard.tick(() =>
     dashboard.w.dispatchEvent(new dashboard.w.Event("focus")),
   );
+  const messagesButton = () =>
+    [...bd.querySelectorAll("button")].find((el) => el.textContent.trim() === "Messages");
+  await dashboard.tick(() => {
+    dashboard.w.location.hash = "/resident/dashboard?tab=messages&house=h0";
+  });
+  await dashboard.tick();
+  check(
+    !messagesButton() &&
+      dashboard.w.location.hash === "#/resident/dashboard" &&
+      !dashboard.w.__boardingRequests.includes("boarding_messages"),
+    "A regular resident following a direct chat link is sent home without querying messages",
+  );
+  dashboard.w.__saved.boarding_status = "landlord";
+  await dashboard.tick(() => dashboard.w.dispatchEvent(new dashboard.w.Event("focus")));
+  check(!messagesButton(), "A landlord without a server-authorized conversation cannot see chat");
+  dashboard.w.__chatHouses = [{ id: "h0" }];
+  await dashboard.tick(() => dashboard.w.dispatchEvent(new dashboard.w.Event("focus")));
+  check(Boolean(messagesButton()), "An assigned landlord can see the Messages menu");
+  dashboard.w.__saved.boarding_status = "neither";
+  await dashboard.tick(() => dashboard.w.dispatchEvent(new dashboard.w.Event("focus")));
   const profileButton = [...bd.querySelectorAll("button")].find(
     (el) => el.textContent.trim() === "Profile",
   );
@@ -988,7 +1008,7 @@ async function render(source, api = "export const supabase = {};") {
   await appointmentTest.close();
 
   const notificationTest = await render(
-    `import {createRoot} from 'react-dom/client';import ResidentNotifications from './src/components/ResidentNotifications';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<ResidentNotifications residentId="r0" onOpenAppointments={()=>{}} onOpenRecord={()=>{}}/>);window.__unmount=()=>root.unmount();`,
+    `import {createRoot} from 'react-dom/client';import ResidentNotifications from './src/components/ResidentNotifications';const root=createRoot(document.getElementById('root'));window.__mount=(showLandlordMessages=false)=>root.render(<ResidentNotifications showLandlordMessages={showLandlordMessages} residentId="r0" onOpenAppointments={()=>{}} onOpenRecord={()=>{}}/>);window.__unmount=()=>root.unmount();`,
     `Object.defineProperty(document,'hidden',{configurable:true,value:false});window.__timers=new Map();window.setInterval=(fn)=>{window.__timers.set(1,fn);return 1};window.clearInterval=(id)=>window.__timers.delete(id);window.__notices=[];window.__reads=0;window.__pending=[];window.__defer=false;export const supabase={rpc:async()=>{window.__reads++;const items=[...window.__notices];const data={items,unread_count:items.filter(x=>!x.is_read).length,total:items.length};return window.__defer?new Promise(resolve=>window.__pending.push(()=>resolve({data,error:null}))):{data,error:null}}};`,
   );
   notificationTest.w.__notices = [
@@ -1052,6 +1072,32 @@ async function render(source, api = "export const supabase = {};") {
     notificationTest.w.document.body.textContent.includes("Latest response") &&
       !notificationTest.w.document.body.textContent.includes("Old response"),
     "A late notification response cannot overwrite newer data",
+  );
+  notificationTest.w.__defer = false;
+  notificationTest.w.__notices.push({
+    ...notificationTest.w.__notices[0],
+    id: "private",
+    title: "Private chat alert",
+    category: "message",
+  });
+  await notificationTest.tick(() => notificationTest.w.__timers.get(1)());
+  const hasNotificationText = (value) =>
+    notificationTest.w.document.body.textContent.includes(value);
+  check(
+    !hasNotificationText("Messages") &&
+      !hasNotificationText("Private chat alert") &&
+      hasNotificationText("Latest response"),
+    "Regular residents see neither the Messages filter nor any cached chat notification",
+  );
+  await notificationTest.tick(() => notificationTest.w.__mount(true));
+  check(
+    hasNotificationText("Messages") && hasNotificationText("Private chat alert"),
+    "The landlord can see the Messages filter and chat notification",
+  );
+  await notificationTest.tick(() => notificationTest.w.__mount(false));
+  check(
+    !hasNotificationText("Messages") && !hasNotificationText("Private chat alert"),
+    "Losing chat access immediately hides the filter and previously loaded chat notifications",
   );
   check(
     notificationTest.errors.length === 0,

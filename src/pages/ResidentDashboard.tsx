@@ -168,6 +168,7 @@ export default function ResidentDashboard({
   const userId = user?.id;
   const loadRequest = useRef(0);
   const [resident, setResident] = useState<Resident | null>(null);
+  const [chatAccount, setChatAccount] = useState<string | null>(null);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [categories, setCategories] = useState<ResidentCategoryView[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementView[]>([]);
@@ -218,9 +219,11 @@ export default function ResidentDashboard({
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   };
   const boardingAccess = canAccessBoarding(resident?.boarding_status);
+  const canUseLandlordChat =
+    !!userId && chatAccount === userId && resident?.boarding_status === "landlord";
   const tab =
     (selectedTab === "housing" && !boardingAccess) ||
-    (selectedTab === "messages" && resident?.boarding_status !== "landlord")
+    (selectedTab === "messages" && !canUseLandlordChat)
       ? "home"
       : selectedTab;
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -236,11 +239,10 @@ export default function ResidentDashboard({
     if (
       !loading &&
       ((!boardingAccess && selectedTab === "housing") ||
-        (selectedTab === "messages" &&
-          resident?.boarding_status !== "landlord"))
+        (selectedTab === "messages" && !canUseLandlordChat))
     )
       navigateHash("/resident/dashboard", true);
-  }, [boardingAccess, loading, selectedTab, resident?.boarding_status]);
+  }, [boardingAccess, canUseLandlordChat, loading, selectedTab]);
 
   const load = useCallback(
     async (manual = false) => {
@@ -256,9 +258,21 @@ export default function ResidentDashboard({
           .eq("user_id", userId)
           .maybeSingle();
         if (request !== loadRequest.current) return;
-        if (residentError) throw residentError;
+        if (residentError) {
+          setChatAccount(null);
+          throw residentError;
+        }
         const current = (residentRow ?? null) as Resident | null;
         setResident(current);
+        if (current?.boarding_status === "landlord") {
+          const { data, error } = await supabase.rpc("boarding_conversations", {});
+          if (request !== loadRequest.current) return;
+          setChatAccount(
+            !error && Array.isArray(data) && data.length > 0 ? userId : null,
+          );
+        } else {
+          setChatAccount(null);
+        }
         if (!current) {
           setRemarks([]);
           setCategories([]);
@@ -484,12 +498,9 @@ export default function ResidentDashboard({
             <ResidentNotifications
               key={`${resident?.id}:${resident?.boarding_status}`}
               residentId={resident?.id}
+              showLandlordMessages={canUseLandlordChat}
               onOpenItem={(category, id) => {
-                if (
-                  category === "message" &&
-                  resident?.boarding_status !== "landlord"
-                )
-                  return;
+                if (category === "message" && !canUseLandlordChat) return;
                 const destination =
                   category === "appointment"
                     ? "appointments"
@@ -588,7 +599,7 @@ export default function ResidentDashboard({
               label: "Incident Reports",
               icon: FileText,
             },
-            ...(resident?.boarding_status === "landlord"
+            ...(canUseLandlordChat
               ? [
                   {
                     value: "messages" as Tab,
@@ -673,7 +684,7 @@ export default function ResidentDashboard({
                   label: "Incident Reports",
                   icon: FileText,
                 },
-                ...(resident?.boarding_status === "landlord"
+                ...(canUseLandlordChat
                   ? [
                       {
                         value: "messages" as Tab,
@@ -783,7 +794,7 @@ export default function ResidentDashboard({
         {tab === "incidents" && (
           <CommunityCases key="incident" kind="incident" />
         )}
-        {tab === "messages" && resident?.boarding_status === "landlord" && (
+        {tab === "messages" && canUseLandlordChat && (
           <BoardingMessages landlord />
         )}
         {tab === "housing" && boardingAccess && resident && (
