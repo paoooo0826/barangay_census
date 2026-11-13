@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dashboardListRoute, navigateHash } from "./useHashRoute";
 
 function currentRoute() {
   const route = window.location.hash.slice(1) || "/";
@@ -50,6 +51,8 @@ export function useAppNavigation(
     window.history.state?.barangayGuard ?? null,
   );
   const restoring = useRef<number | null>(null);
+  const restoredRoute = useRef<string | null>(null);
+  const guardedDestination = useRef<string | null>(null);
   const request = useRef(0);
   const guard = useRef<(() => Promise<boolean>) | null>(null);
   const session = useRef({ userId, loading, isAdmin, onLogoutRequest });
@@ -79,8 +82,12 @@ export function useAppNavigation(
       const destination = currentRoute();
       const next = historyIndex() ?? index.current + 1;
       if (restoring.current !== null) {
-        if (next === restoring.current) restoring.current = null;
-        else if (event.type === "popstate") {
+        if (next === restoring.current) {
+          restoring.current = null;
+          const parent = restoredRoute.current;
+          restoredRoute.current = null;
+          if (parent) navigateHash(parent, true);
+        } else if (event.type === "popstate") {
           // A second fast Back can overtake the first history.go(). Recheck
           // the actual position after those browser events have settled.
           window.clearTimeout(recoveryTimer);
@@ -93,8 +100,13 @@ export function useAppNavigation(
         }
         return;
       }
+      if (event.type === "hashchange" && guardedDestination.current === destination)
+        return;
+      guardedDestination.current = null;
       const auth = session.current;
       const backwards = next < index.current;
+      const current = accepted.current;
+      const parent = dashboardListRoute(current);
       const boundary =
         window.history.state?.barangayBoundary === true &&
         window.history.state?.barangayGuard === auth.userId;
@@ -110,7 +122,8 @@ export function useAppNavigation(
         ++request.current;
         restoring.current = index.current;
         window.history.go(index.current - next);
-        auth.onLogoutRequest();
+        if (parent !== current) restoredRoute.current = parent;
+        else auth.onLogoutRequest();
         return;
       }
       if (destination === accepted.current) {
@@ -144,10 +157,19 @@ export function useAppNavigation(
         accept();
         return;
       }
-      // Keep the current form mounted until its existing draft guard finishes.
-      record(previous);
+      // A history traversal has already moved the browser, but the form stays
+      // mounted while its draft saves. Never overwrite the page we are returning to.
+      const sourceIndex = index.current;
+      const traversed = event.type === "popstate" && historyIndex() !== null;
+      if (traversed) guardedDestination.current = destination;
+      else record(previous);
       void guard.current().then((allowed) => {
-        if (pending === request.current && allowed) accept();
+        if (pending !== request.current) return;
+        if (allowed) accept();
+        else if (traversed && sourceIndex !== next) {
+          restoring.current = sourceIndex;
+          window.history.go(sourceIndex - next);
+        }
       });
     };
     // Same-URL boundary entries emit popstate without a hashchange.
@@ -201,7 +223,12 @@ export function useAppNavigation(
       )
       .sort((a, b) => b[0] - a[0])[0];
     if (previous) window.history.go(previous[0] - index.current);
-    else session.current.onLogoutRequest();
+    else {
+      const current = accepted.current;
+      const parent = dashboardListRoute(current);
+      if (parent !== current) navigateHash(parent, true);
+      else session.current.onLogoutRequest();
+    }
   }, []);
 
   const registerNavigationGuard = useCallback(
@@ -215,6 +242,8 @@ export function useAppNavigation(
     pages.current.clear();
     guardedUser.current = null;
     restoring.current = null;
+    restoredRoute.current = null;
+    guardedDestination.current = null;
     ++request.current;
     window.history.replaceState(stateFor(index.current), "");
   }, [stateFor]);

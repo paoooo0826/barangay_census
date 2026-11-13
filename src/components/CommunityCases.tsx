@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { usePagedQuery, searchPattern } from "../hooks/usePagedQuery";
-import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
+import { closeDashboardDetail, updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import {
   errorMessage,
@@ -290,7 +290,7 @@ export default function CommunityCases({
   }
   const close = () => {
     setSelected(null);
-    updateHashQuery({ item: null });
+    closeDashboardDetail();
   };
   return (
     <section className="space-y-5">
@@ -575,7 +575,7 @@ export default function CommunityCases({
           onPageChange={setPage}
         />
       )}
-      {selected && (
+      {selected && selected.id === item && (
         <CaseDetails
           key={selected.id}
           item={selected}

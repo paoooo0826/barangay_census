@@ -31,3 +31,35 @@ export function updateHashQuery(
   const search = params.toString();
   navigateHash(`${path}${search ? `?${search}` : ""}`, replace);
 }
+
+// Dashboard details share their parent route and retain the list's filters.
+export function dashboardListRoute(route: string) {
+  const [path, query = ""] = route.split("?");
+  if (path !== "/admin/dashboard" && path !== "/resident/dashboard")
+    return route;
+  const params = new URLSearchParams(query);
+  if (!params.has("item") && !params.has("appointment")) return route;
+  params.delete("item");
+  params.delete("appointment");
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+export function closeDashboardDetail() {
+  const route = currentRoute();
+  const parent = dashboardListRoute(route);
+  if (parent === route) return;
+  const { barangayIndex, barangayPages } = window.history.state ?? {};
+  // If the detail was opened from its list, go back to the original list
+  // entry. For deep links or cross-tab notifications, replace the detail.
+  if (
+    Array.isArray(barangayPages) &&
+    barangayPages.some(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry[0] === barangayIndex - 1 &&
+        entry[1] === parent,
+    )
+  ) window.history.back();
+  else navigateHash(parent, true);
+}

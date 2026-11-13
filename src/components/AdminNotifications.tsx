@@ -75,6 +75,37 @@ export default function AdminNotifications() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [load]);
+  const refreshFeed = useRef(load);
+  useEffect(() => {
+    refreshFeed.current = load;
+  }, [load]);
+  useEffect(() => {
+    let active = true;
+    const channel = supabase
+      .channel?.(`admin-landlord-notifications:${crypto.randomUUID()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "admin_notifications",
+          filter: "category=eq.landlord_message",
+        },
+        () => {
+          if (active) void refreshFeed.current();
+        },
+      )
+      .subscribe((status) => {
+        // Catch messages inserted while connecting or reconnecting.
+        if (active && status === "SUBSCRIBED") void refreshFeed.current();
+      });
+    if (!channel) return;
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
   async function mark(ids: string[] | null) {
     if (lock.current) return false;
     lock.current = true;
@@ -94,8 +125,8 @@ export default function AdminNotifications() {
       setBusy(false);
     }
   }
-  async function openItem(item: Event) {
-    if (!item.is_read) await mark([item.id]);
+  function openItem(item: Event) {
+    if (!item.is_read) void mark([item.id]);
     setOpen(false);
     const id = encodeURIComponent(item.entity_id);
     const destination =
@@ -171,7 +202,7 @@ export default function AdminNotifications() {
               key={item.id}
               type="button"
               disabled={busy}
-              onClick={() => void openItem(item)}
+              onClick={() => openItem(item)}
               className={`block w-full border-t p-3 text-left ${item.is_read ? "bg-white" : "bg-pine-50"}`}
             >
               <strong className="text-sm">{item.title}</strong>

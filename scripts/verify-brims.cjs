@@ -123,7 +123,10 @@ if (require.main === module)
   (async () => {
     let t = await render(
       `import A from './src/components/AdminNotifications';function Test(){return <A/>}`,
-      api,
+      api + `
+        supabase.channel=()=>({on(_type, filter, callback){window.__eventFilter=filter;window.__deliver=callback;return this},subscribe(callback){callback('SUBSCRIBED');return this}});
+        supabase.removeChannel=async()=>{window.__removed=true};
+      `,
       (w) => {
         w.__feed = {
           items: [
@@ -179,6 +182,42 @@ if (require.main === module)
     check(
       t.w.location.hash.includes("tab=incidents&item=case1"),
       "Admin incident notification opens its exact report",
+    );
+    await t.tick(() => {
+      t.w.__feed = {
+        items: [{
+          id: "landlord-alert",
+          category: "landlord_message",
+          entity_id: "house-42",
+          title: "New Landlord Message",
+          message: "New message for an assigned house",
+          is_read: false,
+          created_at: "2026-11-13T02:00:00Z",
+        }],
+        total: 1,
+        unread_count: 1,
+      };
+      t.w.__deliver();
+    });
+    const bell = t.w.document.querySelector('[aria-label="Admin notifications"]');
+    check(
+      t.w.__eventFilter.filter === "category=eq.landlord_message" &&
+        bell.textContent.trim() === "1",
+      "A landlord notification refreshes the closed admin bell without a manual reload",
+    );
+    await t.tick(() => bell.click());
+    await t.tick(() =>
+      [...t.w.document.querySelectorAll("button")]
+        .find((b) => b.textContent.includes("New Landlord Message"))
+        .click(),
+    );
+    check(
+      t.w.location.hash === "#/admin/dashboard?tab=messages&house=house-42" &&
+        t.w.__calls.some(
+          (c) => c.name === "mark_admin_notifications_read" &&
+            c.args.p_notification_ids?.includes("landlord-alert"),
+        ),
+      "Opening a landlord alert marks it read and opens the matching conversation",
     );
     check(
       t.errors.length === 0,

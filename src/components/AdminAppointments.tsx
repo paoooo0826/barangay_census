@@ -1,7 +1,7 @@
 import { requireRespectfulText } from "../lib/profanity";
 import { appointmentLabel } from "../lib/community";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
-import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
+import { closeDashboardDetail, updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -298,7 +298,7 @@ export default function AdminAppointments({
 
   const closeAppointment = () => {
     setSelectedAppointment(null);
-    updateHashQuery({ appointment: null });
+    closeDashboardDetail();
   };
   async function updateStatus(a: AdminAppointment, status: AppointmentStatus) {
     let adminNotes = a.admin_notes ?? null;
@@ -661,7 +661,7 @@ export default function AdminAppointments({
           )}
         </div>
       </section>
-      {selectedAppointment && (
+      {selectedAppointment && selectedAppointment.id === appointmentId && (
         <AdminAppointmentDetails
           appointment={selectedAppointment}
           onClose={closeAppointment}

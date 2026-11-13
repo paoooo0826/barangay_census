@@ -1,6 +1,6 @@
 import { requireRespectfulText } from "../lib/profanity";
 import { appointmentLabel } from "../lib/community";
-import { updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
+import { closeDashboardDetail, updateHashQuery, useHashRoute } from "../hooks/useHashRoute";
 import { navigateHash } from "../hooks/useHashRoute";
 import AppointmentPaymentPanel from "./AppointmentPaymentPanel";
 import { useDialogFocus } from "../hooks/useDialogFocus";
@@ -239,8 +239,9 @@ export default function ResidentAppointments({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<Appointment | null>(null);
+  const selectedAppointment = appointments.find(
+    (appointment) => appointment.id === requestedAppointment,
+  );
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -272,11 +273,6 @@ export default function ResidentAppointments({
         setAppointmentLoadError(null);
         const fresh = (data ?? []) as Appointment[];
         setAppointments(fresh);
-        setSelectedAppointment((current) =>
-          current
-            ? (fresh.find((item) => item.id === current.id) ?? null)
-            : null,
-        );
         setCancelTarget((current) =>
           current
             ? (fresh.find(
@@ -367,12 +363,6 @@ export default function ResidentAppointments({
     selectedService,
   ]);
 
-  useEffect(() => {
-    if (requestedAppointment) {
-      const found = appointments.find((a) => a.id === requestedAppointment);
-      if (found) setSelectedAppointment(found);
-    }
-  }, [requestedAppointment, appointments]);
   const counts = useMemo(
     () => ({
       upcoming: appointments.filter((appointment) =>
@@ -981,7 +971,7 @@ export default function ResidentAppointments({
                       <div className="flex flex-wrap gap-2 lg:shrink-0">
                         <button
                           type="button"
-                          onClick={() => setSelectedAppointment(appointment)}
+                          onClick={() => updateHashQuery({ appointment: appointment.id })}
                           className="inline-flex items-center justify-center gap-2 rounded-xl border border-pine-200 px-4 py-2.5 text-sm font-semibold text-pine-700 hover:bg-pine-50"
                         >
                           <Eye size={17} /> View Details
@@ -1018,17 +1008,13 @@ export default function ResidentAppointments({
       {selectedAppointment && (
         <AppointmentDetailsModal
           appointment={selectedAppointment}
-          onClose={() => {
-            setSelectedAppointment(null);
-            updateHashQuery({ appointment: null });
-          }}
+          onClose={closeDashboardDetail}
           onCancel={
             ["pending", "confirmed"].includes(selectedAppointment.status)
               ? () => {
                   setCancellationReason("");
                   setCancelTarget(selectedAppointment);
-                  setSelectedAppointment(null);
-                  updateHashQuery({ appointment: null });
+                  closeDashboardDetail();
                 }
               : undefined
           }

@@ -469,6 +469,67 @@ const button = (w, text) =>
     check(t.errors.length === 0, `${role}: boundary, refresh and logout flows have no runtime errors`);
     await t.close();
   }
+  for (const [role, tab, key] of [
+    ["admin", "feedback", "item"],
+    ["resident", "feedback", "item"],
+    ["admin", "incidents", "item"],
+    ["resident", "incidents", "item"],
+    ["admin", "appointments", "appointment"],
+    ["resident", "completed", "appointment"],
+  ]) {
+    const dashboard = `#/${role}/dashboard`;
+    const list = `${dashboard}?tab=${tab}`;
+    const detail = `${list}&${key}=example`;
+    t = await render(
+      `import {useAppNavigation} from './src/hooks/useAppNavigation';import {closeDashboardDetail} from './src/hooks/useHashRoute';function Test(){const {route,goBack}=useAppNavigation('user',false,${role === "admin"},()=>window.__logouts++,false);return <><output>{route}</output><button onClick={goBack}>Back</button><button onClick={closeDashboardDetail}>Close detail</button></>}`,
+      navigationApi,
+      w => w.history.replaceState({}, "", dashboard),
+    );
+    await t.tick(() => t.w.location.hash = list);
+    await t.tick(() => t.w.location.hash = detail);
+    await t.tick(() => button(t.w, "Close detail").click());
+    await t.tick();
+    check(t.w.location.hash === list, `${role} ${tab}: Close returns to the list`);
+    await t.tick(() => button(t.w, "Back").click());
+    await t.tick();
+    check(t.w.location.hash === dashboard && t.w.__logouts === 0, `${role} ${tab}: Back after closing does not reopen the detail`);
+    await t.tick(() => t.w.location.hash = list);
+    await t.tick(() => t.w.location.hash = detail);
+    await t.tick(() => t.w.history.back());
+    await t.tick();
+    check(t.w.location.hash === list && t.w.__logouts === 0, `${role} ${tab}: browser Back returns to the list`);
+    await t.close();
+  }
+
+  t = await render(
+    `import {useEffect} from 'react';import {useAppNavigation} from './src/hooks/useAppNavigation';function Test(){const {route,goBack,registerNavigationGuard}=useAppNavigation('user',false,false,()=>window.__logouts++,false);useEffect(()=>{if(route.includes('/census'))registerNavigationGuard(()=>new Promise(resolve=>{window.__draftChecks=(window.__draftChecks??0)+1;window.__resolveDraft=resolve}));return()=>registerNavigationGuard(null)},[route,registerNavigationGuard]);return <><output>{route}</output><button onClick={goBack}>Back</button></>}`,
+    navigationApi,
+    w => w.history.replaceState({}, "", "#/resident/dashboard?tab=profile"),
+  );
+  await t.tick(() => t.w.location.hash = "/resident/census?mode=edit");
+  await t.tick(() => button(t.w, "Back").click());
+  check(t.w.__draftChecks === 1 && t.w.document.querySelector("output").textContent.includes("/census"), "Census Back runs the draft guard once while keeping the form mounted");
+  await t.tick(() => t.w.__resolveDraft(false));
+  await t.tick();
+  check(t.w.location.hash === "#/resident/census?mode=edit", "A blocked census Back restores the form's history entry");
+  await t.tick(() => button(t.w, "Back").click());
+  await t.tick(() => t.w.__resolveDraft(true));
+  check(t.w.location.hash === "#/resident/dashboard?tab=profile" && t.w.document.querySelector("output").textContent.endsWith("tab=profile"), "A saved census draft returns to the original profile page");
+  await t.close();
+
+  for (const useBrowserBack of [false, true]) {
+    const list = "#/admin/dashboard?tab=feedback";
+    t = await render(
+      `import {useAppNavigation} from './src/hooks/useAppNavigation';function Test(){const {route,goBack}=useAppNavigation('admin',false,true,()=>window.__logouts++,false);return <><output>{route}</output><button onClick={goBack}>Back</button></>}`,
+      navigationApi,
+      w => w.history.replaceState({}, "", list + "&item=notification"),
+    );
+    await t.tick(() => useBrowserBack ? t.w.history.back() : button(t.w, "Back").click());
+    await t.tick();
+    check(t.w.location.hash === list && t.w.__logouts === 0, `Direct feedback link: ${useBrowserBack ? "browser" : "app"} Back returns to the list before offering logout`);
+    await t.close();
+  }
+
   t = await render(
     `import App from './src/App';function Test(){return <App/>}`,
     navigationApi,
