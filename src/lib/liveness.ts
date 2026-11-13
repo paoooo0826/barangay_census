@@ -1,14 +1,14 @@
 // Gesture thresholds are independent of the final ID-to-live face match.
 export const LIVENESS_LIMITS = {
-  smile: 0.5,
-  headTurnYaw: 0.085,
-  closerRatio: 1.2,
-  faceConfidence: 0.45,
+  smile: 0.4,
+  headTurnYaw: 0.07,
+  closerRatio: 1.14,
+  faceConfidence: 0.4,
   blinkPollMs: 75,
   gesturePollMs: 150,
   blinkCalibrationFrames: 4,
-  blinkCloseRatio: 0.76,
-  blinkReopenRatio: 0.9,
+  blinkCloseRatio: 0.81,
+  blinkReopenRatio: 0.88,
 } as const;
 
 export interface BlinkState {

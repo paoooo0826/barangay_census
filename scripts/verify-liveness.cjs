@@ -87,17 +87,17 @@ const check = (condition, label) => {
     );
   }
   check(
-    detectsSmile(0.55) && !detectsSmile(0.3) && !detectsSmile(NaN),
+    detectsSmile(0.42) && !detectsSmile(0.3) && !detectsSmile(NaN),
     "A moderate smile passes, while neutral/invalid expressions do not",
   );
   check(
-    detectsHeadTurn("turn_left", 0.095) &&
-      !detectsHeadTurn("turn_left", -0.095),
+    detectsHeadTurn("turn_left", 0.075) &&
+      !detectsHeadTurn("turn_left", -0.075),
     "A smaller left turn passes only in the correct direction",
   );
   check(
-    detectsHeadTurn("turn_right", -0.095) &&
-      !detectsHeadTurn("turn_right", 0.095),
+    detectsHeadTurn("turn_right", -0.075) &&
+      !detectsHeadTurn("turn_right", 0.075),
     "A smaller right turn passes only in the correct direction",
   );
   check(
@@ -111,8 +111,8 @@ const check = (condition, label) => {
     "Invalid head landmarks cannot pass a turn",
   );
   check(
-    detectsMoveCloser(0.121, 0.1) && !detectsMoveCloser(0.105, 0.1),
-    "A 20% increase in face area passes without requiring the previous absolute 18% frame coverage",
+    detectsMoveCloser(0.115, 0.1) && !detectsMoveCloser(0.105, 0.1),
+    "A 15% increase in face area passes without requiring the previous absolute 18% frame coverage",
   );
   for (const [area, baseline] of [
     [0.1, 0],
@@ -126,7 +126,7 @@ const check = (condition, label) => {
     );
   const guide = faceGuide(1280, 960),
     box = {
-      x: guide.x - guide.width * 0.03,
+      x: guide.x - guide.width * 0.08,
       y: guide.y + 20,
       width: guide.width * 0.6,
       height: guide.height * 0.7,

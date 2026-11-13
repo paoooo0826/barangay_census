@@ -635,7 +635,7 @@ async function livenessChecks() {
     w.__camera.actionsPassed().length === 0,
     "Static open eyes cannot pass the calibrated blink challenge",
   );
-  await frame([detection({ ear: 0.11 })]);
+  await frame([detection({ ear: 0.143 })]);
   await frame([]);
   await frame([detection()]);
   check(
@@ -644,51 +644,55 @@ async function livenessChecks() {
     "A missing face interrupts an unfinished close/reopen cycle",
   );
   for (let blink = 0; blink < 2; blink++) {
-    await frame([detection({ ear: 0.11 })]);
+    await frame([detection({ ear: 0.143 })]);
     await frame([detection()]);
   }
   check(
     w.__camera.actionsPassed()[0] === "blink_twice",
     "The real monitor accepts two blinks from naturally narrower eyes",
   );
-  await frame([detection({ yaw: -0.095 })]);
-  await frame([detection({ yaw: -0.095 })]);
+  await frame([detection({ yaw: -0.075 })]);
+  await frame([detection({ yaw: -0.075 })]);
   check(
     w.__camera.actionsPassed().length === 1,
     "Turning in the wrong direction cannot satisfy the next challenge",
   );
-  await frame([detection({ yaw: 0.095 })]);
-  await frame([detection({ yaw: 0.095 })]);
+  await frame([detection({ yaw: 0.075 })]);
+  await frame([detection({ yaw: 0.075 })]);
   check(
     w.__camera.actionsPassed().at(-1) === "turn_left",
     "A modest left turn now passes after two valid frames",
   );
-  await frame([detection({ yaw: -0.095 })]);
-  await frame([detection({ yaw: -0.095 })]);
+  await frame([detection({ yaw: -0.075 })]);
+  await frame([detection({ yaw: -0.075 })]);
   check(
     w.__camera.actionsPassed().at(-1) === "turn_right",
     "A modest right turn now passes after two valid frames",
   );
-  await frame([detection({ happy: 0.55 })]);
-  await frame([detection({ happy: 0.55 })]);
+  await frame([detection({ happy: 0.42 })]);
+  await frame([detection({ happy: 0.42 })]);
   check(
     w.__camera.actionsPassed().at(-1) === "smile",
     "A moderate smile now passes in the actual liveness monitor",
   );
   await frame([detection()]);
-  await frame([detection({ scale: 1.1 })]);
-  await frame([detection({ scale: 1.1 })]);
+  await frame([detection({ scale: 1.075 })]);
+  await frame([detection({ scale: 1.075 })]);
   check(
     w.__camera.actionsPassed().length === 5 &&
       w.__facePending.length === 1 &&
       w.__descriptorCalls === 1,
     "A smaller move closer completes gestures and runs descriptor comparison only for the final photo",
   );
+  w.__faceDistance = 0.575;
   await tick(() => w.__finishFace());
   await tick();
   check(
-    w.__camera.pending()?.matched === true && w.__verified.length === 0,
-    "Passing movements still requires explicit photo confirmation before saving",
+    w.__camera.pending()?.matched === false &&
+      w.__camera.pending()?.recommendation === "manual_review" &&
+      w.__camera.pending()?.verificationReason?.includes("inconclusive") &&
+      w.__verified.length === 0,
+    "A borderline comparison requires explicit confirmation and manual review without marking the face as matched",
   );
   await tick(() =>
     [...w.document.querySelectorAll("button")]

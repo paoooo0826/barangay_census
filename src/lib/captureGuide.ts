@@ -37,15 +37,15 @@ export function faceInsideGuide(box: Frame, width: number, height: number) {
   )
     return false;
   const guide = faceGuide(width, height);
-  const paddingX = guide.width * 0.06;
-  const paddingY = guide.height * 0.06;
+  const paddingX = guide.width * 0.1;
+  const paddingY = guide.height * 0.1;
   return (
     box.x >= Math.max(0, guide.x - paddingX) &&
     box.y >= Math.max(0, guide.y - paddingY) &&
     box.x + box.width <= Math.min(width, guide.x + guide.width + paddingX) &&
     box.y + box.height <= Math.min(height, guide.y + guide.height + paddingY) &&
-    box.width >= guide.width * 0.44 &&
-    box.height >= guide.height * 0.42
+    box.width >= guide.width * 0.39 &&
+    box.height >= guide.height * 0.37
   );
 }
 

@@ -67,6 +67,9 @@ const MODEL_URL =
   "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
 const MATCH_THRESHOLD = 0.55;
 const STRONG_MATCH_THRESHOLD = 0.45;
+const MAX_MANUAL_REVIEW_DISTANCE = 0.6;
+const MIN_ID_FACE_AREA = 0.018;
+const SMALL_ID_FACE_AREA = 0.025;
 
 const ACTION_LABELS: Record<LivenessAction, string> = {
   blink_twice: "Blink twice slowly",
@@ -201,6 +204,7 @@ export default function FaceIdentityVerification({
   const [actionIndex, setActionIndex] = useState(0);
   const [passed, setPassed] = useState<LivenessAction[]>([]);
   const [complete, setComplete] = useState(false);
+  const [needsManualReview, setNeedsManualReview] = useState(false);
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
   const [capturePreview, setCapturePreview] = useState("");
 
@@ -305,6 +309,7 @@ export default function FaceIdentityVerification({
     setActionIndex(0);
     setPassed([]);
     setComplete(false);
+    setNeedsManualReview(false);
     setCameraOpen(false);
     setPendingResult(null);
     setBusy(false);
@@ -356,15 +361,15 @@ export default function FaceIdentityVerification({
       const image = await sourceToImage(idFrontFile, idFrontPreview);
       if (!activeAttempt(attempt)) return;
       const pixelQuality = analyzePixels(image);
-      if (pixelQuality.brightness < 55)
+      if (pixelQuality.brightness < 45)
         throw new Error(
           "The ID image is too dark. Retake it in brighter, even lighting.",
         );
-      if (pixelQuality.brightness > 235)
+      if (pixelQuality.brightness > 242)
         throw new Error(
           "The ID image is overexposed. Retake it without strong glare.",
         );
-      if (pixelQuality.blurVariance < 45)
+      if (pixelQuality.blurVariance < 35)
         throw new Error(
           "The ID image appears blurry. Hold the camera steady and retake it.",
         );
@@ -384,7 +389,7 @@ export default function FaceIdentityVerification({
       setStatus("Checking the photograph on the ID…");
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
-        scoreThreshold: 0.5,
+        scoreThreshold: 0.45,
       });
       const faces = await faceapi
         .detectAllFaces(image, options)
@@ -401,7 +406,7 @@ export default function FaceIdentityVerification({
         const box = faces[0].detection.box;
         faceAreaRatio =
           (box.width * box.height) / (image.naturalWidth * image.naturalHeight);
-        if (faceAreaRatio < 0.025)
+        if (faceAreaRatio < MIN_ID_FACE_AREA)
           throw new Error(
             "The face on the ID is too small. Move closer or upload a higher-resolution ID photo.",
           );
@@ -720,7 +725,7 @@ export default function FaceIdentityVerification({
       );
       const options = new faceapi.TinyFaceDetectorOptions({
         inputSize: 608,
-        scoreThreshold: 0.55,
+        scoreThreshold: LIVENESS_LIMITS.faceConfidence,
       });
       const capturedFaces = await faceapi
         .detectAllFaces(canvas, options)
@@ -801,23 +806,30 @@ export default function FaceIdentityVerification({
       }
 
       const distance = faceapi.euclideanDistance(idDescriptor, liveDescriptor);
-      const similarityScore = Math.max(0, Math.min(100, (1 - distance) * 100));
-      const recommendation: FaceVerificationResult["recommendation"] =
-        documentCheck?.status !== "manual_review" &&
-        distance <= STRONG_MATCH_THRESHOLD
-          ? "match"
-          : distance <= MATCH_THRESHOLD
-            ? "manual_review"
-            : "retry";
-      const matched = distance <= MATCH_THRESHOLD;
-      if (!matched) {
-        setStatus(
-          "Face comparison did not pass. Retake the ID or repeat the live verification.",
-        );
+      if (
+        !Number.isFinite(distance) ||
+        distance < 0 ||
+        distance > MAX_MANUAL_REVIEW_DISTANCE
+      ) {
         throw new Error(
           "The live face is not sufficiently similar to the face on the ID. Please retry with better lighting and a front-facing position.",
         );
       }
+      const similarityScore = Math.max(0, Math.min(100, (1 - distance) * 100));
+      const matched = distance <= MATCH_THRESHOLD;
+      const reviewReasons = [
+        documentCheck?.status === "manual_review" ? documentCheck.reason : "",
+        idQuality.faceAreaRatio < SMALL_ID_FACE_AREA
+          ? "The ID photo is small. Compare the ID and live photo manually."
+          : "",
+        !matched
+          ? "The automated comparison was inconclusive. Compare the ID and live photo manually."
+          : "",
+      ].filter(Boolean);
+      const recommendation =
+        distance <= STRONG_MATCH_THRESHOLD && !reviewReasons.length
+          ? "match"
+          : "manual_review";
       stopCamera();
       setBusy(true);
       setStatus("Review the captured photo, then confirm or retake.");
@@ -831,10 +843,7 @@ export default function FaceIdentityVerification({
         recommendation,
         idQuality,
         verificationStatus: "passed",
-        verificationReason:
-          documentCheck?.status === "manual_review"
-            ? documentCheck.reason
-            : undefined,
+        verificationReason: reviewReasons.join(" ") || undefined,
         deviceType: deviceType(),
       });
       if (!activeAttempt(attempt)) return;
@@ -842,7 +851,7 @@ export default function FaceIdentityVerification({
       setStatus(
         recommendation === "match"
           ? "Strong face match. Awaiting administrator review."
-          : "Possible match. Administrator review is required.",
+          : "Administrator review is required. Confirm the photo to continue.",
       );
     } catch (caught) {
       if (!activeAttempt(attempt)) return;
@@ -1031,6 +1040,9 @@ export default function FaceIdentityVerification({
                           try {
                             await onVerified(pendingResult);
                             if (!activeAttempt(attempt)) return;
+                            setNeedsManualReview(
+                              pendingResult.recommendation === "manual_review",
+                            );
                             setPendingResult(null);
                             setComplete(true);
                             setCameraOpen(false);
@@ -1140,9 +1152,9 @@ export default function FaceIdentityVerification({
             )}
             {cameraUnavailable
               ? "Live verification skipped"
-              : idFaceAvailableRef.current
-                ? "Liveness and face comparison passed"
-                : "Liveness passed — manual ID review required"}
+              : needsManualReview
+                ? "Liveness passed — manual ID review required"
+                : "Liveness and face comparison passed"}
           </div>
           <p className="mt-1">
             {cameraUnavailable
