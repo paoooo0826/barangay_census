@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { inspectCaptureCrop } from "../lib/captureQuality";
 import * as faceapi from "face-api.js";
 import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
@@ -493,6 +494,7 @@ export default function FaceIdentityVerification({
         width: { ideal: 1280 },
         height: { ideal: 960 },
         aspectRatio: { ideal: 4 / 3 },
+        frameRate: { ideal: 20, max: 30 },
       },
       audio: false,
     });
@@ -537,6 +539,7 @@ export default function FaceIdentityVerification({
   ) {
     let index = 0;
     let consecutiveMatches = 0;
+    let missedFrames = 0;
 
     const wait = (milliseconds: number) =>
       new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -570,15 +573,18 @@ export default function FaceIdentityVerification({
         if (detections.length !== 1) {
           consecutiveMatches = 0;
           blinkRef.current = interruptBlink(blinkRef.current);
-          setError(
-            detections.length === 0
-              ? "No live face detected. Face the camera."
-              : "Multiple faces detected. Only the applicant should be visible.",
-          );
-          await wait(350);
+          missedFrames += 1;
+          if (missedFrames >= 3 || detections.length > 1)
+            setError(
+              detections.length === 0
+                ? "No live face detected. Face the camera."
+                : "Multiple faces detected. Only the applicant should be visible.",
+            );
+          await wait(150);
           continue;
         }
 
+        missedFrames = 0;
         setError("");
         const detection = detections[0];
         const landmarks = detection.landmarks;
@@ -587,7 +593,14 @@ export default function FaceIdentityVerification({
           consecutiveMatches = 0;
           blinkRef.current = interruptBlink(blinkRef.current);
           setError(
-            "Center your entire face inside the oval guide and move slightly back.",
+            box.x < 0 ||
+              box.y < 0 ||
+              box.x + box.width > video.videoWidth ||
+              box.y + box.height > video.videoHeight
+              ? "Part of your face is outside the frame. Move slightly back."
+              : box.width < video.videoWidth * 0.15
+                ? "Your face is too far away. Move a little closer."
+                : "Center your entire face inside the oval guide and move slightly back.",
           );
           setStatus("Waiting for correct face position...");
           await wait(300);
@@ -751,6 +764,16 @@ export default function FaceIdentityVerification({
           "Your face moved outside the guide before capture. Please restart verification.",
         );
       }
+      const quality = inspectCaptureCrop(
+        canvas,
+        capturedFaces[0].detection.box,
+      );
+      if (!quality.acceptable)
+        throw new Error(
+          quality.brightness < 35 || quality.brightness > 247
+            ? "The captured face needs more even lighting. Avoid strong glare and try again."
+            : "The captured face is too blurry. Hold the camera steady and retake the photo.",
+        );
       const liveDescriptor = capturedFaces[0].descriptor;
       const blob = await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(

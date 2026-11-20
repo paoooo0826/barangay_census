@@ -313,7 +313,7 @@ export default function AdminAppointments({
       }
       adminNotes = reason.trim();
       try {
-        requireRespectfulText(adminNotes);
+        requireRespectfulText(adminNotes, "Administrator notes");
       } catch (e) {
         setError(
           e instanceof Error ? e.message : "Revise the rejection reason.",

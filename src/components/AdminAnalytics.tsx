@@ -1,4 +1,5 @@
 import { DescriptiveFindings, MonthlyDiagnostic } from "./AnalyticsFindings";
+import PlanningAnalytics from "./PlanningAnalytics";
 import CensusYearInsights from "./CensusYearInsights";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -90,6 +91,24 @@ function PlanningNotes({ insights }: { insights: AnalyticsData["insights"] }) {
                 of {number.format(insight.denominator)}
               </span>
             </p>
+            <div
+              role="meter"
+              aria-label={insight.title}
+              aria-valuemin={0}
+              aria-valuemax={Math.max(1, insight.denominator)}
+              aria-valuenow={Math.min(
+                insight.count,
+                Math.max(1, insight.denominator),
+              )}
+              className="mt-3 h-2 overflow-hidden rounded bg-slate-100"
+            >
+              <div
+                className="h-full bg-pine-700"
+                style={{
+                  width: `${insight.denominator ? Math.min(100, (insight.count / insight.denominator) * 100) : 0}%`,
+                }}
+              />
+            </div>
             <p className="mt-2 text-xs leading-5 text-slate-600">
               {insight.interpretation}
             </p>
@@ -171,12 +190,35 @@ export default function AdminAnalytics({
     };
     void read();
     const timer = window.setInterval(() => {
-      if (!document.hidden) void read();
+      if (!document.hidden) setReload((n) => n + 1);
     }, 60000);
+    const refreshVisible = () => {
+      if (!document.hidden) setReload((n) => n + 1);
+    };
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    let debounce: number | undefined;
+    const channel = supabase
+      .channel?.(`analytics-revision:${crypto.randomUUID()}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "analytics_refresh_state" },
+        () => {
+          window.clearTimeout(debounce);
+          debounce = window.setTimeout(() => {
+            if (active && !document.hidden) setReload((n) => n + 1);
+          }, 400);
+        },
+      )
+      .subscribe();
     return () => {
       active = false;
       ++generation.current;
       window.clearInterval(timer);
+      window.clearTimeout(debounce);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [from, to, status, filterKey, refreshKey, reload]);
   const sections = ["Descriptive", "Diagnostic", "Predictive", "Prescriptive"];
@@ -509,8 +551,11 @@ export default function AdminAnalytics({
               )}
             </>
           )}
-          {(activeSection === "Diagnostic" ||
-            activeSection === "Predictive") && (
+          <PlanningAnalytics
+            section={activeSection}
+            refreshKey={`${refreshKey}:${reload}`}
+          />
+          {activeSection === "Diagnostic" && (
             <CensusYearInsights
               years={
                 status === "all" || status === "verified"

@@ -476,7 +476,7 @@ export default function AdminReview({
 
     const expectedUpdatedAt = data.resident.updated_at;
     try {
-      requireRespectfulText(remarkText);
+      requireRespectfulText(remarkText, "Review remarks");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Revise the review wording.");
       return;

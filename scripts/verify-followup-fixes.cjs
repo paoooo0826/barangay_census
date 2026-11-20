@@ -197,7 +197,7 @@ async function render(source, mock = "", cameraStub = false, options = {}) {
           getImageData(_x, _y, width, height) {
             const data = new w.Uint8ClampedArray(width * height * 4);
             for (let i = 0; i < data.length; i += 4) {
-              const value = (i / 4) % 2 === 0 ? 80 : 180;
+              const value = w.__flatCapture ? 120 : (i / 4) % 2 === 0 ? 80 : 180;
               data[i] = value;
               data[i + 1] = value;
               data[i + 2] = value;
@@ -726,6 +726,19 @@ async function livenessChecks() {
       w.document.body.textContent.includes("not sufficiently similar"),
     "Easier gestures do not let a mismatched ID/live face complete verification",
   );
+  await tick(() => w.__camera.reset());
+  await tick(() => { w.__opening = w.__camera.start(); });
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  await w.__opening;
+  await tick(() => {
+    w.__camera.seed(); w.__camera.seedFace();
+    w.__faceDistance = 0.2; w.__flatCapture = true;
+    w.__capture = w.__camera.capture();
+  });
+  await tick(() => w.__finishFace());
+  await w.__capture;
+  check(!w.__camera.pending() && w.__verified.length === 1 && w.document.body.textContent.includes('too blurry'), 'A blurry final photo cannot pass even when its face descriptor matches');
   await tick(() => w.__camera.reset());
   await tick(() => w.__unmount());
   check(

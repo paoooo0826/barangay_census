@@ -108,30 +108,9 @@ const incidentRow = {
     "Thank you for your assistance.",
   ])
     check(!hasProfanity(value), `Ordinary text is not blocked: ${value}`);
-  const migration = fs.readFileSync(
-    path.join(
-      root,
-      "supabase/migrations",
-      fs
-        .readdirSync(path.join(root, "supabase/migrations"))
-        .find((name) =>
-          name.endsWith(
-            "_grouped_admin_private_messages_incident_followups_update_feedback.sql",
-          ),
-        ),
-    ),
-    "utf8",
-  );
-  const sqlPattern =
-    "(^|[^a-z])(" +
-    terms
-      .map((word) => [...word].map((letter) => letter + "+").join(""))
-      .join("|") +
-    ")($|[^a-z])";
-  check(
-    migration.includes(sqlPattern),
-    "The database checker contains the exact same configured word list as the client",
-  );
+  const generated = require('./generate-profanity-sql.cjs').sql;
+  const migration = fs.readFileSync(path.join(root,'supabase/migrations/20261120124600_expanded_moderation.sql'),'utf8');
+  check(migration.startsWith(generated), "The database checker uses the generated central client word list");
   check(
     parseIncidentPin({ latitude: "", longitude: "", accuracy: null })
       .latitude === null,

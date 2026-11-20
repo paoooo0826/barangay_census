@@ -155,6 +155,9 @@ function Donut({ chart }: { chart: AnalyticsChart }) {
 function Bars({ chart }: { chart: AnalyticsChart }) {
   const rows = chartRows(chart),
     max = Math.max(1, ...rows.map((row) => row.count));
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const [active, setActive] = useState<string | null>(null);
+  const focused = rows.find((row) => row.label === active);
   return (
     <div
       className="mt-5 max-h-80 overflow-y-auto pr-1"
@@ -166,7 +169,11 @@ function Bars({ chart }: { chart: AnalyticsChart }) {
         {rows.map((row, i) => (
           <li
             key={row.label}
-            title={`${analyticsLabel(row.label)}: ${number.format(row.count)} ${chart.unit}`}
+            tabIndex={0}
+            onMouseEnter={() => setActive(row.label)}
+            onFocus={() => setActive(row.label)}
+            onClick={() => setActive(row.label)}
+            title={`${analyticsLabel(row.label)}: ${number.format(row.count)} of ${number.format(total)} ${chart.unit} (${total ? ((row.count / total) * 100).toFixed(1) : "0.0"}%)`}
           >
             <div className="mb-1.5 flex items-start justify-between gap-3 text-xs">
               <span className="min-w-0 break-words text-slate-600">
@@ -191,6 +198,13 @@ function Bars({ chart }: { chart: AnalyticsChart }) {
           </li>
         ))}
       </ul>
+      {focused && (
+        <p role="status" className="mt-3 rounded-lg bg-slate-50 p-2 text-xs">
+          {analyticsLabel(focused.label)}: {number.format(focused.count)} of{" "}
+          {number.format(total)} {chart.unit} (
+          {total ? ((focused.count / total) * 100).toFixed(1) : "0.0"}%)
+        </p>
+      )}
       <div
         className="mt-4 flex justify-between text-[10px] tabular-nums text-slate-500"
         aria-hidden="true"

@@ -428,6 +428,10 @@ export interface Database {
         Args: { p_document_id: string; p_agreed: boolean };
         Returns: Json;
       };
+      admin_planning_analytics: {
+        Args: { p_year: number; p_compare_year?: number | null; p_barangay?: string | null; p_census_year?: number | null; p_status?: string };
+        Returns: Json;
+      };
       admin_system_analytics: {
         Args: {
           p_from?: string | null;

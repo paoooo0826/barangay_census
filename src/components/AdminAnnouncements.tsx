@@ -346,8 +346,8 @@ export default function AdminAnnouncements({
     event.preventDefault();
     if (mutationLock.current || preparingImage || !validate()) return;
     try {
-      requireRespectfulText(title);
-      requireRespectfulText(message);
+      requireRespectfulText(title, "Announcement title");
+      requireRespectfulText(message, "Announcement text");
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Revise the announcement wording.",

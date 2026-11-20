@@ -451,7 +451,7 @@ export default function ResidentAppointments({
       return;
     }
     try {
-      requireRespectfulText(details);
+      requireRespectfulText(details, "Request details");
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Revise the appointment details.",
@@ -561,7 +561,7 @@ export default function ResidentAppointments({
     if (!cancelTarget) return;
     const reason = cancellationReason.trim();
     try {
-      requireRespectfulText(reason);
+      requireRespectfulText(reason, "Cancellation reason");
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Revise the cancellation reason.",

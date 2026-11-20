@@ -10,7 +10,9 @@ function check(value, label) {
 }
 const fixtureApi = `window.__calls=[];window.__report??=null;window.__pending=[];
 export const supabase={rpc:async(name,args)=>{
- window.__calls.push({name,args});const data=JSON.parse(JSON.stringify(window.__report));
+ window.__calls.push({name,args});
+ if(name==='admin_planning_analytics')return {data:{reportDate:'2026-11-20',generatedAt:'2026-11-20T12:00:00Z',civil:[],annual:window.__report?.censusYears??[],monthly:[],barangays:[],years:[2026],duplicateRecords:0,datedStays:0},error:null};
+ const data=JSON.parse(JSON.stringify(window.__report));
  if(window.__holdAnalytics)await new Promise(resolve=>window.__pending.push({args,resolve}));
  return window.__analyticsError?{data:null,error:{message:'Unable to load analytics test report'}}:{data,error:null};
 }};`;
@@ -360,9 +362,9 @@ const clone = () => JSON.parse(JSON.stringify(report));
   await t.tick(() => change(t.w, date, "2026-10-01"));
   await t.tick(() => change(t.w, through, "2026-10-31"));
   check(
-    t.w.__calls.at(-1).args.p_from === "2026-10-01" &&
-      t.w.__calls.at(-1).args.p_to === "2026-10-31" &&
-      t.w.__calls.at(-1).args.p_status === "all",
+    t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_from === "2026-10-01" &&
+      t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_to === "2026-10-31" &&
+      t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_status === "all",
     "Inclusive date inputs preserve the existing analytics RPC contract",
   );
   check(
@@ -386,8 +388,8 @@ const clone = () => JSON.parse(JSON.stringify(report));
   check(
     !date.value &&
       !through.value &&
-      t.w.__calls.at(-1).args.p_from === null &&
-      t.w.__calls.at(-1).args.p_to === null,
+      t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_from === null &&
+      t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_to === null,
     "Reset Filters restores the full-date view",
   );
   const status = t.w.document.querySelector('[aria-label="Resident Status"]');
@@ -396,7 +398,7 @@ const clone = () => JSON.parse(JSON.stringify(report));
     status.dispatchEvent(new t.w.Event("change", { bubbles: true }));
   });
   check(
-    t.w.__calls.at(-1).args.p_status === "verified",
+    t.w.__calls.filter(c=>c.name==='admin_system_analytics').at(-1).args.p_status === "verified",
     "Resident-status filtering remains server-side",
   );
   await t.tick(() => {
@@ -419,8 +421,8 @@ const clone = () => JSON.parse(JSON.stringify(report));
     "Failed analytics requests can be retried successfully",
   );
   check(
-    t.w.__calls.every((c) => c.name === "admin_system_analytics"),
-    "Charts use only the existing protected aggregate endpoint",
+    t.w.__calls.every((c) => ["admin_system_analytics","admin_planning_analytics"].includes(c.name)),
+    "Charts use only the protected aggregate endpoints",
   );
   check(
     t.errors.length === 0,
@@ -568,9 +570,9 @@ const clone = () => JSON.parse(JSON.stringify(report));
   );
   await t.tick(() => button(t.w, "Predictive").click());
   check(
-    t.w.document.body.textContent.includes("660–700 submissions") &&
-      t.w.document.body.textContent.includes("not a confidence interval"),
-    "Predictive shows a labeled scenario range with its caveat",
+    t.w.document.body.textContent.includes("Insufficient historical data for reliable forecasting") &&
+      t.w.document.body.textContent.includes("Forecast Details"),
+    "Predictive withholds an estimate when a held-out validation year is unavailable",
   );
   await t.tick(() => button(t.w, "Prescriptive").click());
   check(

@@ -180,7 +180,7 @@ export default function CommunityCases({
     let coordinates: ReturnType<typeof parseIncidentPin>;
     try {
       coordinates = parseIncidentPin(pin);
-      if (!incident) requireRespectfulText(description);
+      if (!incident) requireRespectfulText(description, "Feedback");
     } catch (e) {
       setError(errorMessage(e));
       return;
@@ -725,7 +725,7 @@ function CaseDetails({
     event.preventDefault();
     if (lock.current) return;
     try {
-      requireRespectfulText(response);
+      requireRespectfulText(response, "Response");
     } catch (e) {
       setError(errorMessage(e));
       return;
@@ -781,7 +781,7 @@ function CaseDetails({
       return;
     }
     try {
-      if (admin) requireRespectfulText(message);
+      if (admin) requireRespectfulText(message, "Progress update");
     } catch (e) {
       setError(errorMessage(e));
       return;

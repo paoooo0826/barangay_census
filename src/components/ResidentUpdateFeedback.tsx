@@ -56,7 +56,7 @@ export default function ResidentUpdateFeedback({
     try {
       if (clean.length < 3 || clean.length > 3000)
         throw new Error("Write feedback with 3 to 3000 characters.");
-      requireRespectfulText(clean);
+      requireRespectfulText(clean, "Update feedback");
     } catch (e) {
       setError(errorMessage(e));
       return;
