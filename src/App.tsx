@@ -147,7 +147,6 @@ export default function App() {
     logoutInFlight.current = true;
     setLogoutPending(true);
     setConfirmLogout(false);
-    const portal = activeAdminRef.current ? "/admin" : "/resident";
     const pending: Promise<unknown>[] = [];
     window.dispatchEvent(
       new CustomEvent("barangay:flush-drafts", { detail: pending }),
@@ -166,7 +165,7 @@ export default function App() {
         return;
       }
       clearHistory();
-      navigateHash(portal, true);
+      navigateHash("/", true);
     } catch {
       setLogoutError("Unable to sign out. Please try again.");
     } finally {

@@ -462,13 +462,24 @@ const button = (w, text) =>
     await t.tick(() => button(t.w, 'Log Out').click());
     check(t.w.__logouts === logoutCalls && t.w.document.body.textContent.includes('Signing out…') && !t.w.document.querySelector('[role=timer]'), `${role}: confirmed logout saves pending drafts before calling sign-out and hides protected controls`);
     await t.tick(() => saveDraft());
-    check(t.w.__logouts === logoutCalls + 1 && t.w.location.hash === `#/${role}` && !t.w.document.querySelector('[role=timer]') && !t.w.document.querySelector('[aria-label="Back to previous application page"]'), `${role}: confirmed logout clears the session and opens the correct login page`);
+    check(t.w.__logouts === logoutCalls + 1 && t.w.location.hash === "#/" && t.w.document.body.textContent.includes("Choose your portal") && !t.w.document.querySelector('[role=timer]') && !t.w.document.querySelector('[aria-label="Back to previous application page"]'), `${role}: confirmed logout clears the session and opens the portal-selection landing page`);
     await t.tick(() => t.w.history.back());
     await t.tick();
     check(!t.w.document.querySelector('[role=timer]') && !t.w.document.querySelector('[role=dialog]'), `${role}: Back after logout cannot reveal an authenticated dashboard`);
     check(t.errors.length === 0, `${role}: boundary, refresh and logout flows have no runtime errors`);
     await t.close();
   }
+  t = await render(
+    `import App from './src/App';function Test(){return <App/>}`,
+    navigationApi,
+    w => { w.__resident = true; w.history.replaceState({}, '', '#/resident/dashboard'); },
+    sessionAuth.replace("adminProfile:window.__resident?null:{is_active:true}", "adminProfile:{is_active:true}"),
+  );
+  await t.tick(() => t.w.document.querySelector('[aria-label="Back to previous application page"]').click());
+  await t.tick(() => button(t.w, 'Log Out').click());
+  check(t.w.location.hash === '#/' && t.w.document.body.textContent.includes('Choose your portal') && t.w.__logouts === 1, 'An admin-enabled account leaving the resident panel returns to portal selection instead of administrator login');
+  check(t.errors.length === 0, 'Cross-role resident logout has no runtime errors');
+  await t.close();
   for (const [role, tab, key] of [
     ["admin", "feedback", "item"],
     ["resident", "feedback", "item"],
