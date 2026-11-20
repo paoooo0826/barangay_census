@@ -365,13 +365,12 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                       className={`rounded-xl p-4 ${m.sender_user_id === user?.id ? "ml-5 bg-pine-50" : "mr-5 bg-slate-100"}`}
                     >
                       <strong className="text-sm">
-                        {m.sender_role === "landlord"
-                          ? house.owner_user_id &&
-                            house.owner_user_id !== m.sender_user_id
-                            ? "Previous Landlord/Landlady"
-                            : landlordName
-                          : m.sender_user_id === user?.id
-                            ? "You"
+                        {m.sender_user_id === house.owner_user_id
+                          ? landlordName
+                          : m.sender_role === "landlord"
+                            ? house.owner_user_id
+                              ? "Previous Landlord/Landlady"
+                              : landlordName
                             : "Barangay Administrator"}
                       </strong>
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm">

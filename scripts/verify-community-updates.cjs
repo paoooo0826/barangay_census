@@ -1109,6 +1109,49 @@ supabase.rpc=async(name,args)=>{
     "The landlord panel still renders without runtime errors",
   );
   await t.close();
+  for (const admin of [false, true]) {
+    for (const width of [390, 1280]) {
+      t = await render(
+        `import A from './src/components/BoardingMessages';function Test(){return <A admin={${admin}} landlord={${!admin}}/>}`,
+        chatApi,
+        (w) => {
+          chatSetup(w);
+          Object.defineProperty(w, "innerWidth", {
+            configurable: true,
+            value: width,
+          });
+          w.history.replaceState(
+            {},
+            "",
+            admin
+              ? "#/admin/dashboard?tab=messages"
+              : "#/resident/dashboard?tab=messages",
+          );
+          w.__houses[0].owner_user_id = "u0";
+          w.__rows.boarding_messages.forEach((m) => {
+            if (m.boarding_house_id === "h1") {
+              m.sender_user_id = "u0";
+              m.sender_role = "admin";
+            }
+          });
+        },
+      );
+      const labels = [
+        ...t.w.document.querySelectorAll(
+          '[aria-label="Conversation messages"] article strong',
+        ),
+      ].map((el) => el.textContent);
+      check(
+        labels.length === 20 && labels.every((label) => label === "Owner 1"),
+        `An admin-enabled landlord is identified by account rather than role (${admin ? "admin" : "landlord"} panel, ${width}px)`,
+      );
+      check(
+        !labels.includes("You") && t.errors.length === 0,
+        "The affected dual-role message history contains no You sender label or runtime errors",
+      );
+      await t.close();
+    }
+  }
   console.log(
     `Community organization and workflow verification passed (${checks.length} checks).`,
   );
