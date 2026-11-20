@@ -123,7 +123,8 @@ if (require.main === module)
   (async () => {
     let t = await render(
       `import A from './src/components/AdminNotifications';function Test(){return <A/>}`,
-      api + `
+      api +
+        `
         supabase.channel=()=>({on(_type, filter, callback){window.__eventFilter=filter;window.__deliver=callback;return this},subscribe(callback){callback('SUBSCRIBED');return this}});
         supabase.removeChannel=async()=>{window.__removed=true};
       `,
@@ -185,21 +186,25 @@ if (require.main === module)
     );
     await t.tick(() => {
       t.w.__feed = {
-        items: [{
-          id: "landlord-alert",
-          category: "landlord_message",
-          entity_id: "house-42",
-          title: "New Landlord Message",
-          message: "New message for an assigned house",
-          is_read: false,
-          created_at: "2026-11-13T02:00:00Z",
-        }],
+        items: [
+          {
+            id: "landlord-alert",
+            category: "landlord_message",
+            entity_id: "house-42",
+            title: "New Landlord Message",
+            message: "New message for an assigned house",
+            is_read: false,
+            created_at: "2026-11-13T02:00:00Z",
+          },
+        ],
         total: 1,
         unread_count: 1,
       };
       t.w.__deliver();
     });
-    const bell = t.w.document.querySelector('[aria-label="Admin notifications"]');
+    const bell = t.w.document.querySelector(
+      '[aria-label="Admin notifications"]',
+    );
     check(
       t.w.__eventFilter.filter === "category=eq.landlord_message" &&
         bell.textContent.trim() === "1",
@@ -214,7 +219,8 @@ if (require.main === module)
     check(
       t.w.location.hash === "#/admin/dashboard?tab=messages&house=house-42" &&
         t.w.__calls.some(
-          (c) => c.name === "mark_admin_notifications_read" &&
+          (c) =>
+            c.name === "mark_admin_notifications_read" &&
             c.args.p_notification_ids?.includes("landlord-alert"),
         ),
       "Opening a landlord alert marks it read and opens the matching conversation",
@@ -744,14 +750,12 @@ if (require.main === module)
           ]),
       );
       check(
-        admin
-          ? t.w.document.body.textContent.includes(
-              "Landlord/Landlady: Specific Owner",
-            )
-          : t.w.document.body.textContent.includes("Barangay Office") &&
-              !t.w.document.body.textContent.includes(
-                "Landlord/Landlady: Specific Owner",
-              ),
+        t.w.document.body.textContent.includes(
+          "Landlord/Landlady: Specific Owner",
+        ) &&
+          t.w.document.body.textContent.includes(
+            "Latest messages at the bottom",
+          ),
         `${admin ? "Admin" : "Landlord"} messages show the appropriate conversation partner`,
       );
       await t.close();

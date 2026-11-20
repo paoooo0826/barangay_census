@@ -108,9 +108,18 @@ const incidentRow = {
     "Thank you for your assistance.",
   ])
     check(!hasProfanity(value), `Ordinary text is not blocked: ${value}`);
-  const generated = require('./generate-profanity-sql.cjs').sql;
-  const migration = fs.readFileSync(path.join(root,'supabase/migrations/20261120124600_expanded_moderation.sql'),'utf8');
-  check(migration.startsWith(generated), "The database checker uses the generated central client word list");
+  const generated = require("./generate-profanity-sql.cjs").sql;
+  const migration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20261120124600_expanded_moderation.sql",
+    ),
+    "utf8",
+  );
+  check(
+    migration.startsWith(generated),
+    "The database checker uses the generated central client word list",
+  );
   check(
     parseIncidentPin({ latitude: "", longitude: "", accuracy: null })
       .latitude === null,
@@ -758,7 +767,7 @@ const incidentRow = {
     "Progress-note validation and conflict recovery have no runtime errors",
   );
   await t.close();
-  // Database pagination stays newest-first; only the admin's rendered batch is reversed.
+  // Database pagination stays newest-first; both panels render each batch chronologically.
   const chatApi =
     api +
     `
@@ -775,7 +784,7 @@ supabase.from=table=>{
 const chatRpc=supabase.rpc;
 supabase.rpc=async(name,args)=>{
  const result=await chatRpc(name,args);
- if(name==='send_boarding_message'&&!result.error)window.__rows.boarding_messages.unshift({id:'sent',boarding_house_id:args.p_house_id,sender_user_id:'u0',sender_role:'admin',body:args.p_body,created_at:'2026-11-04T02:00:00Z'});
+ if(name==='send_boarding_message'&&!result.error)window.__rows.boarding_messages.unshift({id:'sent',boarding_house_id:args.p_house_id,sender_user_id:'u0',sender_role:window.__sendRole??'admin',body:args.p_body,created_at:'2026-11-04T02:00:00Z'});
  return result;
 };`;
   const chatSetup = (w) => {
@@ -1019,16 +1028,81 @@ supabase.rpc=async(name,args)=>{
   t = await render(
     `import A from './src/components/BoardingMessages';function Test(){return <A landlord/>}`,
     chatApi,
-    chatSetup,
+    (w) => {
+      chatSetup(w);
+      w.history.replaceState({}, "", "#/resident/dashboard?tab=messages");
+      w.__houses[0].owner_user_id = "u0";
+      w.__rows.boarding_messages.forEach((m) => {
+        if (m.boarding_house_id === "h1")
+          m.sender_user_id = m.sender_role === "landlord" ? "u0" : "admin-user";
+      });
+    },
   );
   const landlordBodies = [...t.w.document.querySelectorAll("article p")].map(
     (p) => p.textContent,
   );
   check(
-    landlordBodies[0] === "Message 25" &&
-      landlordBodies.at(-1) === "Message 6" &&
-      !t.w.document.querySelector('[aria-label="Conversation messages"]'),
-    "The admin-only change preserves the existing landlord panel ordering",
+    landlordBodies[0] === "Message 6" &&
+      landlordBodies.at(-1) === "Message 25" &&
+      t.w.document.querySelector('[aria-label="Conversation messages"]'),
+    "Landlords see chronological messages with the newest at the bottom",
+  );
+  check(
+    [...chat().querySelectorAll("article strong")].every(
+      (el) =>
+        el.textContent === "Owner 1" ||
+        el.textContent === "Barangay Administrator",
+    ),
+    "Own landlord messages display the saved profile name instead of You",
+  );
+  check(
+    chat().scrollTop === chat().scrollHeight - chat().clientHeight,
+    "The landlord conversation opens at the bottom",
+  );
+  const beforeOlder = t.w.__calls.filter(
+    (c) => c.name === "mark_boarding_conversation_read",
+  ).length;
+  await t.tick(() => button(t.w, "Next").click());
+  await t.tick();
+  check(
+    bodies()[0] === "Message 1" && bodies().at(-1) === "Message 5",
+    "Older landlord pages stay chronological",
+  );
+  check(
+    t.w.__calls.filter((c) => c.name === "mark_boarding_conversation_read")
+      .length === beforeOlder,
+    "Reading older landlord messages does not mark new arrivals read",
+  );
+  await t.tick(() => button(t.w, "Previous").click());
+  await t.tick();
+  await t.tick(() => {
+    chat().scrollTop = 120;
+    chat().dispatchEvent(new t.w.Event("scroll"));
+    t.w.__rows.boarding_messages.unshift({
+      id: "landlord-incoming",
+      boarding_house_id: "h1",
+      sender_user_id: "admin-user",
+      sender_role: "admin",
+      body: "Incoming landlord reply",
+      created_at: "2026-11-04T01:03:00Z",
+    });
+    button(t.w, "Refresh Messages").click();
+  });
+  check(
+    bodies().at(-1) === "Incoming landlord reply" && chat().scrollTop === 120,
+    "A reply appends at the bottom without interrupting a landlord reading older messages",
+  );
+  await t.tick(() => {
+    t.w.__sendRole = "landlord";
+    change(t.w, t.w.document.querySelector("textarea"), "New landlord message");
+    submit(t.w, t.w.document.querySelector("form"));
+  });
+  check(
+    bodies().at(-1) === "New landlord message" &&
+      chat().scrollTop === chat().scrollHeight - chat().clientHeight &&
+      chat().querySelector("article:last-child strong").textContent ===
+        "Owner 1",
+    "Sending a landlord message shows the name and scrolls to the new bottom message",
   );
   check(
     t.errors.length === 0,

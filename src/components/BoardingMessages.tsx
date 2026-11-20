@@ -11,6 +11,7 @@ interface Conversation {
   id: string;
   name: string;
   owner_name: string;
+  owner_user_id?: string;
   active: boolean;
   unread_count: number;
   can_send?: boolean;
@@ -29,7 +30,7 @@ export default function BoardingMessages({
   admin?: boolean;
   landlord?: boolean;
 }) {
-  const { adminProfile } = useAuth();
+  const { user, adminProfile } = useAuth();
   if (admin ? !adminProfile?.is_active : !landlord)
     return (
       <p role="alert" className="rounded-xl border bg-white p-5">
@@ -37,7 +38,7 @@ export default function BoardingMessages({
         landlord/landlady.
       </p>
     );
-  return <PrivateBoardingMessages admin={admin} />;
+  return <PrivateBoardingMessages key={user?.id} admin={admin} />;
 }
 function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   const { user } = useAuth();
@@ -86,6 +87,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     };
   }, [loadHouses]);
   const houseId = house?.id;
+  const landlordName = house?.owner_name?.trim() || "Landlord/Landlady";
   const messageList = useRef<HTMLDivElement | null>(null);
   const nearBottom = useRef(true),
     scrollAfterSend = useRef(false);
@@ -97,7 +99,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   const scope = `${houseId ?? ""}:${page}`;
   const [loadedScope, setLoadedScope] = useState("");
   useEffect(() => {
-    if (admin && !requested && houses.length)
+    if (!requested && houses.length)
       updateHashQuery({ house: houses[0].id }, true);
   }, [admin, requested, houses]);
   const query = useCallback(
@@ -126,7 +128,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     retry.current = null;
   }, [houseId]);
   useEffect(() => {
-    if (!admin || !houseId || list.loading) return;
+    if (!houseId || list.loading) return;
     if (list.error) {
       lastView.current = null;
       return;
@@ -142,7 +144,6 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   }, [admin, houseId, list.loading, list.error, list.rows, scope]);
   useEffect(() => {
     if (
-      !admin ||
       list.loading ||
       list.error ||
       loadedScope !== scope ||
@@ -170,7 +171,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
       !houseId ||
       list.loading ||
       list.error ||
-      (admin && loadedScope !== scope) ||
+      loadedScope !== scope ||
       page !== 1 ||
       !list.rows.length ||
       document.hidden
@@ -235,7 +236,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
           "Message was not confirmed. Retry without changing it.",
         );
       if (!mounted.current) return;
-      if (admin) scrollAfterSend.current = true;
+      scrollAfterSend.current = true;
       setBody("");
       retry.current = null;
       setPage(1);
@@ -292,6 +293,9 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                     {h.unread_count} Unread
                   </span>
                 )}
+                <span className="mt-1 block break-words text-xs text-slate-600">
+                  {h.owner_name?.trim() || "Landlord/Landlady"}
+                </span>
                 <span className="mt-1 block text-xs text-slate-500">
                   {h.active ? "Active" : "Inactive"}
                 </span>
@@ -308,12 +312,8 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
             <>
               <h3 className="text-lg font-bold">{house.name}</h3>
               <p className="mt-1 text-xs text-slate-500">
-                {admin
-                  ? `Landlord/Landlady: ${house.owner_name}`
-                  : "Barangay Office"}{" "}
-                {admin
-                  ? "· Latest messages at the bottom"
-                  : "· Newest messages first"}
+                Landlord/Landlady: {landlordName} · Latest messages at the
+                bottom
               </p>
               {house.can_send === false && (
                 <p
@@ -333,51 +333,46 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
               </button>
               <div
                 ref={messageList}
-                role={admin ? "region" : undefined}
-                aria-label={admin ? "Conversation messages" : undefined}
-                tabIndex={admin ? 0 : undefined}
-                onScroll={
-                  admin
-                    ? (event) => {
-                        const element = event.currentTarget;
-                        nearBottom.current =
-                          element.scrollHeight -
-                            element.clientHeight -
-                            element.scrollTop <=
-                          64;
-                      }
-                    : undefined
-                }
-                className={`my-4 space-y-3 ${admin ? "max-h-[60dvh] min-h-32 overflow-y-auto overscroll-contain pr-1" : ""}`}
+                role="region"
+                aria-label="Conversation messages"
+                tabIndex={0}
+                onScroll={(event) => {
+                  const element = event.currentTarget;
+                  nearBottom.current =
+                    element.scrollHeight -
+                      element.clientHeight -
+                      element.scrollTop <=
+                    64;
+                }}
+                className="my-4 max-h-[60dvh] min-h-32 space-y-3 overflow-y-auto overscroll-contain pr-1"
               >
                 {list.error ? (
                   <p className="py-6 text-sm text-slate-500">
                     Messages could not be loaded. Use Refresh Messages to try
                     again.
                   </p>
-                ) : (
-                    admin
-                      ? loadedScope !== scope ||
-                        (!list.rows.length && list.loading)
-                      : list.loading
-                  ) ? (
+                ) : loadedScope !== scope ||
+                  (!list.rows.length && list.loading) ? (
                   <p role="status">Loading messages…</p>
                 ) : !list.rows.length ? (
                   <p className="py-6 text-sm text-slate-500">
                     No messages yet.
                   </p>
                 ) : (
-                  (admin ? [...list.rows].reverse() : list.rows).map((m) => (
+                  [...list.rows].reverse().map((m) => (
                     <article
                       key={m.id}
                       className={`rounded-xl p-4 ${m.sender_user_id === user?.id ? "ml-5 bg-pine-50" : "mr-5 bg-slate-100"}`}
                     >
                       <strong className="text-sm">
-                        {m.sender_user_id === user?.id
-                          ? "You"
-                          : m.sender_role === "admin"
-                            ? "Barangay Administrator"
-                            : "Landlord/Landlady"}
+                        {m.sender_role === "landlord"
+                          ? house.owner_user_id &&
+                            house.owner_user_id !== m.sender_user_id
+                            ? "Previous Landlord/Landlady"
+                            : landlordName
+                          : m.sender_user_id === user?.id
+                            ? "You"
+                            : "Barangay Administrator"}
                       </strong>
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm">
                         {m.body}
