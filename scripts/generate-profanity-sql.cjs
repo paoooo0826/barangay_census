@@ -2,12 +2,13 @@
 const fs = require("node:fs"),
   path = require("node:path");
 const terms = require("../src/lib/profanity-terms.json");
+const normalizeTerm = (word) => word.toLowerCase().replace(/([a-z])\1+/g, "$1");
 const variants = [
   ...new Set(
     terms.flatMap((word) => [
-      word,
-      word + "s",
-      ...(/(?:ch|sh|ss|x|z)$/.test(word) ? [word + "es"] : []),
+      normalizeTerm(word),
+      normalizeTerm(word + "s"),
+      ...(/(?:ch|sh|ss|x|z)$/.test(word) ? [normalizeTerm(word + "es")] : []),
     ]),
   ),
 ];
@@ -47,7 +48,7 @@ revoke all on function private.contains_profanity(text) from public,anon,authent
 if (require.main === module) {
   const dest = path.join(
     __dirname,
-    "../supabase/migrations/20261120124600_expanded_moderation.sql",
+    "../supabase/migrations/20261122010100_messaging_moderation.sql",
   );
   const old = fs.existsSync(dest) ? fs.readFileSync(dest, "utf8") : "";
   const at = old.indexOf("-- Preserve quoted incident evidence");

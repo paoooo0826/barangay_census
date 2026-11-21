@@ -118,14 +118,14 @@ const submit = (w, form) =>
     new w.Event("submit", { bubbles: true, cancelable: true }),
   );
 const api = `window.__calls=[];window.__queries=[];window.__rows??={};window.__error=null;window.__hold=false;window.__feed??={items:[],total:0,unread_count:0};window.__houses??=[];
-export const supabase={from(table){let filters=[],start=0,end=1000;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},ilike(){return q},in(k,v){filters.push([k,v]);return q},gte(){return q},lt(){return q},not(){return q},order(){return q},limit(){return q},range(a,b){start=a;end=b;return q},maybeSingle(){return result(true)},then(resolve){return result(false).then(resolve)}};function result(single){window.__queries.push({table,filters,start,end});let rows=(window.__rows[table]??[]).filter(row=>filters.every(([k,v])=>Array.isArray(v)?v.includes(row[k]):row[k]===v));return Promise.resolve({data:single?rows[0]??null:rows.slice(start,end+1),count:rows.length,error:null})}return q},rpc:async(name,args)=>{window.__calls.push({name,args});if(window.__hold)await new Promise(resolve=>window.__release=resolve);if(window.__error)return{data:null,error:{message:window.__error}};if(name==='admin_notification_feed')return{data:window.__feed,error:null};if(name==='mark_admin_notifications_read'){window.__feed={...window.__feed,unread_count:0,items:window.__feed.items.map(i=>({...i,is_read:true}))};return{data:1,error:null}}if(name==='boarding_conversations')return{data:window.__houses,error:null};if(name==='boarding_count_summary')return{data:{registered:{current:2,arrivals:1,departures:0},reported:{current:null,version:0,effective_date:null,arrivals:0,departures:0,corrections:0},can_manage:true,events:[],history_total:0},error:null};if(name==='submit_resident_feedback'||name==='submit_incident_report'||name==='submit_incident_with_location'){const incident=name==='submit_incident_report'||name==='submit_incident_with_location',row={id:'case1',user_id:'u0',resident_id:'r0',kind:args.p_kind,content:args.p_content,description:args.p_description,category:args.p_category,location:args.p_location,occurred_at:args.p_occurred_at,tracking_reference:incident?'IR-TEST':null,status:incident?'submitted':'new',response:'',created_at:'2026-10-27T02:00:00Z',updated_at:'2026-10-27T02:00:00.123456Z'};window.__rows[incident?'incident_reports':'resident_feedback']=[row];return{data:row,error:null}}if(name==='review_community_case'){const row={...window.__rows.resident_feedback[0],status:args.p_status,response:args.p_response,updated_at:'2026-10-27T03:00:00Z'};return{data:row,error:null}}if(name==='send_boarding_message')return{data:{id:'m1'},error:null};return{data:[],error:null}},storage:{from(){return{createSignedUrl:async()=>({data:{signedUrl:'https://test.invalid/private.jpg'},error:null})}}}};`;
+export const supabase={from(table){let filters=[],start=0,end=1000;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},ilike(){return q},in(k,v){filters.push([k,v]);return q},gte(){return q},lt(){return q},not(){return q},order(){return q},limit(){return q},range(a,b){start=a;end=b;return q},maybeSingle(){return result(true)},then(resolve){return result(false).then(resolve)}};function result(single){window.__queries.push({table,filters,start,end});let rows=(window.__rows[table==='boarding_message_feed'?'boarding_messages':table]??[]).filter(row=>filters.every(([k,v])=>Array.isArray(v)?v.includes(row[k]):row[k]===v));return Promise.resolve({data:single?rows[0]??null:rows.slice(start,end+1),count:rows.length,error:null})}return q},rpc:async(name,args)=>{window.__calls.push({name,args});if(window.__hold)await new Promise(resolve=>window.__release=resolve);if(window.__error)return{data:null,error:{message:window.__error}};if(name==='admin_notification_feed')return{data:window.__feed,error:null};if(name==='mark_admin_notifications_read'){window.__feed={...window.__feed,unread_count:0,items:window.__feed.items.map(i=>({...i,is_read:true}))};return{data:1,error:null}}if(name==='boarding_conversations')return{data:window.__houses,error:null};if(name==='boarding_count_summary')return{data:{registered:{current:2,arrivals:1,departures:0},reported:{current:null,version:0,effective_date:null,arrivals:0,departures:0,corrections:0},can_manage:true,events:[],history_total:0},error:null};if(name==='submit_resident_feedback'||name==='submit_incident_report'||name==='submit_incident_with_location'){const incident=name==='submit_incident_report'||name==='submit_incident_with_location',row={id:'case1',user_id:'u0',resident_id:'r0',kind:args.p_kind,content:args.p_content,description:args.p_description,category:args.p_category,location:args.p_location,occurred_at:args.p_occurred_at,tracking_reference:incident?'IR-TEST':null,status:incident?'submitted':'new',response:'',created_at:'2026-10-27T02:00:00Z',updated_at:'2026-10-27T02:00:00.123456Z'};window.__rows[incident?'incident_reports':'resident_feedback']=[row];return{data:row,error:null}}if(name==='review_community_case'){const row={...window.__rows.resident_feedback[0],status:args.p_status,response:args.p_response,updated_at:'2026-10-27T03:00:00Z'};return{data:row,error:null}}if(name==='send_boarding_message')return{data:{id:'m1'},error:null};return{data:[],error:null}},storage:{from(){return{createSignedUrl:async()=>({data:{signedUrl:'https://test.invalid/private.jpg'},error:null})}}}};`;
 if (require.main === module)
   (async () => {
     let t = await render(
       `import A from './src/components/AdminNotifications';function Test(){return <A/>}`,
       api +
         `
-        supabase.channel=()=>({on(_type, filter, callback){window.__eventFilter=filter;window.__deliver=callback;return this},subscribe(callback){callback('SUBSCRIBED');return this}});
+        supabase.channel=()=>({on(_type, filter, callback){if(filter.table==='admin_notifications'){window.__eventFilter=filter;window.__deliver=callback;}return this},subscribe(callback){callback('SUBSCRIBED');return this}});
         supabase.removeChannel=async()=>{window.__removed=true};
       `,
       (w) => {
@@ -202,6 +202,9 @@ if (require.main === module)
       };
       t.w.__deliver();
     });
+    await t.w.__act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 110));
+    });
     const bell = t.w.document.querySelector(
       '[aria-label="Admin notifications"]',
     );
@@ -218,12 +221,12 @@ if (require.main === module)
     );
     check(
       t.w.location.hash === "#/admin/dashboard?tab=messages&house=house-42" &&
-        t.w.__calls.some(
+        !t.w.__calls.some(
           (c) =>
             c.name === "mark_admin_notifications_read" &&
             c.args.p_notification_ids?.includes("landlord-alert"),
         ),
-      "Opening a landlord alert marks it read and opens the matching conversation",
+      "Opening a landlord alert opens its conversation and defers reading until the messages are viewed",
     );
     check(
       t.errors.length === 0,
@@ -466,7 +469,7 @@ if (require.main === module)
     );
     check(
       t.w.__queries
-        .filter((q) => q.table === "boarding_messages")
+        .filter((q) => q.table === "boarding_message_feed")
         .every((q) =>
           q.filters.some(([k, v]) => k === "boarding_house_id" && v === "h1"),
         ),

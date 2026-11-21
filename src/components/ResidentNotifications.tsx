@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useMessagingUpdates } from "../hooks/useMessagingUpdates";
 import PaginationControls from "./PaginationControls";
 import { useDismissible } from "../hooks/useDismissible";
 import { supabase } from "../lib/supabase";
@@ -143,6 +144,21 @@ export default function ResidentNotifications({
     if (open) void loadNotifications();
   }, [loadNotifications, open]);
 
+  useMessagingUpdates(
+    residentId ?? undefined,
+    [{ table: "notifications", filter: `resident_id=eq.${residentId}` }],
+    () => {
+      void loadNotifications();
+    },
+  );
+  useEffect(() => {
+    const refresh = () => {
+      void loadNotifications();
+    };
+    window.addEventListener("brims:message-read", refresh);
+    return () => window.removeEventListener("brims:message-read", refresh);
+  }, [loadNotifications]);
+
   const activeFilter =
     !showLandlordMessages && filter === "message" ? "all" : filter;
   const availableFilters = showLandlordMessages
@@ -193,17 +209,18 @@ export default function ResidentNotifications({
 
   const openRelatedPage = (notification: ResidentNotification) => {
     if (notification.category === "message" && !showLandlordMessages) return;
-    void supabase
-      .rpc("mark_resident_notifications_read", {
-        p_notification_ids: [notification.id],
-      })
-      .then(
-        ({ error: e }) => {
-          if (e) setError(e.message);
-          else void loadNotifications();
-        },
-        () => setError("Unable to mark the notification as read."),
-      );
+    if (notification.category !== "message")
+      void supabase
+        .rpc("mark_resident_notifications_read", {
+          p_notification_ids: [notification.id],
+        })
+        .then(
+          ({ error: e }) => {
+            if (e) setError(e.message);
+            else void loadNotifications();
+          },
+          () => setError("Unable to mark the notification as read."),
+        );
     if (onOpenItem)
       onOpenItem(notification.category, notification.related_entity_id ?? null);
     else if (notification.category === "appointment") onOpenAppointments();

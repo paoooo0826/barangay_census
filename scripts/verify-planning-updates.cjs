@@ -93,7 +93,7 @@ const cases = require("./fixtures/moderation-cases.json");
   const migration = fs.readFileSync(
     path.join(
       __dirname,
-      "../supabase/migrations/20261120124600_expanded_moderation.sql",
+      "../supabase/migrations/20261122010100_messaging_moderation.sql",
     ),
     "utf8",
   );

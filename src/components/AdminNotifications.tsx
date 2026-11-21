@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMessagingUpdates } from "../hooks/useMessagingUpdates";
+import { useAuth } from "../context/AuthContext";
 import { Bell, X } from "lucide-react";
 import { useDismissible } from "../hooks/useDismissible";
 import { supabase } from "../lib/supabase";
@@ -21,6 +23,7 @@ interface Feed {
   total: number;
 }
 export default function AdminNotifications() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false),
     [page, setPage] = useState(1),
     [unread, setUnread] = useState(false);
@@ -75,36 +78,23 @@ export default function AdminNotifications() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [load]);
-  const refreshFeed = useRef(load);
+  useMessagingUpdates(
+    user?.id,
+    [
+      { table: "admin_notifications", filter: "category=eq.landlord_message" },
+      { table: "admin_notification_reads", filter: `user_id=eq.${user?.id}` },
+    ],
+    () => {
+      void load();
+    },
+  );
   useEffect(() => {
-    refreshFeed.current = load;
-  }, [load]);
-  useEffect(() => {
-    let active = true;
-    const channel = supabase
-      .channel?.(`admin-landlord-notifications:${crypto.randomUUID()}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "admin_notifications",
-          filter: "category=eq.landlord_message",
-        },
-        () => {
-          if (active) void refreshFeed.current();
-        },
-      )
-      .subscribe((status) => {
-        // Catch messages inserted while connecting or reconnecting.
-        if (active && status === "SUBSCRIBED") void refreshFeed.current();
-      });
-    if (!channel) return;
-    return () => {
-      active = false;
-      void supabase.removeChannel(channel);
+    const refresh = () => {
+      void load();
     };
-  }, []);
+    window.addEventListener("brims:message-read", refresh);
+    return () => window.removeEventListener("brims:message-read", refresh);
+  }, [load]);
 
   async function mark(ids: string[] | null) {
     if (lock.current) return false;
@@ -126,7 +116,8 @@ export default function AdminNotifications() {
     }
   }
   function openItem(item: Event) {
-    if (!item.is_read) void mark([item.id]);
+    if (!item.is_read && item.category !== "landlord_message")
+      void mark([item.id]);
     setOpen(false);
     const id = encodeURIComponent(item.entity_id);
     const destination =

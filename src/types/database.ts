@@ -309,6 +309,7 @@ export interface Database {
       boarder_occupancy_history: AnyTable;
     };
     Views: {
+      boarding_message_feed: AnyTable;
       resident_appointment_records: AnyTable;
       residency_current: AnyTable;
       residency_history: AnyTable;
@@ -415,7 +416,12 @@ export interface Database {
         Returns: Json;
       };
       send_boarding_message: {
-        Args: { p_house_id: string; p_body: string; p_request_key: string };
+        Args: {
+          p_house_id: string;
+          p_body: string;
+          p_request_key: string;
+          p_as_landlord?: boolean;
+        };
         Returns: Json;
       };
       boarding_conversations: { Args: Record<string, never>; Returns: Json };

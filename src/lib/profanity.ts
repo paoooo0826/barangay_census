@@ -19,12 +19,14 @@ const aliases: Record<string, string> = {
   $: "s",
   "!": "i",
 };
+const normalizeTerm = (word: string) =>
+  word.toLowerCase().replace(/([a-z])\1+/g, "$1");
 const variants = [
   ...new Set(
     terms.flatMap((word) => [
-      word,
-      word + "s",
-      ...(/(?:ch|sh|ss|x|z)$/.test(word) ? [word + "es"] : []),
+      normalizeTerm(word),
+      normalizeTerm(word + "s"),
+      ...(/(?:ch|sh|ss|x|z)$/.test(word) ? [normalizeTerm(word + "es")] : []),
     ]),
   ),
 ];

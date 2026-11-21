@@ -7,6 +7,7 @@ import { errorMessage } from "../lib/community";
 import { paymentTime } from "../lib/payments";
 import PaginationControls from "./PaginationControls";
 import { requireRespectfulText } from "../lib/profanity";
+import { useMessagingUpdates } from "../hooks/useMessagingUpdates";
 interface Conversation {
   id: string;
   name: string;
@@ -15,11 +16,14 @@ interface Conversation {
   active: boolean;
   unread_count: number;
   can_send?: boolean;
+  latest_sender_name?: string;
+  latest_body?: string;
 }
 interface Message {
   id: string;
   sender_user_id: string;
   sender_role: string;
+  sender_name?: string;
   body: string;
   created_at: string;
 }
@@ -38,7 +42,7 @@ export default function BoardingMessages({
         landlord/landlady.
       </p>
     );
-  return <PrivateBoardingMessages key={user?.id} admin={admin} />;
+  return <PrivateBoardingMessages key={`${user?.id}:${admin}`} admin={admin} />;
 }
 function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   const { user } = useAuth();
@@ -105,8 +109,8 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
   const query = useCallback(
     (start: number, end: number) =>
       supabase
-        .from("boarding_messages")
-        .select("id,sender_user_id,sender_role,body,created_at", {
+        .from("boarding_message_feed")
+        .select("id,sender_user_id,sender_role,sender_name,body,created_at", {
           count: "exact",
         })
         .eq("boarding_house_id", houseId ?? "")
@@ -122,6 +126,35 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     query,
     enabled: Boolean(houseId),
   });
+  useMessagingUpdates(
+    user?.id,
+    [
+      { table: "boarding_messages" },
+      {
+        table: "boarding_conversation_reads",
+        filter: `user_id=eq.${user?.id}`,
+      },
+    ],
+    () => {
+      void loadHouses();
+      void list.reload();
+    },
+  );
+  const [atBottom, setAtBottom] = useState(true);
+  const readBoundary = useRef("");
+  const pendingReads = useRef(new Set<string>());
+  const [visibility, setVisibility] = useState(0);
+  useEffect(() => {
+    const visible = () => {
+      if (!document.hidden) setVisibility((v) => v + 1);
+    };
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", visible);
+    return () => {
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("focus", visible);
+    };
+  }, []);
   useEffect(() => {
     setPage(1);
     setBody("");
@@ -161,6 +194,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     ) {
       messageList.current.scrollTop = messageList.current.scrollHeight;
       nearBottom.current = true;
+      setAtBottom(true);
       scrollAfterSend.current = false;
     }
     lastView.current = { scope, latestId, rows: list.rows };
@@ -174,9 +208,15 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
       loadedScope !== scope ||
       page !== 1 ||
       !list.rows.length ||
-      document.hidden
+      document.hidden ||
+      !atBottom ||
+      !nearBottom.current
     )
       return;
+    const boundary = `${houseId}:${list.rows[0].created_at}`;
+    if (readBoundary.current === boundary || pendingReads.current.has(boundary))
+      return;
+    pendingReads.current.add(boundary);
     let active = true;
     void supabase
       .rpc("mark_boarding_conversation_read", {
@@ -185,12 +225,22 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
       })
       .then(
         (r) => {
-          if (!active) return;
-          if (r.error) setError(r.error.message);
-          else void loadHouses();
+          pendingReads.current.delete(boundary);
+          if (r.error) {
+            if (active) setError(r.error.message);
+          } else {
+            readBoundary.current = boundary;
+            if (mounted.current) {
+              if (active) void loadHouses();
+              window.dispatchEvent(new Event("brims:message-read"));
+            }
+          }
         },
         (e: unknown) => {
-          if (active) setError(errorMessage(e));
+          pendingReads.current.delete(boundary);
+          if (active) {
+            setError(errorMessage(e));
+          }
         },
       );
     return () => {
@@ -206,6 +256,8 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     admin,
     loadedScope,
     scope,
+    atBottom,
+    visibility,
   ]);
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -229,6 +281,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
         p_house_id: houseId,
         p_body: clean,
         p_request_key: retry.current.key,
+        p_as_landlord: !admin,
       });
       if (r.error) throw r.error;
       if (!(r.data as unknown as Message)?.id)
@@ -249,7 +302,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
     }
   }
   return (
-    <section className="space-y-4">
+    <section className="min-w-0 space-y-4">
       <div>
         <h2 className="text-2xl font-bold">
           {admin ? "Landlord Messages" : "Barangay Office Messages"}
@@ -267,7 +320,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
         </p>
       )}
       <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <aside className="space-y-2 rounded-2xl border bg-white p-4">
+        <aside className="min-w-0 space-y-2 rounded-2xl border bg-white p-4">
           <label className="label">
             Find a House
             <input
@@ -285,7 +338,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                 key={h.id}
                 disabled={busy}
                 onClick={() => updateHashQuery({ house: h.id })}
-                className={`block w-full rounded-xl border p-3 text-left text-sm ${h.id === houseId ? "bg-pine-50" : ""}`}
+                className={`block min-w-0 w-full rounded-xl border p-3 text-left text-sm ${h.id === houseId ? "bg-pine-50" : ""}`}
               >
                 <strong className="break-words">{h.name}</strong>
                 {h.unread_count > 0 && (
@@ -296,6 +349,11 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                 <span className="mt-1 block break-words text-xs text-slate-600">
                   {h.owner_name?.trim() || "Landlord/Landlady"}
                 </span>
+                {h.latest_body && (
+                  <span className="mt-1 block truncate text-xs text-slate-500">
+                    {h.latest_sender_name || "Admin"}: {h.latest_body}
+                  </span>
+                )}
                 <span className="mt-1 block text-xs text-slate-500">
                   {h.active ? "Active" : "Inactive"}
                 </span>
@@ -343,6 +401,7 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                       element.clientHeight -
                       element.scrollTop <=
                     64;
+                  setAtBottom(nearBottom.current);
                 }}
                 className="my-4 max-h-[60dvh] min-h-32 space-y-3 overflow-y-auto overscroll-contain pr-1"
               >
@@ -365,13 +424,13 @@ function PrivateBoardingMessages({ admin }: { admin: boolean }) {
                       className={`rounded-xl p-4 ${m.sender_user_id === user?.id ? "ml-5 bg-pine-50" : "mr-5 bg-slate-100"}`}
                     >
                       <strong className="text-sm">
-                        {m.sender_user_id === house.owner_user_id
-                          ? landlordName
-                          : m.sender_role === "landlord"
-                            ? house.owner_user_id
-                              ? "Previous Landlord/Landlady"
-                              : landlordName
-                            : "Barangay Administrator"}
+                        {m.sender_name?.trim() ||
+                          (m.sender_role === "admin"
+                            ? "Admin"
+                            : m.sender_user_id === house.owner_user_id ||
+                                !house.owner_user_id
+                              ? landlordName
+                              : "Previous Landlord/Landlady")}
                       </strong>
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm">
                         {m.body}

@@ -112,7 +112,7 @@ const incidentRow = {
   const migration = fs.readFileSync(
     path.join(
       root,
-      "supabase/migrations/20261120124600_expanded_moderation.sql",
+      "supabase/migrations/20261122010100_messaging_moderation.sql",
     ),
     "utf8",
   );
@@ -773,7 +773,7 @@ const incidentRow = {
     `
 const chatFrom=supabase.from;
 supabase.from=table=>{
- const q=chatFrom(table);if(table!=='boarding_messages')return q;
+ const q=chatFrom(table);if(table!=='boarding_message_feed')return q;
  const order=q.order,then=q.then;
  q.order=(field,options)=>{window.__chatOrders??=[];window.__chatOrders.push({field,...options});return order(field,options)};
  q.then=resolve=>then(async result=>{
@@ -1049,9 +1049,7 @@ supabase.rpc=async(name,args)=>{
   );
   check(
     [...chat().querySelectorAll("article strong")].every(
-      (el) =>
-        el.textContent === "Owner 1" ||
-        el.textContent === "Barangay Administrator",
+      (el) => el.textContent === "Owner 1" || el.textContent === "Admin",
     ),
     "Own landlord messages display the saved profile name instead of You",
   );
@@ -1142,8 +1140,8 @@ supabase.rpc=async(name,args)=>{
         ),
       ].map((el) => el.textContent);
       check(
-        labels.length === 20 && labels.every((label) => label === "Owner 1"),
-        `An admin-enabled landlord is identified by account rather than role (${admin ? "admin" : "landlord"} panel, ${width}px)`,
+        labels.length === 20 && labels.every((label) => label === "Admin"),
+        `An admin author uses the Admin fallback without being relabeled as the house owner (${admin ? "admin" : "landlord"} panel, ${width}px)`,
       );
       check(
         !labels.includes("You") && t.errors.length === 0,
