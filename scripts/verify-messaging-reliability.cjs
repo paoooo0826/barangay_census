@@ -10,7 +10,7 @@ const check = (value, label) => {
 const realtime = `
 window.__channels=[];
 supabase.channel=name=>{
- const c={name,listeners:[],removed:false,on(type,filter,fn){this.listeners.push({filter,fn});return this},subscribe(fn){fn?.('SUBSCRIBED');return this}};
+ const c={name,listeners:[],removed:false,on(type,filter,fn){this.listeners.push({filter,fn});return this},subscribe(fn){this.reconnect=fn;fn?.('SUBSCRIBED');return this}};
  window.__channels.push(c);return c;
 };
 supabase.removeChannel=async channel=>{channel.removed=true;};
@@ -92,6 +92,210 @@ const setup = (w, admin, width) => {
     total: 1,
   };
 };
+async function verifyLandlordNotificationPreviews() {
+  const scoped =
+    api +
+    realtime +
+    `
+  const originalRpc=supabase.rpc;
+  supabase.rpc=async(name,args)=>{
+   const result=await originalRpc(name,args);
+   if(name==='mark_boarding_conversation_read'&&!result.error){
+    const items=window.__feed.items.map(n=>n.category==='landlord_message'&&n.entity_id===args.p_house_id?{...n,is_read:true}:n);
+    window.__feed={...window.__feed,items,unread_count:items.filter(n=>!n.is_read).length};
+    window.__houses=window.__houses.map(h=>h.id===args.p_house_id?{...h,unread_count:0}:h);
+   }
+   return result;
+  };`;
+  for (const width of [390, 1280]) {
+    const t = await render(
+      `import Chat from './src/components/BoardingMessages';import Bell from './src/components/AdminNotifications';function Test(){return <><Bell/>{window.__showChat&&<Chat admin/>}</>}`,
+      scoped,
+      (w) => {
+        setup(w, true, width);
+        w.__houses = ["Lina", "Mila"].map((name, i) => ({
+          id: `house-${i}`,
+          name: "Same House Name",
+          owner_name: `${name} Example`,
+          owner_user_id: `owner-${i}`,
+          active: true,
+          unread_count: 1,
+        }));
+        w.__rows = {
+          boarding_messages: ["Lina", "Mila"].map((name, i) => ({
+            id: `message-${i}`,
+            boarding_house_id: `house-${i}`,
+            sender_user_id: `owner-${i}`,
+            sender_role: "landlord",
+            sender_name: `${name} Example`,
+            body: `${name} roof inspection request.`,
+            created_at: `2026-11-22T10:0${i}:00Z`,
+          })),
+        };
+        w.__feed = {
+          items: ["Lina", "Mila"].map((name, i) => ({
+            id: `notice-${i}`,
+            category: "landlord_message",
+            entity_id: `house-${i}`,
+            title: "New Landlord Message",
+            message: `${name} Example: ${name} roof inspection request.`,
+            is_read: false,
+            created_at: `2026-11-22T10:0${i}:00Z`,
+          })),
+          total: 2,
+          unread_count: 2,
+        };
+      },
+    );
+    const bell = () =>
+      t.w.document.querySelector('[aria-label="Admin notifications"]');
+    const alert = (name) =>
+      [...t.w.document.querySelectorAll("button")].find((b) =>
+        b.textContent.includes(`${name} Example:`),
+      );
+    await settle(t);
+    check(
+      bell().textContent.trim() === "2",
+      `Offline landlord notifications load into the badge (${width}px)`,
+    );
+    await t.tick(() => bell().click());
+    check(
+      alert("Lina")?.textContent.includes("Lina roof inspection request.") &&
+        alert("Mila")?.textContent.includes("Mila roof inspection request."),
+      "Both landlords have distinct names and message previews",
+    );
+    check(
+      alert("Mila").querySelector("time")?.textContent.includes("Unread"),
+      "Notification displays its timestamp and read state",
+    );
+    await t.tick(() => alert("Mila").click());
+    check(
+      t.w.location.hash === "#/admin/dashboard?tab=messages&house=house-1",
+      "Clicking notification routes by house ID, even when house names are identical",
+    );
+    check(
+      t.w.__feed.unread_count === 2,
+      "Click waits for actual conversation view before marking messages read",
+    );
+    await t.tick(() => {
+      t.w.__showChat = true;
+      t.w.__mount();
+    });
+    await settle(t);
+    check(
+      t.w.document
+        .querySelector("h3")
+        ?.nextElementSibling?.textContent.includes("Mila Example"),
+      "The selected landlord name appears in the chat header",
+    );
+    check(
+      t.w.document
+        .querySelector("aside")
+        .textContent.includes("Lina Example") &&
+        t.w.document
+          .querySelector("aside")
+          .textContent.includes("Mila Example"),
+      "Conversation list names stay tied to their separate owners",
+    );
+    check(
+      t.w.document.querySelector("article strong")?.textContent ===
+        "Mila Example",
+      "Selected conversation displays the correct landlord message",
+    );
+    check(
+      bell().textContent.trim() === "1",
+      "Viewing Mila clears only Mila’s notification",
+    );
+    await t.tick(() => t.w.__remount());
+    await settle(t);
+    check(
+      bell().textContent.trim() === "1" &&
+        t.w.document
+          .querySelector("h3")
+          .nextElementSibling.textContent.includes("Mila Example"),
+      "Names and unread state survive remounting at the same route",
+    );
+    await settle(t, () => {
+      t.w.__feed.items.unshift({
+        id: "follow-up",
+        category: "landlord_message",
+        entity_id: "house-0",
+        title: "New Landlord Message",
+        message: "Lina Example: Latest roof follow-up.",
+        is_read: false,
+        created_at: "2026-11-22T10:03:00Z",
+      });
+      t.w.__feed = {
+        ...t.w.__feed,
+        total: t.w.__feed.total + 1,
+        unread_count: t.w.__feed.unread_count + 1,
+      };
+      t.w.__rows.boarding_messages.unshift({
+        id: "follow-up-message",
+        boarding_house_id: "house-0",
+        sender_user_id: "owner-0",
+        sender_role: "landlord",
+        sender_name: "Lina Example",
+        body: "Latest roof follow-up.",
+        created_at: "2026-11-22T10:03:00Z",
+      });
+      t.w.__channels
+        .filter((c) => !c.removed)
+        .forEach((c) => c.reconnect?.("SUBSCRIBED"));
+      t.w.__emit("admin_notifications");
+      t.w.__emit("admin_notifications");
+    });
+    check(
+      bell().textContent.trim() === "2",
+      "Reconnect and duplicate events re-fetch the persisted count without incrementing twice",
+    );
+    check(
+      t.w.document
+        .querySelector("h3")
+        .nextElementSibling.textContent.includes("Mila Example"),
+      "Another landlord’s arrival does not change the current conversation identity",
+    );
+    await t.tick(() => bell().click());
+    await t.tick(() => alert("Lina").click());
+    await settle(t);
+    check(
+      t.w.document
+        .querySelector("h3")
+        .nextElementSibling.textContent.includes("Lina Example") &&
+        t.w.document.querySelector("article:last-child p")?.textContent ===
+          "Latest roof follow-up.",
+      "Another notification opens the right landlord and latest message",
+    );
+    await settle(t, () => {
+      t.w.__houses[0].owner_name = " ";
+      t.w.__emit("boarding_messages");
+    });
+    check(
+      t.w.document
+        .querySelector("h3")
+        .nextElementSibling.textContent.includes(
+          "Landlord/Landlady: Landlord/Landlady",
+        ),
+      "Missing profile name uses the safe existing fallback",
+    );
+    check(
+      !t.w.document
+        .querySelector("h3")
+        .nextElementSibling.textContent.match(/undefined|null|owner-0/),
+      "Missing name does not expose an account ID or an invalid value",
+    );
+    check(
+      t.errors.length === 0,
+      "Landlord notification and routing flow has no component runtime errors",
+    );
+    const channels = t.w.__channels;
+    await t.close();
+    check(
+      channels.every((c) => c.removed),
+      "Rerender, remount and navigation leave no duplicate realtime listeners",
+    );
+  }
+}
 (async () => {
   const built = esbuild.buildSync({
     entryPoints: [path.join(__dirname, "../src/lib/profanity.ts")],
@@ -336,6 +540,7 @@ const setup = (w, admin, width) => {
     "Returning to a visible conversation acknowledges the viewed boundary",
   );
   await reader.close();
+  await verifyLandlordNotificationPreviews();
   console.log(`Messaging reliability verification passed (${checks} checks).`);
   process.exit(0);
 })().catch((error) => {
