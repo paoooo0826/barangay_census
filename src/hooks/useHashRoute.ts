@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
-function currentRoute() {
+import { isAuthFragment } from "../lib/residentAuthCallback";
+
+export function currentRoute() {
+  if (isAuthFragment(window.location.hash)) return "/";
   const route = window.location.hash.slice(1) || "/";
   return route.startsWith("/") ? route : `/${route}`;
 }

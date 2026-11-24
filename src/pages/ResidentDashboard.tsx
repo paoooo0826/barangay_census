@@ -57,6 +57,7 @@ interface Props {
   tab?: string | null;
   onLogout: () => void;
   onEdit: () => void;
+  onBeginRegistration?: () => void;
 }
 type Tab =
   | "home"
@@ -162,6 +163,7 @@ function display(value: unknown) {
 export default function ResidentDashboard({
   onLogout,
   onEdit,
+  onBeginRegistration = onEdit,
   tab: requestedTab,
 }: Props) {
   const { user } = useAuth();
@@ -838,7 +840,7 @@ export default function ResidentDashboard({
             governmentIdType={governmentIdType}
             images={images}
             onOpenImage={(title, url) => setPreviewImage({ title, url })}
-            onEdit={onEdit}
+            onEdit={resident ? onEdit : onBeginRegistration}
           />
         )}
         {tab === "record" && resident && (
@@ -960,11 +962,11 @@ export default function ResidentDashboard({
                   No census submission is connected to this account yet.
                 </p>
                 <button
-                  onClick={onEdit}
+                  onClick={onBeginRegistration}
                   className="mt-5 inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
                 >
                   <Edit3 size={18} />
-                  Complete Census Form
+                  Continue Registration
                 </button>
               </section>
             ) : (
@@ -1152,7 +1154,7 @@ function Profile({
           className="mt-5 inline-flex items-center gap-2 rounded-xl bg-pine-700 px-5 py-3 font-bold text-white"
         >
           <Edit3 size={18} />
-          Complete Census Form
+          Continue Registration
         </button>
       </section>
     );

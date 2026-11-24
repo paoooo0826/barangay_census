@@ -1,3 +1,5 @@
+// Capture confirmation-link routing before the Auth client consumes the URL.
+import './residentAuthCallback';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 

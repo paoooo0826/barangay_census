@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import type { AuthError, Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import type { AdminProfile } from "../types/database";
+import { residentConfirmationRedirect } from "../lib/residentAuthCallback";
 
 interface AuthResult {
   error: AuthError | null;
@@ -27,6 +28,7 @@ interface SignUpResult extends AuthResult {
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
+  canResetPassword: boolean;
   adminProfile: AdminProfile | null;
   adminProfileError: string | null;
   loading: boolean;
@@ -61,6 +63,7 @@ function clearAccountTemporaryData(userId?: string) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [recoveryUserId, setRecoveryUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<{
     userId: string | null | undefined;
     data: AdminProfile | null;
@@ -95,7 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (id && !deliberate)
           window.dispatchEvent(new Event("barangay:authentication-expired"));
       }
-      knownUser.current = nextSession?.user.id ?? null;
+      const nextUserId = nextSession?.user.id ?? null;
+      setRecoveryUserId((previous) =>
+        event === "PASSWORD_RECOVERY"
+          ? nextUserId
+          : previous === nextUserId
+            ? previous
+            : null,
+      );
+      knownUser.current = nextUserId;
       setSession(nextSession);
       setSessionReady(true);
     });
@@ -150,7 +161,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: email.trim().toLowerCase(),
         password,
       });
-      if (!error && data?.user) resetSessionActivity(data.user.id);
+      if (!error && data?.user) {
+        setRecoveryUserId(null);
+        resetSessionActivity(data.user.id);
+      }
       return { error };
     },
     [],
@@ -162,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: email.trim().toLowerCase(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}#/resident`,
+          emailRedirectTo: residentConfirmationRedirect(),
         },
       });
 
@@ -197,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!error) {
       clearAccountTemporaryData(userId ?? undefined);
       setSession(null);
+      setRecoveryUserId(null);
       setProfile({ userId: null, data: null, error: null });
     }
     logoutIntent.current = false;
@@ -220,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user: session?.user ?? null,
       session,
+      canResetPassword: Boolean(userId && userId === recoveryUserId),
       adminProfile,
       adminProfileError,
       loading,
@@ -230,6 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       session,
+      userId,
+      recoveryUserId,
       adminProfile,
       adminProfileError,
       loading,

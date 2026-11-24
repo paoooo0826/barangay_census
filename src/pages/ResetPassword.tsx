@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -8,50 +8,28 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 interface ResetPasswordProps {
+  canResetPassword: boolean;
   onComplete: () => void;
 }
 
-export default function ResetPassword({ onComplete }: ResetPasswordProps) {
+export default function ResetPassword({
+  onComplete,
+  canResetPassword,
+}: ResetPasswordProps) {
+  const { signOut } = useAuth();
+  const saving = useRef(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [checkingLink, setCheckingLink] = useState(true);
-  const [validSession, setValidSession] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  useEffect(() => {
-    let active = true;
-
-    const checkRecoverySession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-      setValidSession(Boolean(data.session));
-      setCheckingLink(false);
-    };
-
-    void checkRecoverySession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!active) return;
-        if (event === "PASSWORD_RECOVERY" || session) {
-          setValidSession(Boolean(session));
-          setCheckingLink(false);
-        }
-      },
-    );
-
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canResetPassword || saving.current) return;
     setError("");
     setSuccess("");
 
@@ -65,31 +43,34 @@ export default function ResetPassword({ onComplete }: ResetPasswordProps) {
       return;
     }
 
+    saving.current = true;
     setLoading(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+      });
+      if (updateError) throw updateError;
 
-    if (updateError) {
-      setError(updateError.message);
+      setSuccess(
+        "Your password was changed successfully. You can now sign in.",
+      );
+      setPassword("");
+      setConfirmPassword("");
+      const { error: logoutError } = await signOut();
+      if (logoutError)
+        setError(
+          "Your password was changed, but the current session could not be signed out.",
+        );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not finish resetting your password. Please try again.",
+      );
+    } finally {
+      saving.current = false;
       setLoading(false);
-      return;
     }
-
-    setSuccess("Your password was changed successfully. You can now sign in.");
-    setPassword("");
-    setConfirmPassword("");
-    await supabase.auth.signOut();
-    setLoading(false);
-  }
-
-  if (checkingLink) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-pine-50">
-        <div className="text-center text-slate-600">
-          <Loader2 className="mx-auto h-9 w-9 animate-spin text-pine-600" />
-          <p className="mt-3 text-sm">Verifying your password-reset link...</p>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -121,7 +102,7 @@ export default function ResetPassword({ onComplete }: ResetPasswordProps) {
           </div>
         )}
 
-        {!validSession && !success ? (
+        {!canResetPassword && !success ? (
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
             This password-reset link is invalid or has expired. Return to the
             resident login and request a new link.

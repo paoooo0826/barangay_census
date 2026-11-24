@@ -10,6 +10,10 @@ import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import { supabase } from "./lib/supabase";
+import {
+  hasPendingResidentVerification,
+  initialConfirmationCallback,
+} from "./lib/residentAuthCallback";
 
 import UserTypeSelection from "./pages/UserTypeSelection";
 import ResidentAuth from "./pages/ResidentAuth";
@@ -31,6 +35,7 @@ export default function App() {
     user,
     adminProfile,
     adminProfileError,
+    canResetPassword,
     loading,
     signOut,
     refreshAdminProfile,
@@ -70,6 +75,28 @@ export default function App() {
   } | null>(null);
   const [routeRetry, setRouteRetry] = useState(0);
   const [profileRetrying, setProfileRetrying] = useState(false);
+
+  const [confirmationCallback, setConfirmationCallback] = useState(
+    initialConfirmationCallback,
+  );
+  const [confirmationNotice, setConfirmationNotice] = useState("");
+
+  useEffect(() => {
+    if (!confirmationCallback || loading) return;
+    if (confirmationCallback === "invalid" || !userId)
+      setConfirmationNotice(
+        "This email confirmation link is invalid or has expired. Enter your registration email and request a new link below.",
+      );
+    // The SDK has finished restoring the session. Clean up the callback URL
+    // without pushing a new navigation entry.
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${import.meta.env.BASE_URL}#/resident`,
+    );
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    setConfirmationCallback(null);
+  }, [confirmationCallback, loading, userId]);
 
   const path = routePath(route);
   const reviewMatch = path.match(/^\/admin\/review\/([^/]+)$/);
@@ -114,7 +141,11 @@ export default function App() {
         if (error) throw error;
         if (active)
           navigateHash(
-            data ? "/resident/dashboard" : "/resident/register",
+            data
+              ? "/resident/dashboard"
+              : hasPendingResidentVerification(userId)
+                ? "/resident/census"
+                : "/resident/register",
             true,
           );
       } catch {
@@ -219,7 +250,13 @@ export default function App() {
   const accessError =
     adminAccessError ||
     (routeError?.key === routeKey ? routeError.message : null);
-  if (accessError && !isPasswordReset && !loading) {
+  if (confirmationCallback) {
+    page = (
+      <div role="status" className="p-6 text-center">
+        Opening your email confirmation link…
+      </div>
+    );
+  } else if (accessError && !isPasswordReset && !loading) {
     page = (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
         <div
@@ -258,33 +295,23 @@ export default function App() {
       </div>
     );
   } else if (
-    (loading && (residentProtected || adminProtected)) ||
+    (loading && (residentProtected || adminProtected || isPasswordReset)) ||
     authRedirecting === routeKey ||
-    loggedInOnLoginPage
+    (loggedInOnLoginPage && !isPasswordReset)
   ) {
     page = (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-pine-700" />
       </div>
     );
-  } else if (residentProtected && !user) {
+  } else if (residentProtected && !user && !isPasswordReset) {
     page = (
       <ResidentAuth
         onBack={() => navigate("/")}
-        onLoginSuccess={(destination) =>
-          navigateHash(
-            destination === "dashboard" && residentProtected
-              ? route
-              : destination === "dashboard"
-                ? "/resident/dashboard"
-                : "/resident/census",
-            true,
-          )
-        }
-        onRegisterClick={() => navigate("/resident/register")}
+        confirmationNotice={confirmationNotice}
       />
     );
-  } else if (adminProtected && (!user || !isActiveAdmin)) {
+  } else if (adminProtected && (!user || !isActiveAdmin) && !isPasswordReset) {
     page = (
       <AdminAuth
         onBack={() => navigate("/")}
@@ -296,6 +323,7 @@ export default function App() {
   } else if (isPasswordReset) {
     page = (
       <ResetPassword
+        canResetPassword={canResetPassword}
         onComplete={() => {
           window.history.replaceState(
             {},
@@ -317,17 +345,7 @@ export default function App() {
     page = (
       <ResidentAuth
         onBack={() => navigate("/")}
-        onLoginSuccess={(destination) =>
-          navigateHash(
-            destination === "dashboard" && residentProtected
-              ? route
-              : destination === "dashboard"
-                ? "/resident/dashboard"
-                : "/resident/census",
-            true,
-          )
-        }
-        onRegisterClick={() => navigate("/resident/register")}
+        confirmationNotice={confirmationNotice}
       />
     );
   } else if (path === "/resident/register") {
@@ -352,6 +370,7 @@ export default function App() {
         tab={new URLSearchParams(route.split("?")[1] ?? "").get("tab")}
         onLogout={() => void handleLogout()}
         onEdit={() => navigate("/resident/census?mode=edit")}
+        onBeginRegistration={() => navigate("/resident/register")}
       />
     );
   } else if (path === "/admin") {

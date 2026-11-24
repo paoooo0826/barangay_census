@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dashboardListRoute, navigateHash } from "./useHashRoute";
-
-function currentRoute() {
-  const route = window.location.hash.slice(1) || "/";
-  return route.startsWith("/") ? route : `/${route}`;
-}
+import { currentRoute, dashboardListRoute, navigateHash } from "./useHashRoute";
 
 function historyIndex(): number | null {
   const index = window.history.state?.barangayIndex;
