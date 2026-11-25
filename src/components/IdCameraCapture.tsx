@@ -11,7 +11,23 @@ import {
 import VideoGuide from "./VideoGuide";
 import { idGuide, inspectIdFrame } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
-import { mirrorCameraPreview } from "../lib/cameraOrientation";
+
+const FRAME_TIMEOUT_MS = 8_000;
+const STREAM_STOPPED_MESSAGE =
+  "The camera stopped. Retry the photo, or close the camera and upload an ID image.";
+
+function cameraErrorMessage(caught: unknown) {
+  const name = caught instanceof DOMException ? caught.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError")
+    return "Camera permission was denied. Allow camera access in browser settings, then retry, or close and upload a photo.";
+  if (name === "NotFoundError")
+    return "No camera is available. Connect a camera or close and upload an ID photo.";
+  if (name === "NotReadableError")
+    return "The camera is busy or unavailable. Close other apps using it, then retry.";
+  return caught instanceof Error
+    ? caught.message
+    : "Unable to capture the ID. Allow camera permission or upload a photo.";
+}
 
 interface Props {
   side: "front" | "back";
@@ -28,6 +44,7 @@ export default function IdCameraCapture({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const detachStreamListenersRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const captureInProgressRef = useRef(false);
   const autoOpenHandledRef = useRef(false);
@@ -47,10 +64,18 @@ export default function IdCameraCapture({
 
   const dialogRef = useDialogFocus<HTMLDivElement>(open, close, null);
 
+  function releaseStream() {
+    detachStreamListenersRef.current?.();
+    detachStreamListenersRef.current = null;
+    const stream = streamRef.current;
+    streamRef.current = null;
+    stream?.getTracks().forEach((track) => track.stop());
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
   function stop() {
     generationRef.current += 1;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    releaseStream();
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = "";
   }
@@ -64,6 +89,16 @@ export default function IdCameraCapture({
     setError("");
     setProgress(0);
     setCapturedPreview("");
+  }
+
+  function failCapture(token: number, message: string) {
+    if (generationRef.current !== token) return;
+    stop();
+    captureInProgressRef.current = false;
+    manualCapture.current = false;
+    setBusy(false);
+    setProgress(0);
+    setError(message);
   }
 
   useEffect(() => () => stop(), []);
@@ -85,7 +120,7 @@ export default function IdCameraCapture({
     capturedFile.current = null;
     manualCapture.current = false;
     setFacing(nextFacing);
-    setMirroredPreview(nextFacing === "user");
+    setMirroredPreview(false);
     setOpen(true);
     setBusy(true);
     setCapturedPreview("");
@@ -110,25 +145,40 @@ export default function IdCameraCapture({
         return;
       }
       streamRef.current = stream;
-      setMirroredPreview(mirrorCameraPreview(stream));
+      const tracks = stream.getTracks();
+      if (!tracks.length || tracks.some((track) => track.readyState === "ended"))
+        throw new Error(STREAM_STOPPED_MESSAGE);
+      const onEnded = () => failCapture(token, STREAM_STOPPED_MESSAGE);
+      tracks.forEach((track) => track.addEventListener("ended", onEnded));
+      detachStreamListenersRef.current = () =>
+        tracks.forEach((track) => track.removeEventListener("ended", onEnded));
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => resolve()),
       );
+      if (generationRef.current !== token) return;
       const video = videoRef.current;
       if (!video) throw new Error("Unable to open the camera preview.");
       video.srcObject = stream;
-      await video.play();
-      if (generationRef.current !== token) return;
-      setBusy(false);
+      void video.play().catch((caught) => {
+        if (streamRef.current === stream)
+          failCapture(token, cameraErrorMessage(caught));
+      });
       const analysis = document.createElement("canvas");
       const context = analysis.getContext("2d", { willReadFrequently: true });
       if (!context)
         throw new Error("This browser cannot analyze camera images.");
       let previous: Uint8Array | undefined;
       let stableFrames = 0;
+      let waitingForFrame = true;
+      let lastFrameAt = performance.now();
       const requiredStableFrames = 5;
       while (generationRef.current === token && !captureInProgressRef.current) {
-        if (video.readyState >= 2 && video.videoWidth > 0) {
+        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          lastFrameAt = performance.now();
+          if (waitingForFrame) {
+            waitingForFrame = false;
+            setBusy(false);
+          }
           analysis.width = Math.min(480, video.videoWidth);
           analysis.height = Math.max(
             1,
@@ -201,30 +251,28 @@ export default function IdCameraCapture({
             setProgress(requiredStableFrames);
             capturedFile.current = file;
             setMessage("Review your ID photo. Confirm it or retake.");
-            streamRef.current?.getTracks().forEach((track) => track.stop());
-            streamRef.current = null;
+            releaseStream();
             return;
+          }
+        } else {
+          if (performance.now() - lastFrameAt >= FRAME_TIMEOUT_MS)
+            throw new Error(
+              "No image came from the camera. Retry the photo, or close the camera and upload an ID image.",
+            );
+          if (!waitingForFrame) {
+            waitingForFrame = true;
+            previous = undefined;
+            stableFrames = 0;
+            manualCapture.current = false;
+            setBusy(true);
+            setProgress(0);
+            setMessage("Waiting for a camera image…");
           }
         }
         await new Promise((resolve) => window.setTimeout(resolve, 220));
       }
     } catch (caught) {
-      if (generationRef.current === token) {
-        streamRef.current?.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        captureInProgressRef.current = false;
-        setError(
-          caught instanceof DOMException && caught.name === "NotAllowedError"
-            ? "Camera permission was denied. Allow camera access in browser settings, then retry, or close and upload a photo."
-            : caught instanceof DOMException && caught.name === "NotFoundError"
-              ? "No camera is available. Connect a camera or close and upload an ID photo."
-              : caught instanceof Error
-                ? caught.message
-                : "Unable to capture the ID. Allow camera permission or upload a photo.",
-        );
-      }
-    } finally {
-      if (generationRef.current === token) setBusy(false);
+      failCapture(token, cameraErrorMessage(caught));
     }
   }
 

@@ -430,18 +430,18 @@ async function cameraChecks() {
     "Borderless face capture retains accessible overlay controls",
   );
   check(
-    w.document.querySelector("video")?.style.transform === "scaleX(-1)" &&
+    w.document.querySelector("video")?.style.transform === "none" &&
       w.document
         .querySelector('[aria-label="Mirror Preview"]')
-        ?.getAttribute("aria-pressed") === "true",
-    "Front-facing live verification uses the familiar selfie preview direction",
+        ?.getAttribute("aria-pressed") === "false",
+    "Front-facing live verification starts with the unmirrored preview",
   );
   await tick(() =>
     w.document.querySelector('[aria-label="Mirror Preview"]').click(),
   );
   check(
-    w.document.querySelector("video")?.style.transform === "none",
-    "Face verification allows a normal preview without changing captured image orientation",
+    w.document.querySelector("video")?.style.transform === "scaleX(-1)",
+    "Face verification still lets the user opt in to a mirrored preview",
   );
   await tick(() =>
     w.document.querySelector('[aria-label="Mirror Preview"]').click(),
@@ -566,6 +566,55 @@ async function cameraChecks() {
   t.dom.window.close();
 }
 
+async function autoStartRecoveryChecks() {
+  const source = `import {createRoot} from 'react-dom/client';import Face from './src/components/FaceIdentityVerification';
+    const root=createRoot(document.getElementById('root'));const id=new File(['id'],'id.jpg',{type:'image/jpeg'});
+    window.__mount=()=>root.render(<Face idType="PhilSys ID" idFrontFile={id} autoStart onVerified={result=>window.__verified.push(result)}/>);window.__unmount=()=>root.unmount();`;
+  const t = await render(source, "export const supabase={}", false, { camera: true });
+  const { w, tick } = t;
+  const button = (text) =>
+    [...w.document.querySelectorAll("button")].find((node) => node.textContent.trim() === text);
+  w.__idGate = true;
+  await w.__act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  check(
+    w.__documentCalls === 1 && w.document.querySelector("video")?.srcObject,
+    "A new ID still auto-starts live verification",
+  );
+  await tick(() => w.document.querySelector('[aria-label="Exit full-screen camera"]').click());
+  const start = button("Validate ID and start camera");
+  check(
+    start && !start.disabled && !start.className.includes("sr-only") && w.__trackStops === 1,
+    "Closing an automatically opened camera leaves a visible restart button for the same ID",
+  );
+  await tick(() => start.click());
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  check(
+    w.__documentCalls === 2 && w.document.querySelector("video")?.srcObject,
+    "The restart button opens a fresh stream without replacing the ID photos",
+  );
+  w.__idGate = false;
+  await tick(() => { w.__capture = w.__camera.capture(); });
+  await tick(() => w.__finishFace());
+  await w.__capture;
+  const oldPermission = w.__releaseCamera;
+  w.__idGate = true;
+  await tick(() => button("Retake").click());
+  await tick(() => w.__releaseCamera());
+  await tick(() => w.__paint());
+  check(
+    w.__documentCalls === 3 && w.__releaseCamera !== oldPermission &&
+      w.document.querySelector("video")?.srcObject &&
+      !button("Confirm Photo") && !w.__verified.length,
+    "Retake discards the unconfirmed selfie and reopens live verification for the same ID",
+  );
+  await tick(() => w.__unmount());
+  check(w.__trackStops === 3 && !t.errors.length, "Each verification attempt releases its stream without runtime errors");
+  t.dom.window.close();
+}
+
 async function livenessChecks() {
   const source = `import {createRoot} from 'react-dom/client';import Face from './src/components/FaceIdentityVerification';const root=createRoot(document.getElementById('root'));
     window.__mount=()=>root.render(<Face idType="PhilSys ID" idFrontFile={null} onVerified={result=>window.__verified.push(result)}/>);window.__unmount=()=>root.unmount();`;
@@ -675,7 +724,22 @@ async function livenessChecks() {
     w.__camera.actionsPassed().at(-1) === "smile",
     "A moderate smile now passes in the actual liveness monitor",
   );
+  const prompt = () => w.document.querySelector(".capture-header").textContent;
+  check(
+    prompt().includes("Face the camera and hold still briefly.") &&
+      !prompt().includes("Move closer to the camera"),
+    "The next step asks the user to hold still until the starting position is sampled",
+  );
   await frame([detection()]);
+  check(
+    prompt().includes("Move closer to the camera"),
+    "The move-closer prompt appears after a usable starting measurement",
+  );
+  await frame([detection()]);
+  check(
+    w.__camera.actionsPassed().at(-1) === "smile",
+    "Staying at the starting distance does not pass the move-closer check",
+  );
   await frame([detection({ scale: 1.075 })]);
   await frame([detection({ scale: 1.075 })]);
   check(
@@ -918,6 +982,7 @@ async function registrationSaveChecks() {
 (async () => {
   await routeChecks();
   await cameraChecks();
+  await autoStartRecoveryChecks();
   await livenessChecks();
   await idGateChecks();
   await registrationSaveChecks();

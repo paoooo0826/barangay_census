@@ -16,7 +16,7 @@ import * as faceapi from "face-api.js";
 import VideoGuide from "./VideoGuide";
 import { faceInsideGuide } from "../lib/captureGuide";
 import { drawCameraFrame } from "../lib/cameraFrame";
-import { detectsHeadTurn, mirrorCameraPreview } from "../lib/cameraOrientation";
+import { detectsHeadTurn } from "../lib/cameraOrientation";
 import { checkIdDocument } from "../lib/idDocumentOcr";
 import type { IdDocumentCheck } from "../lib/idDocument";
 import {
@@ -71,6 +71,7 @@ const STRONG_MATCH_THRESHOLD = 0.45;
 const MAX_MANUAL_REVIEW_DISTANCE = 0.6;
 const MIN_ID_FACE_AREA = 0.018;
 const SMALL_ID_FACE_AREA = 0.025;
+const MOVE_CLOSER_PREPARATION = "Face the camera and hold still briefly.";
 
 const ACTION_LABELS: Record<LivenessAction, string> = {
   blink_twice: "Blink twice slowly",
@@ -173,7 +174,6 @@ export default function FaceIdentityVerification({
   const documentCheckRef = useRef<IdDocumentCheck | null>(null);
   const documentAbortRef = useRef<AbortController | null>(null);
   const blinkRef = useRef(initialBlinkState());
-  const baselineAreaRef = useRef<number | null>(null);
   const fullscreenRequestedRef = useRef(false);
   const monitorSessionRef = useRef(0);
   const attemptRef = useRef(0);
@@ -185,7 +185,7 @@ export default function FaceIdentityVerification({
 
   const [modelsReady, setModelsReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [mirroredPreview, setMirroredPreview] = useState(true);
+  const [mirroredPreview, setMirroredPreview] = useState(false);
   const [pendingResult, setPendingResult] =
     useState<FaceVerificationResult | null>(null);
   const facingRef = useRef<"user" | "environment">("user");
@@ -202,6 +202,7 @@ export default function FaceIdentityVerification({
   );
   const [actions, setActions] = useState<LivenessAction[]>([]);
   const [actionIndex, setActionIndex] = useState(0);
+  const [moveCloserReady, setMoveCloserReady] = useState(false);
   const [passed, setPassed] = useState<LivenessAction[]>([]);
   const [complete, setComplete] = useState(false);
   const [needsManualReview, setNeedsManualReview] = useState(false);
@@ -209,6 +210,10 @@ export default function FaceIdentityVerification({
   const [capturePreview, setCapturePreview] = useState("");
 
   const currentAction = actions[actionIndex];
+  const currentActionLabel =
+    currentAction === "move_closer" && !moveCloserReady
+      ? MOVE_CLOSER_PREPARATION
+      : ACTION_LABELS[currentAction];
   const actionSummary = useMemo(
     () => actions.map((item) => ACTION_LABELS[item]).join(" → "),
     [actions],
@@ -243,7 +248,10 @@ export default function FaceIdentityVerification({
     )
       return;
     autoStartKeyRef.current = key;
-    const timer = window.setTimeout(() => void validateIdAndStart(), 350);
+    const attempt = attemptRef.current;
+    const timer = window.setTimeout(() => {
+      if (activeAttempt(attempt)) void validateIdAndStart();
+    }, 350);
     return () => window.clearTimeout(timer);
   }, [autoStart, disabled, idType, idFrontFile, idFrontPreview]);
 
@@ -303,10 +311,10 @@ export default function FaceIdentityVerification({
     idQualityRef.current = null;
     idFaceAvailableRef.current = false;
     blinkRef.current = initialBlinkState();
-    baselineAreaRef.current = null;
     completingRef.current = false;
     setActions([]);
     setActionIndex(0);
+    setMoveCloserReady(false);
     setPassed([]);
     setComplete(false);
     setNeedsManualReview(false);
@@ -317,6 +325,11 @@ export default function FaceIdentityVerification({
     setError("");
     setStatus("Upload the ID front, then validate it.");
     onReset?.();
+  }
+
+  function restartVerification() {
+    resetVerification();
+    void validateIdAndStart();
   }
 
   async function loadModels() {
@@ -343,7 +356,6 @@ export default function FaceIdentityVerification({
     idQualityRef.current = null;
     idFaceAvailableRef.current = false;
     setCameraOpen(true);
-    setMirroredPreview(facingRef.current === "user");
     setPendingResult(null);
     setBusy(true);
     setError("");
@@ -483,6 +495,7 @@ export default function FaceIdentityVerification({
   ) {
     if (!activeAttempt(attempt)) return;
     setCameraOpen(true);
+    setMirroredPreview(false);
     if (!navigator.mediaDevices?.getUserMedia)
       throw new DOMException("Camera unsupported", "NotFoundError");
     stopCamera();
@@ -502,7 +515,6 @@ export default function FaceIdentityVerification({
       return;
     }
     streamRef.current = stream;
-    setMirroredPreview(mirrorCameraPreview(stream));
     setCameraReady(true);
 
     // cameraReady mounts the video element. Wait for React to commit it before attaching the stream.
@@ -526,7 +538,9 @@ export default function FaceIdentityVerification({
     if (!activeAttempt(attempt) || sessionId !== monitorSessionRef.current)
       return;
     setStatus(
-      `Automatic detection active: ${ACTION_LABELS[selectedActions[0]]}`,
+      selectedActions[0] === "move_closer"
+        ? MOVE_CLOSER_PREPARATION
+        : `Automatic detection active: ${ACTION_LABELS[selectedActions[0]]}`,
     );
     void monitorLiveness(selectedActions, sessionId, attempt);
   }
@@ -539,6 +553,7 @@ export default function FaceIdentityVerification({
     let index = 0;
     let consecutiveMatches = 0;
     let missedFrames = 0;
+    let moveCloserBaseline: number | null = null;
 
     const wait = (milliseconds: number) =>
       new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -607,8 +622,6 @@ export default function FaceIdentityVerification({
         }
         const frameArea = video.videoWidth * video.videoHeight;
         const areaRatio = (box.width * box.height) / Math.max(1, frameArea);
-        if (baselineAreaRef.current === null)
-          baselineAreaRef.current = areaRatio;
         const nose = landmarks.getNose()[3];
         const leftEye = landmarks.getLeftEye();
         const rightEye = landmarks.getRightEye();
@@ -625,10 +638,13 @@ export default function FaceIdentityVerification({
         if (requestedAction === "turn_left" || requestedAction === "turn_right")
           actionDetected = detectsHeadTurn(requestedAction, yaw);
         if (requestedAction === "move_closer") {
-          actionDetected = detectsMoveCloser(
-            areaRatio,
-            baselineAreaRef.current ?? areaRatio,
-          );
+          if (moveCloserBaseline === null) {
+            // Measure the starting position before telling the user to move.
+            moveCloserBaseline = areaRatio;
+            setMoveCloserReady(true);
+          } else {
+            actionDetected = detectsMoveCloser(areaRatio, moveCloserBaseline);
+          }
         }
         if (requestedAction === "blink_twice") {
           const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2;
@@ -648,11 +664,12 @@ export default function FaceIdentityVerification({
           setPassed(selectedActions.slice(0, index));
           setActionIndex(index);
           blinkRef.current = initialBlinkState();
-          baselineAreaRef.current = null;
 
           if (index < selectedActions.length) {
             setStatus(
-              `Movement detected. Next: ${ACTION_LABELS[selectedActions[index]]}`,
+              selectedActions[index] === "move_closer"
+                ? MOVE_CLOSER_PREPARATION
+                : `Movement detected. Next: ${ACTION_LABELS[selectedActions[index]]}`,
             );
             await wait(900);
           }
@@ -948,7 +965,7 @@ export default function FaceIdentityVerification({
             (!idFrontFile && !idFrontPreview)
           }
           onClick={() => void validateIdAndStart()}
-          className={`${autoStart && !error ? "sr-only" : "mt-4 inline-flex"} items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50`}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-pine-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? (
             <Loader2 className="animate-spin" size={18} />
@@ -1035,7 +1052,7 @@ export default function FaceIdentityVerification({
               )}
               {!complete && !capturePreview && currentAction && (
                 <div className="absolute inset-x-3 top-[20%] bg-black/60 p-3 text-center text-sm font-bold text-white">
-                  {ACTION_LABELS[currentAction]}
+                  {currentActionLabel}
                 </div>
               )}
             </div>
@@ -1048,7 +1065,8 @@ export default function FaceIdentityVerification({
                       <button
                         type="button"
                         className="btn-secondary"
-                        onClick={resetVerification}
+                        disabled={busy}
+                        onClick={restartVerification}
                       >
                         Retake
                       </button>
@@ -1106,8 +1124,7 @@ export default function FaceIdentityVerification({
                             facingRef.current === "user"
                               ? "environment"
                               : "user";
-                          resetVerification();
-                          void validateIdAndStart();
+                          restartVerification();
                         }}
                       >
                         Switch camera
@@ -1116,10 +1133,7 @@ export default function FaceIdentityVerification({
                         <button
                           type="button"
                           className="btn-secondary"
-                          onClick={() => {
-                            resetVerification();
-                            void validateIdAndStart();
-                          }}
+                          onClick={restartVerification}
                         >
                           Retry camera
                         </button>
