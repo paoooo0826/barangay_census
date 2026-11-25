@@ -82,7 +82,6 @@ const ACTION_LABELS: Record<LivenessAction, string> = {
 
 function randomActions(): LivenessAction[] {
   const pool: LivenessAction[] = [
-    "blink_twice",
     "turn_left",
     "turn_right",
     "smile",
