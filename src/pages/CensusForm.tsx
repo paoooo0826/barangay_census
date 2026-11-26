@@ -33,6 +33,7 @@ import { GOVERNMENT_ID_TYPES } from "../lib/idDocument";
 import IdCameraCapture from "../components/IdCameraCapture";
 import { categoryLabel, EDUCATION_STATUS_OPTIONS } from "../lib/displayLabels";
 import BoardingFormFields from "../components/BoardingFormFields";
+import ResidentGuide from "../components/ResidentGuide";
 import {
   EMPTY_BOARDING_FIELDS,
   validateBoarding,
@@ -1265,19 +1266,22 @@ export default function CensusForm({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              disabled={
-                loading ||
-                draft.saving ||
-                !draft.loaded ||
-                Boolean(draft.outdated)
-              }
-              onClick={() => void draft.save()}
-              className="rounded-lg border border-pine-300 bg-white px-4 py-2 text-sm font-semibold text-pine-800 disabled:opacity-50"
-            >
-              Save draft
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <ResidentGuide />
+              <button
+                type="button"
+                disabled={
+                  loading ||
+                  draft.saving ||
+                  !draft.loaded ||
+                  Boolean(draft.outdated)
+                }
+                onClick={() => void draft.save()}
+                className="rounded-lg border border-pine-300 bg-white px-4 py-2 text-sm font-semibold text-pine-800 disabled:opacity-50"
+              >
+                Save draft
+              </button>
+            </div>
           </div>
           {draft.error && (
             <p role="alert" className="mt-3 text-sm text-red-700">

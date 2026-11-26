@@ -1,4 +1,5 @@
 import AuthLayout from "../components/AuthLayout";
+import ResidentGuide from "../components/ResidentGuide";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -331,6 +332,9 @@ export default function ResidentAuth({
               ? "Sign in to track your census application"
               : "Create an account to start registration"}
         </p>
+        <div className="mt-3">
+          <ResidentGuide />
+        </div>
       </div>
 
       {error && (

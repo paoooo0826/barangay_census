@@ -105,6 +105,20 @@ async function render(source, api = "export const supabase = {};") {
     },
   };
 }
+const guideButton = (w) => w.document.querySelector('[aria-label="Help: How to use BRIMS"]');
+const namedButton = (w, label) =>
+  [...w.document.querySelectorAll("button")].find(
+    (button) => button.textContent.trim() === label,
+  );
+const pressKey = (w, key, shiftKey = false) =>
+  w.document.activeElement.dispatchEvent(
+    new w.KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }),
+  );
+function changeValue(w, field, value) {
+  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, value);
+  field.dispatchEvent(new w.Event(field.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+}
+
 (async () => {
   const a = await render(
     `import {createRoot} from 'react-dom/client';import ResidentAuth from './src/pages/ResidentAuth';const root=createRoot(document.getElementById('root'));window.__mount=()=>root.render(<ResidentAuth onBack={()=>{}} onLoginSuccess={()=>{}} onRegisterClick={()=>{}}/>);window.__unmount=()=>root.unmount();`,
@@ -136,6 +150,32 @@ async function render(source, api = "export const supabase = {};") {
     d.querySelector("#resident-email").getAttribute("aria-invalid") ===
       "true" && a.w.__signCalls === 0,
     "Empty resident login shows field errors without an auth request",
+  );
+  const loginHash = a.w.location.hash;
+  await a.tick(() => changeValue(a.w, d.querySelector("#resident-email"), "guide-test@example.invalid"));
+  await a.tick(() => guideButton(a.w).click());
+  const help = d.querySelector('[role="dialog"]');
+  const helpTitle = d.getElementById(help.getAttribute("aria-labelledby"));
+  const guideScroll = help.querySelector('[role="region"]');
+  check(
+    helpTitle.textContent.trim() === "How to use BRIMS" &&
+      help.getAttribute("aria-modal") === "true" &&
+      d.activeElement.getAttribute("aria-label") === "Close guide" &&
+      guideScroll.tabIndex === 0,
+    "Resident Login help opens a named modal with focus on Close and a keyboard-focusable reading area",
+  );
+  await a.tick(() => pressKey(a.w, "Tab", true));
+  check(d.activeElement === guideScroll, "Shift+Tab wraps within the help dialog");
+  await a.tick(() => pressKey(a.w, "Tab"));
+  check(d.activeElement.getAttribute("aria-label") === "Close guide", "Tab wraps back to Close within the help dialog");
+  await a.tick(() => pressKey(a.w, "Escape"));
+  check(
+    !d.querySelector('[role="dialog"]') &&
+      d.activeElement === guideButton(a.w) &&
+      d.body.style.overflow === "" &&
+      d.querySelector("#resident-email").value === "guide-test@example.invalid" &&
+      a.w.location.hash === loginHash && a.w.__signCalls === 0,
+    "Escape restores focus and preserves the login screen and email without signing in",
   );
   check(
     a.errors.length === 0,
@@ -214,9 +254,33 @@ async function render(source, api = "export const supabase = {};") {
   await m.close();
 
   const emptyApi = `export const supabase={from:()=>({select(){return this},eq(){return this},order(){return this},maybeSingle:async()=>({data:null,error:null}),then:resolve=>Promise.resolve({data:[],error:null}).then(resolve)})};`;
+  const censusGuideApi = `
+    window.__draftRow=null;window.__calls=[];window.__censusUploads=[];
+    sessionStorage.setItem('pendingResidentVerification:u0',JSON.stringify({
+      userId:'u0',idType:'PhilSys ID',frontImagePath:'u0/test-front.jpg',backImagePath:'u0/test-back.jpg',
+      capturedFacePath:'u0/test-face.jpg',isMatched:true,matchDistance:0.2,livenessPassed:true,
+      livenessActions:['turn_left','smile','move_closer'],verificationStatus:'passed'
+    }));
+    export const supabase={
+      from(table){const q={select(){return q},eq(){return q},order(){return q},
+        maybeSingle:async()=>({data:table==='census_drafts'?window.__draftRow:null,error:null}),
+        then:resolve=>Promise.resolve({data:[],error:null}).then(resolve)};return q},
+      async rpc(name,args){
+        window.__calls.push({name,args});
+        if(name==='save_census_draft'){
+          window.__draftRow={revision:(window.__draftRow?.revision??0)+1,payload:args.p_payload,saved_at:'2026-11-26T00:00:00Z'};
+          return {data:window.__draftRow,error:null};
+        }
+        if(name==='check_resident_duplicate')return {data:{duplicate:false},error:null};
+        if(name==='save_resident_census')return {data:{id:'test-resident',tracking_number:'TEST-GUIDE-001'},error:null};
+        throw new Error('Unexpected RPC '+name);
+      },
+      storage:{from:bucket=>({createSignedUrl:async(path)=>({data:{signedUrl:'https://fixture.invalid/'+path},error:null}),
+        upload:async(path,file)=>{window.__censusUploads.push({bucket,path,file});return {error:null}}})}
+    };`;
   const c = await render(
-    `import {createRoot} from 'react-dom/client';import CensusForm from './src/pages/CensusForm';const root=createRoot(document.getElementById('root'));window.location.hash='/resident/census';window.__mount=()=>root.render(<CensusForm onDashboard={()=>{}}/>);window.__unmount=()=>root.unmount();`,
-    emptyApi,
+    `import {createRoot} from 'react-dom/client';import CensusForm from './src/pages/CensusForm';let root=createRoot(document.getElementById('root'));window.location.hash='/resident/census';window.__dashboardVisits=0;window.__mount=()=>root.render(<CensusForm onDashboard={()=>window.__dashboardVisits++} onLogout={()=>{}}/>);window.__unmount=()=>root.unmount();window.__remount=()=>{root.unmount();root=createRoot(document.getElementById('root'));window.__mount()};`,
+    censusGuideApi,
   );
   const cd = c.w.document;
   const nav = cd.querySelector('[aria-label="Census form sections"]');
@@ -301,6 +365,80 @@ async function render(source, api = "export const supabase = {};") {
     c.errors.length === 0,
     "Boarding status selection and validation have no React/runtime errors",
   );
+  check(
+    c.w.__calls.every(({ name }) => name !== "save_resident_census"),
+    "Invalid census entries do not reach the submission RPC",
+  );
+  await c.tick(() => {
+    for (const [key, value] of Object.entries({
+      first_name: "Fixture",
+      last_name: "Resident",
+      birth_date: "1991-02-03",
+      birth_place: "Baguio City",
+      civil_status: "Single",
+      residential_address: "123 Example Street",
+      highest_education: "College",
+      residence_start_date: "2025-01-01",
+      residence_classification: "resident",
+    })) changeValue(c.w, cd.querySelector(`[data-field="${key}"]`), value);
+    const educationStatus = cd.querySelector("[data-field=education_status]");
+    changeValue(c.w, educationStatus, educationStatus.options[1].value);
+    [...cd.querySelectorAll("label")]
+      .find((label) => label.textContent.trim() === "House Owner")
+      .querySelector("input").click();
+  });
+  await c.tick(() => namedButton(c.w, "Save draft").click());
+  check(
+    c.w.__draftRow?.payload.residential_address === "123 Example Street" &&
+      cd.querySelector('[aria-label="Census draft"]').textContent.includes("Draft saved"),
+    "Save draft persists a real census form entry through the existing draft RPC",
+  );
+  await c.tick(() => c.w.__remount());
+  check(
+    cd.querySelector("[data-field=residential_address]").value === "123 Example Street" &&
+      cd.body.textContent.includes("Your saved fields were restored."),
+    "Reopening the census form restores the saved entries",
+  );
+  await c.tick(() => changeValue(c.w, cd.querySelector("[data-field=residential_address]"), "456 Example Street"));
+  await c.w.__act(async () => new Promise((resolve) => setTimeout(resolve, 1300)));
+  check(c.w.__draftRow.payload.residential_address === "456 Example Street", "Census draft autosave still runs after editing");
+
+  c.w.createImageBitmap = async () => ({ width: 640, height: 480, close() {} });
+  c.w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {}, fillRect() {} });
+  c.w.HTMLCanvasElement.prototype.toBlob = (callback) =>
+    callback(new c.w.Blob(["fixture photo"], { type: "image/jpeg" }));
+  const photoInput = cd.querySelector('#census-household input[type="file"]');
+  const photo = new c.w.File(["fixture source"], "test-house.jpg", { type: "image/jpeg" });
+  await c.tick(() => {
+    Object.defineProperty(photoInput, "files", { value: [photo] });
+    photoInput.dispatchEvent(new c.w.Event("change", { bubbles: true }));
+  });
+  await c.tick(() => namedButton(c.w, "Crop / Save").click());
+  const previewBeforeHelp = cd.querySelector("#census-household img");
+  const callsBeforeHelp = c.w.__calls.length;
+  check(guideButton(c.w).type === "button" && previewBeforeHelp, "Census help trigger is a non-submit button and the fixture photo is attached");
+  await c.tick(() => guideButton(c.w).click());
+  await c.tick(() => pressKey(c.w, "Escape"));
+  check(
+    cd.querySelector("#census-household img") === previewBeforeHelp &&
+      cd.querySelector("[data-field=residential_address]").value === "456 Example Street" &&
+      c.w.location.hash === hash && cd.activeElement === guideButton(c.w) &&
+      c.w.__calls.length === callsBeforeHelp,
+    "Opening and closing census help preserves the route, focus, draft fields, and attached photo without sending a request",
+  );
+  await c.tick(submitCensus);
+  const submission = c.w.__calls.find(({ name }) => name === "save_resident_census");
+  check(
+    submission?.args.p_resident.residential_address === "456 Example Street" &&
+      submission.args.p_government_id.front_image_url === "u0/test-front.jpg" &&
+      submission.args.p_face_verification.liveness_passed &&
+      c.w.__censusUploads[0]?.bucket === "household-images" &&
+      c.w.__censusUploads[0]?.file.size > 0 &&
+      c.w.__dashboardVisits === 1 &&
+      c.w.sessionStorage.getItem("residentDashboardNotice")?.includes("submitted successfully"),
+    "A valid fixture census submits through the original RPC with the retained photo and returns to the dashboard",
+  );
+  check(!c.errors.length, "Census help, draft recovery, and submission have no runtime errors");
   await c.close();
   const n = await render(
     `import {createRoot} from 'react-dom/client';import AnnouncementSections from './src/components/AnnouncementSections';import {isRecentAnnouncement} from './src/lib/announcements';const root=createRoot(document.getElementById('root'));window.__isRecent=isRecentAnnouncement;const now=Date.now();const base={is_published:true,archived:false,expires_at:null};window.__items=[{...base,id:'new',title:'New notice',published_at:new Date(now-86400000).toISOString()},{...base,id:'old',title:'Older notice',published_at:new Date(now-14*86400000).toISOString()},{...base,id:'draft',title:'Draft',is_published:false,published_at:new Date(now).toISOString()}];window.__ungrouped=false;window.__mount=()=>root.render(<AnnouncementSections items={window.__items} groupRecent={!window.__ungrouped}>{(item,recent)=><article key={item.id} data-recent={recent}>{item.title}</article>}</AnnouncementSections>);window.__unmount=()=>root.unmount();`,
@@ -680,6 +818,17 @@ async function render(source, api = "export const supabase = {};") {
     boardingApi,
   );
   const bd = dashboard.w.document;
+  await dashboard.tick(() => guideButton(dashboard.w).click());
+  check(
+    bd.querySelector('[role="dialog"]').textContent.includes("Open navigation") &&
+      bd.querySelector('[role="dialog"]').textContent.includes("My Boarding House"),
+    "Resident Dashboard help explains the mobile menu and the role-specific options",
+  );
+  await dashboard.tick(() => bd.querySelector('[aria-label="Close guide"]').click());
+  check(
+    !bd.querySelector('[role="dialog"]') && bd.activeElement === guideButton(dashboard.w),
+    "The dashboard guide's close button restores focus to Help",
+  );
   const housingButtons = () =>
     [...bd.querySelectorAll("button")].filter((el) =>
       /^(My Boarding House|Boarding House Management)$/.test(

@@ -1,6 +1,7 @@
 import CommunityCases from "../components/CommunityCases";
 import BoardingMessages from "../components/BoardingMessages";
 import ResidentRecordHistory from "../components/ResidentRecordHistory";
+import ResidentGuide from "../components/ResidentGuide";
 import AnnouncementDetail, {
   AnnouncementImage,
 } from "../components/AnnouncementDetail";
@@ -762,18 +763,23 @@ export default function ResidentDashboard({
         tabIndex={-1}
         className="mx-auto min-w-0 max-w-6xl space-y-6 px-4 py-8 outline-none sm:px-6"
       >
-        {tab === "home" && (
-          <div className="pb-1">
-            <p className="page-eyebrow">Your community, in one place</p>
-            <h1 className="page-title mt-2">
-              Welcome, {resident?.first_name || "Resident"}.
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              Keep your information current, manage appointments, and follow
-              barangay updates.
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          {tab === "home" && (
+            <div className="pb-1">
+              <p className="page-eyebrow">Your community, in one place</p>
+              <h1 className="page-title mt-2">
+                Welcome, {resident?.first_name || "Resident"}.
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                Keep your information current, manage appointments, and follow
+                barangay updates.
+              </p>
+            </div>
+          )}
+          <div className="ml-auto">
+            <ResidentGuide />
           </div>
-        )}
+        </div>
         {notice && (
           <div className="flex items-start gap-3 rounded-2xl border border-sage-200 bg-sage-50 p-4 text-sm text-sage-800">
             <CheckCircle2 size={19} />
